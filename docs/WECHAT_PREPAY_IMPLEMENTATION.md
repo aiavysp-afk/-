@@ -8,7 +8,7 @@
 2. openid仅从当前用户的加密ExternalIdentity解密，并核对当前AppID对应的身份HMAC；拒绝Mock身份、错误AppID或缺失/损坏身份。客户端不能提交金额、openid、商户号或预支付标识。
 3. 锁Order后检查待支付/预约HOLD与期限；整数分及商品描述来自服务器订单快照。剩余时间不足90秒不创建新预下单，避免微信将过短期限自动延长到一分钟。time_expire按服务器期限以RFC3339整秒发送。
 4. 同事务创建唯一Payment及DISPATCHING/prepayRequestedAt、事件与审计，提交后才调用微信POST。并发请求复用原Payment；网络请求不在数据库事务中。
-5. POST路径与实际JSON字节参加商户RSA签名；响应原始字节先验证微信签名再取prepay_id。READY保存标识及时间，返回四行签名的RSA参数供wx.requestPayment使用。再次调用只重签SDK参数，不重新POST。
+5. POST路径与实际JSON字节参加商户RSA签名；响应原始字节先验证微信签名再取prepay_id，并拒绝超过官方64字符上限的标识。READY保存标识及时间，返回四行签名的RSA参数供wx.requestPayment使用。再次调用只重签SDK参数，不重新POST。
 6. 超时、无效响应/签名或进程崩溃保留UNKNOWN/DISPATCHING原单，绝不自动重新POST或生成新业务号。旧记录NONE也不能视为“未发起”，只查原单/人工核实；无SDK参数的小程序入口会尝试客户本人查单。
 7. SDK成功不是到账证据。小程序调用服务端reconcile并刷新，订单只由已有验签通知/查单事务确认。SDK取消不调用本地取消、不释放预约；失败也不调用Mock成功接口。
 

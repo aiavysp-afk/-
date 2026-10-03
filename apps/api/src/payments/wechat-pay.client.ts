@@ -114,7 +114,7 @@ export class WechatPayClient {
     );
     if (
       typeof result.prepay_id !== "string" ||
-      !/^[A-Za-z0-9_-]{1,128}$/.test(result.prepay_id)
+      !/^[A-Za-z0-9_-]{1,64}$/.test(result.prepay_id)
     )
       throw new BadGatewayException("微信预下单响应格式无效");
     return result.prepay_id;
@@ -122,7 +122,7 @@ export class WechatPayClient {
 
   paymentParameters(prepayId: string): WechatPayParameters {
     this.assertPrepayEnabled();
-    if (!/^[A-Za-z0-9_-]{1,128}$/.test(prepayId))
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(prepayId))
       throw new BadRequestException("微信预支付标识无效");
     const timeStamp = String(Math.floor(Date.now() / 1000));
     const nonceStr = randomBytes(16).toString("hex");

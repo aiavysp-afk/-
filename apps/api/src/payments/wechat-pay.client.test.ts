@@ -103,6 +103,9 @@ describe("WechatPayClient", () => {
       ),
     ).toBe(true);
     const sdk = client().paymentParameters("wx-prepay-1");
+    expect(() => client().paymentParameters("a".repeat(65))).toThrow(
+      BadRequestException,
+    );
     expect(sdk.signType).toBe("RSA");
     expect(
       verify(

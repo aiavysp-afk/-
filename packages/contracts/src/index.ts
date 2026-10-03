@@ -179,7 +179,7 @@ export const PaymentStatusSchema = z.enum([
 export const WechatPayParametersSchema = z.object({
   timeStamp: z.string().regex(/^\d+$/),
   nonceStr: z.string().min(1).max(32),
-  package: z.string().regex(/^prepay_id=[A-Za-z0-9_-]{1,128}$/),
+  package: z.string().regex(/^prepay_id=[A-Za-z0-9_-]{1,64}$/),
   signType: z.literal("RSA"),
   paySign: z.string().min(1),
 });

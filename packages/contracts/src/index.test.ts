@@ -26,6 +26,12 @@ describe("money contract", () => {
     };
     expect(WechatPayParametersSchema.safeParse(params).success).toBe(true);
     expect(
+      WechatPayParametersSchema.safeParse({
+        ...params,
+        package: `prepay_id=${"a".repeat(65)}`,
+      }).success,
+    ).toBe(false);
+    expect(
       WechatPayParametersSchema.safeParse({ ...params, signType: "MD5" })
         .success,
     ).toBe(false);
