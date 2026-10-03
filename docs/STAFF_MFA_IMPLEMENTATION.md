@@ -33,7 +33,7 @@
 - 新增10项TOTP测试（包含六个RFC6238 SHA1向量及RFC4226向量）、14项MFA服务测试及2项生产/私有门禁测试。
 - `test:mfa`通过实际Nest/Fastify HTTP与PostgreSQL验证：客户/未登录拒绝、密钥加密/不回显、同会话绑定、不同会话不继承、并发一次成功、重放/过期/五次锁定、生产同构门禁、跨组织/财务角色分离、注销竞态及DB防改约束。仅临时合成人员，结束自动清理，没有给真实人员绑定设备。
 - 原`test:mall`/`test:wechat-db`回归通过；前者显式隔离MFA以测试业务规则，后者没有真实网络资金请求。MFA门禁另由强制true的独立HTTP测试覆盖，不能在生产沿用测试模式。
-- CI已加入test:mfa；服务器实际运行版本与验收结果见[服务器验收记录](DEPLOYMENT_ACCEPTANCE_20261004.md)，不能把本地成功等同服务器成功。
+- 代码提交`2cda5189484425c1a04a7a397ff06c97d1f97949`的[GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37152238533)全部通过。该代码已更新独立私有服务器，验收库/smoke库14批迁移、STAFF_MFA_REQUIRED=true、三个HTTP/DB流程、6项Linux预览测试和完整备份恢复实际通过；原商城保持不变。详见[服务器验收记录](DEPLOYMENT_ACCEPTANCE_20261004.md)，仍没有真人或真实资金验收。
 
 测试命令（先build，目标只能是独立测试库）：
 
