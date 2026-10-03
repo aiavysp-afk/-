@@ -30,6 +30,8 @@
 
 交付入口：[环境变量](docs/ENV_VARIABLES.md)、[数据库角色初始化](infra/database-init.sql)、[数据库迁移脚本](scripts/database-init.ps1)、[完整部署与人工检查项](docs/DEPLOYMENT.md)、[退款设计](docs/REFUND_IMPLEMENTATION.md)、[全流程自测结果](docs/SELF_TEST_REPORT.md)、[改动文件清单](docs/CHANGE_FILES.md)。
 
+2026-10-04已部署服务器独立私有验收环境，完整迁移/备份恢复/流程验证及GitHub CI成功，原商城不变。实际版本、私有访问方式和容量警告见[验收记录](docs/DEPLOYMENT_ACCEPTANCE_20261004.md)。真实资金开关仍false，不能作为公网经营版。
+
 全流程HTTP与小程序运行逻辑自测：在独立本地 `zhongyuan_daojia_test` 执行migration并设置 `MALL_TEST_DATABASE_URL`，先 `pnpm build` 再 `pnpm --filter @zydj/api test:mall`。脚本拒绝生产/远程目标，创建并清理自己的合成记录。GitHub Actions已加入相同验证步骤。
 
 本地数据库支付验证可运行 `pnpm --filter @zydj/api exec tsx scripts/verify-wechat-payments.ts`，需显式设置 `PAYMENT_DB_TEST_URL` 指向本机 `zhongyuan_daojia` 开发库；程序创建自己的临时组织并在结束后清理。微信支付接入说明见 [支付通知与对账](docs/WECHAT_PAY_IMPLEMENTATION.md)。

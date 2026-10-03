@@ -1,10 +1,11 @@
 # 本次改动文件清单
 
-日期：2026-10-04。相对初始main e448c3e累计114个文件；本轮相对66caa59新增/修改43个文件。此前退款、预下单基础保持，本轮加入微信原单补偿、第13批迁移、取消核实、私有部署脚本与验收边界测试。tsbuildinfo仅解除Git跟踪，本地保留；不提交运行密钥、归档、node_modules或截图。
+日期：2026-10-04。相对初始main e448c3e累计116个文件；本轮相对66caa59新增/修改45个文件。此前退款、预下单基础保持，本轮加入微信原单补偿、第13批迁移、取消核实、私有部署脚本、Linux换行约束与服务器实际验收记录。独立私有环境部署/备份恢复/HTTP与DB验证已完成，不等于公网上线。tsbuildinfo仅解除Git跟踪，本地保留；不提交运行密钥、归档、node_modules或截图。
 
 ## 本轮文件
 
 - `.env.example`
+- `.gitattributes`
 - `.github/workflows/ci.yml`
 - `DECISIONS.md`
 - `README.md`
@@ -34,6 +35,7 @@
 - `apps/miniapp/pages/orders/index.ts`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
+- `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`
 - `docs/ENV_VARIABLES.md`
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/INTEGRATION_GATES.md`
@@ -51,6 +53,7 @@
 ## 全部累计文件
 
 - `.env.example`
+- `.gitattributes`
 - `.github/workflows/ci.yml`
 - `.gitignore`
 - `DECISIONS.md`
@@ -141,6 +144,7 @@
 - `apps/workbench-h5/tsconfig.app.tsbuildinfo`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
+- `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`
 - `docs/ENV_VARIABLES.md`
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/INTEGRATION_GATES.md`
