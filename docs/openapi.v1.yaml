@@ -353,6 +353,23 @@ paths:
         "502":
           { description: 预下单结果未确认，保留原单并人工查单，禁止自动重发 }
         "503": { description: 微信预下单开关关闭、微信身份或签名配置未就绪 }
+  /v1/payments/orders/{id}/close:
+    post:
+      summary: 客户申请原单取消并核实微信关闭状态
+      description: 无支付或Mock走已有本地取消；微信需独立补偿门禁。持久化意图后查原单、幂等关单、再次查单；只有验签CLOSED才释放预约。返回data.order、pendingConfirmation及reviewRequired。SDK取消不自动调用此接口。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 最新订单与待核实标识；不能把HTTP成功等同于已取消 }
+        "401": { description: 会话失效 }
+        "403": { description: 非本人订单 }
+        "404": { description: 订单不存在 }
+        "409": { description: 状态已变化；已到账需申请退款 }
+        "503": { description: 原单补偿门禁未开启或签名材料未就绪 }
   /v1/dev/payments/{id}/succeed:
     post:
       summary: 在本地开发模式确认 Mock 支付成功

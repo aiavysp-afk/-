@@ -1,14 +1,60 @@
 # 本次改动文件清单
 
-日期：2026-10-04。相对初始main提交e448c3e，共103个文件（含新增、修改和从Git移除的构建缓存）。此前退款交付94个文件；本轮在main e8129c5之上继续加入JSAPI预下单、RSA调起参数、微信待查预约保护与增量验证。
+日期：2026-10-04。相对初始main e448c3e累计114个文件；本轮相对66caa59新增/修改43个文件。此前退款、预下单基础保持，本轮加入微信原单补偿、第13批迁移、取消核实、私有部署脚本与验收边界测试。tsbuildinfo仅解除Git跟踪，本地保留；不提交运行密钥、归档、node_modules或截图。
 
-核心改动：退款数据/4批增量迁移、双人复核和预算一致性、微信签名通知/POST/查询恢复、小程序商城接入、管理端退款UI、自动验证/CI、环境变量及隔离部署；新增第12批预下单迁移和单次持久化派发服务。
+## 本轮文件
 
-以下两个tsbuildinfo仅从仓库跟踪移除，本地文件保留且被.gitignore忽略；不删除用户源代码。小程序JS是与TS一致的实际运行文件，应随源码一同提交。
+- `.env.example`
+- `.github/workflows/ci.yml`
+- `DECISIONS.md`
+- `README.md`
+- `apps/api/prisma/migrations/20261004022000_wechat_recovery/migration.sql`
+- `apps/api/prisma/schema.prisma`
+- `apps/api/scripts/verify-mall-flow.ts`
+- `apps/api/scripts/verify-wechat-payments.ts`
+- `apps/api/src/config/env.test.ts`
+- `apps/api/src/config/env.ts`
+- `apps/api/src/payments/payments.module.ts`
+- `apps/api/src/payments/payments.service.test.ts`
+- `apps/api/src/payments/payments.service.ts`
+- `apps/api/src/payments/wechat-pay.client.test.ts`
+- `apps/api/src/payments/wechat-pay.client.ts`
+- `apps/api/src/payments/wechat-pay.protocol.test.ts`
+- `apps/api/src/payments/wechat-pay.protocol.ts`
+- `apps/api/src/payments/wechat-payments.controller.test.ts`
+- `apps/api/src/payments/wechat-payments.controller.ts`
+- `apps/api/src/payments/wechat-payments.service.ts`
+- `apps/api/src/payments/wechat-prepay.service.test.ts`
+- `apps/api/src/payments/wechat-prepay.service.ts`
+- `apps/api/src/payments/wechat-recovery.service.test.ts`
+- `apps/api/src/payments/wechat-recovery.service.ts`
+- `apps/api/src/payments/wechat-recovery.worker.test.ts`
+- `apps/api/src/payments/wechat-recovery.worker.ts`
+- `apps/miniapp/pages/orders/index.js`
+- `apps/miniapp/pages/orders/index.ts`
+- `docs/CHANGE_FILES.md`
+- `docs/DEPLOYMENT.md`
+- `docs/ENV_VARIABLES.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+- `docs/INTEGRATION_GATES.md`
+- `docs/PRIVATE_ACCEPTANCE_DEPLOYMENT.md`
+- `docs/SELF_TEST_REPORT.md`
+- `docs/WECHAT_PAY_IMPLEMENTATION.md`
+- `docs/WECHAT_PREPAY_IMPLEMENTATION.md`
+- `docs/WECHAT_RECOVERY_IMPLEMENTATION.md`
+- `docs/openapi.v1.yaml`
+- `scripts/deploy-private-acceptance.sh`
+- `scripts/serve-private-preview.mjs`
+- `scripts/serve-private-preview.test.mjs`
+- `scripts/setup-private-acceptance.mjs`
+
+## 全部累计文件
 
 - `.env.example`
 - `.github/workflows/ci.yml`
 - `.gitignore`
+- `DECISIONS.md`
+- `README.md`
 - `apps/admin-web/src/main.tsx`
 - `apps/admin-web/src/refunds.tsx`
 - `apps/admin-web/src/styles.css`
@@ -19,6 +65,7 @@
 - `apps/api/prisma/migrations/20261004005000_refund_review_guards/migration.sql`
 - `apps/api/prisma/migrations/20261004005500_refund_review_code_not_null/migration.sql`
 - `apps/api/prisma/migrations/20261004014500_wechat_prepay/migration.sql`
+- `apps/api/prisma/migrations/20261004022000_wechat_recovery/migration.sql`
 - `apps/api/prisma/schema.prisma`
 - `apps/api/prisma/seed.ts`
 - `apps/api/scripts/bootstrap-production.ts`
@@ -61,6 +108,10 @@
 - `apps/api/src/payments/wechat-payments.service.ts`
 - `apps/api/src/payments/wechat-prepay.service.test.ts`
 - `apps/api/src/payments/wechat-prepay.service.ts`
+- `apps/api/src/payments/wechat-recovery.service.test.ts`
+- `apps/api/src/payments/wechat-recovery.service.ts`
+- `apps/api/src/payments/wechat-recovery.worker.test.ts`
+- `apps/api/src/payments/wechat-recovery.worker.ts`
 - `apps/api/src/scheduling/scheduling.service.ts`
 - `apps/miniapp/app.js`
 - `apps/miniapp/app.json`
@@ -88,26 +139,28 @@
 - `apps/miniapp/utils/api.ts`
 - `apps/miniapp/utils/auth.js`
 - `apps/workbench-h5/tsconfig.app.tsbuildinfo`
-- `DECISIONS.md`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
 - `docs/ENV_VARIABLES.md`
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/INTEGRATION_GATES.md`
-- `docs/openapi.v1.yaml`
+- `docs/PRIVATE_ACCEPTANCE_DEPLOYMENT.md`
 - `docs/REFUND_IMPLEMENTATION.md`
 - `docs/SELF_TEST_REPORT.md`
 - `docs/WECHAT_PAY_IMPLEMENTATION.md`
 - `docs/WECHAT_PREPAY_IMPLEMENTATION.md`
+- `docs/WECHAT_RECOVERY_IMPLEMENTATION.md`
+- `docs/openapi.v1.yaml`
 - `infra/database-init.sql`
 - `infra/docker-compose.dev.yml`
 - `infra/nginx.example.conf`
 - `infra/zhongyuan-daojia.service`
 - `packages/contracts/src/index.test.ts`
 - `packages/contracts/src/index.ts`
-- `README.md`
 - `scripts/database-init.ps1`
 - `scripts/database-init.sh`
+- `scripts/deploy-private-acceptance.sh`
+- `scripts/serve-private-preview.mjs`
+- `scripts/serve-private-preview.test.mjs`
+- `scripts/setup-private-acceptance.mjs`
 - `turbo.json`
-
-不包含：生产.env、证书/私钥、运行日志、node_modules、dist、.codex-runtime验收截图。人工上线检查项见DEPLOYMENT.md末节；预下单验收边界见WECHAT_PREPAY_IMPLEMENTATION.md。

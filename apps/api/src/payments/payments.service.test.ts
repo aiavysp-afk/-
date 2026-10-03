@@ -226,7 +226,11 @@ describe("PaymentsService", () => {
       payment: paymentRecord(),
     });
     const tx = {
-      order: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(order),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       appointmentReservation: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
@@ -260,6 +264,35 @@ describe("PaymentsService", () => {
     });
   });
 
+  it("does not expire a real prepay created after the initial mock scan", async () => {
+    const stale = orderRecord({
+      paymentExpiresAt: new Date(Date.now() - 1),
+      payment: null,
+    });
+    const fresh = {
+      ...stale,
+      payment: paymentRecord({ provider: PaymentProvider.WECHAT }),
+    };
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      order: {
+        findUniqueOrThrow: vi.fn(async () => fresh),
+        updateMany: vi.fn(),
+      },
+    };
+    const prisma = {
+      order: { findMany: vi.fn(async () => [stale]) },
+      $transaction: vi.fn(async (cb: any) => cb(tx)),
+    };
+    const service = new PaymentsService(
+      prisma as never,
+      config(),
+      new OrderStateMachine(),
+      {} as never,
+    );
+    expect(await service.expirePendingOrders()).toBe(0);
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+  });
   it("hides the mock success endpoint in production", async () => {
     const service = new PaymentsService(
       {} as never,

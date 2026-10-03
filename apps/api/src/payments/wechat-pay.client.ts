@@ -15,7 +15,7 @@ import {
   decodeWechatNotification,
   decodeWechatRefundNotification,
   parseWechatRefund,
-  parseWechatTransaction,
+  parseWechatQueryTransaction,
   verifyWechatMessage,
   type WechatHeaders,
   type WechatVerifierConfig,
@@ -57,9 +57,33 @@ export class WechatPayClient {
 
   async queryTransaction(outTradeNo: string) {
     const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(outTradeNo)}?mchid=${encodeURIComponent(this.config.get("WECHAT_MCH_ID", { infer: true }))}`;
-    return parseWechatTransaction(
+    return parseWechatQueryTransaction(
       await this.request(path),
       this.verifierConfig(),
+    );
+  }
+
+  assertRecoveryEnabled() {
+    this.assertEnabled();
+    if (
+      this.config.get("WECHAT_PAY_RECOVERY_ENABLED", { infer: true }) !== "true"
+    )
+      throw new ServiceUnavailableException("微信原单补偿门禁未开启");
+    this.verifierConfig();
+  }
+
+  async closeTransaction(outTradeNo: string) {
+    this.assertRecoveryEnabled();
+    if (!/^[A-Za-z0-9_\-|*]{6,32}$/.test(outTradeNo))
+      throw new BadRequestException("微信原支付单号无效");
+    // A verified 204 is only an acknowledgement, never authority to release a hold.
+    await this.request(
+      `/v3/pay/transactions/out-trade-no/${encodeURIComponent(outTradeNo)}/close`,
+      "POST",
+      JSON.stringify({
+        mchid: this.config.get("WECHAT_MCH_ID", { infer: true }),
+      }),
+      true,
     );
   }
 
@@ -278,6 +302,7 @@ export class WechatPayClient {
     path: string,
     method: "GET" | "POST" = "GET",
     body = "",
+    expectEmpty = false,
   ): Promise<Record<string, unknown>> {
     const response = await this.send(path, method, body);
     const raw = await this.readBounded(response, 1_048_576);
@@ -296,6 +321,11 @@ export class WechatPayClient {
     }
     if (!response.ok)
       throw new BadGatewayException(`微信支付接口返回 ${response.status}`);
+    if (expectEmpty) {
+      if (response.status !== 204 || raw.length !== 0)
+        throw new BadGatewayException("微信关单响应格式无效");
+      return {};
+    }
     try {
       const result: unknown = JSON.parse(raw.toString("utf8"));
       if (!result || typeof result !== "object" || Array.isArray(result))

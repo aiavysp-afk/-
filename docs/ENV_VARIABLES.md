@@ -19,6 +19,7 @@
 | DATA_ENCRYPTION_KEY_BASE64         | 本地零值                 | 32字节随机密钥的Base64；必须可靠备份                                                      |
 | PAYMENT_PROVIDER                   | mock                     | wechat，不等于已开通真实预下单                                                            |
 | WECHAT_PAY_PREPAY_ENABLED          | false                    | 签名POST显式开关；须微信身份/HTTPS回调/受控验收，非provider标签自动开启                   |
+| WECHAT_PAY_RECOVERY_ENABLED        | false                    | 独立原单查询/幂等关单/再核实开关；12次上限，未确认保留预约，先隔离验收与人工值班          |
 | WECHAT_MCH_ID                      | 空                       | 商户号，与该AppID合法绑定                                                                 |
 | WECHAT_PAY_API_V3_KEY              | 空                       | 32字符APIv3密钥                                                                           |
 | WECHAT_PAY_MERCHANT_SERIAL_NO      | 空                       | 商户证书序列号                                                                            |

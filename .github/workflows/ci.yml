@@ -34,6 +34,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @zydj/api exec prisma generate
+      - run: node --test scripts/serve-private-preview.test.mjs
       - run: bash scripts/database-init.sh
       - run: pnpm typecheck
       - run: pnpm test

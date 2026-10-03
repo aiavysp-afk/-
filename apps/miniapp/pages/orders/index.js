@@ -89,7 +89,7 @@ Page({
                         fail: (error) => resolve(error.errMsg.includes("cancel") ? "cancel" : "failure"),
                     }));
                     // SDK success is not settlement proof; only verified server query/notification changes the order.
-                    if (sdkResult !== "cancel") {
+                    {
                         try {
                             await (0, api_1.api)(`/payments/${intent.id}/reconcile`, "POST", {});
                         }
@@ -118,8 +118,16 @@ Page({
                         await (0, api_1.api)(`/dev/payments/${intent.id}/succeed`, "POST", {});
                 }
             }
-            else if (action === "cancel")
-                await (0, api_1.api)(`/orders/${id}/cancel`, "POST", {});
+            else if (action === "cancel") {
+                const result = await (0, api_1.api)(`/payments/orders/${id}/close`, "POST", {});
+                if (result.pendingConfirmation)
+                    wx.showToast({
+                        title: result.reviewRequired
+                            ? "原单需人工核实，预约暂保留"
+                            : "取消结果待查，预约暂保留",
+                        icon: "none",
+                    });
+            }
             else if (action === "refund") {
                 const storageKey = `zydj.refund.key.${id}`;
                 const key = wx.getStorageSync(storageKey) || (0, api_1.newKey)();

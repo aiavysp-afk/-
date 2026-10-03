@@ -18,6 +18,7 @@ import type {
   WechatHeaders,
   WechatTransaction,
 } from "./wechat-pay.protocol.js";
+import { parseWechatTransaction } from "./wechat-pay.protocol.js";
 
 @Injectable()
 export class WechatPaymentsService {
@@ -49,12 +50,13 @@ export class WechatPaymentsService {
     );
     if (
       transaction.out_trade_no !== payment.merchantPaymentNo ||
-      BigInt(transaction.amount.total) !== payment.amountFen
+      (transaction.amount?.total !== undefined &&
+        BigInt(transaction.amount.total) !== payment.amountFen)
     )
       throw new ConflictException("查单结果与支付记录不一致");
     if (transaction.trade_state === "SUCCESS") {
       await this.applyTransaction(
-        transaction,
+        parseWechatTransaction(transaction, this.client.verifierConfig()),
         `QUERY:${transaction.transaction_id}`,
         "QUERY",
       );
@@ -157,6 +159,9 @@ export class WechatPaymentsService {
             providerTransactionId: transaction.transaction_id,
             succeededAt,
             failureCode: canFulfill ? null : "FULFILLMENT_REVIEW_REQUIRED",
+            recoveryNextCheckAt: null,
+            recoveryLeaseToken: null,
+            recoveryLeaseUntil: null,
           },
         });
         if (canFulfill && reservation) {

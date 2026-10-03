@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeWechatNotification,
   parseWechatTransaction,
+  parseWechatQueryTransaction,
   verifyWechatMessage,
   type WechatVerifierConfig,
 } from "./wechat-pay.protocol.js";
@@ -84,6 +85,33 @@ function notification(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Wechat Pay signed and encrypted protocol", () => {
+  it.each(["CLOSED", "NOTPAY", "USERPAYING", "ACCEPTED"])(
+    "parses %s without optional unpaid amount fields",
+    (state) => {
+      expect(
+        parseWechatQueryTransaction(
+          {
+            appid: config.appId,
+            mchid: config.merchantId,
+            out_trade_no: "PAYTEST123",
+            trade_state: state,
+          },
+          config,
+        ).trade_state,
+      ).toBe(state);
+    },
+  );
+  it("does not weaken successful settlement amount/currency/identity checks", () => {
+    for (const change of [
+      { amount: undefined },
+      { amount: { total: 19800 } },
+      { appid: "other" },
+      { trade_type: "NATIVE" },
+    ])
+      expect(() =>
+        parseWechatQueryTransaction({ ...transaction, ...change }, config),
+      ).toThrow(BadRequestException);
+  });
   it("verifies original bytes, decrypts and strips sensitive payer fields", () => {
     const raw = notification();
     const result = decodeWechatNotification(raw, signed(raw), config, now);

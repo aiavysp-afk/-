@@ -29,6 +29,8 @@ import { RefundReconciliationWorker } from "../src/payments/refund-reconciliatio
 import { WechatPrepayService } from "../src/payments/wechat-prepay.service.js";
 import { PaymentGatewayService } from "../src/payments/payment-gateway.service.js";
 import { AuthCryptoService } from "../src/auth/auth-crypto.service.js";
+import { WechatRecoveryService } from "../src/payments/wechat-recovery.service.js";
+import { WechatRecoveryWorker } from "../src/payments/wechat-recovery.worker.js";
 
 const databaseUrl = process.env.PAYMENT_DB_TEST_URL;
 if (!databaseUrl)
@@ -36,7 +38,12 @@ if (!databaseUrl)
 const target = new URL(databaseUrl);
 if (
   !["127.0.0.1", "localhost"].includes(target.hostname) ||
-  !["/zhongyuan_daojia", "/zhongyuan_daojia_test"].includes(target.pathname)
+  !(
+    ["/zhongyuan_daojia", "/zhongyuan_daojia_test"].includes(target.pathname) ||
+    (process.env.CONFIRM_PRIVATE_ACCEPTANCE_TEST === "true" &&
+      target.pathname === "/zydj_acceptance_smoke" &&
+      target.username === "zydj_acceptance")
+  )
 )
   throw new Error(
     "This verifier only accepts the dedicated local development/test databases",
@@ -552,6 +559,256 @@ try {
     1,
   );
 
+  const recoveryConfig = new ConfigService({
+    PAYMENT_PROVIDER: "wechat",
+    WECHAT_PAY_RECOVERY_ENABLED: "true",
+  }) as never;
+  let closePosts = 0;
+  const recoveryClient = {
+    verifierConfig: () => protocolConfig,
+    assertRecoveryEnabled: () => {},
+    queryTransaction: async (_no: string): Promise<unknown> => {
+      throw new Error("unset query fixture");
+    },
+    closeTransaction: async (_no: string) => {
+      closePosts++;
+    },
+  };
+  const recovery = new WechatRecoveryService(
+    prisma,
+    recoveryConfig,
+    recoveryClient as never,
+    payments,
+    orders,
+  );
+  const recoveryTwo = new WechatRecoveryService(
+    prisma,
+    recoveryConfig,
+    recoveryClient as never,
+    payments,
+    orders,
+  );
+  const original = await fixture(true);
+  const unpaid = {
+    appid: protocolConfig.appId,
+    mchid: protocolConfig.merchantId,
+    out_trade_no: original.payment.merchantPaymentNo,
+    trade_state: "NOTPAY",
+  };
+  let originalQueries = 0;
+  recoveryClient.queryTransaction = async (no) => {
+    assert.equal(no, original.payment.merchantPaymentNo);
+    originalQueries++;
+    return {
+      ...unpaid,
+      trade_state: originalQueries === 1 ? "NOTPAY" : "CLOSED",
+    };
+  };
+  await Promise.all([
+    recovery.recover(original.payment.id),
+    recoveryTwo.recover(original.payment.id),
+  ]);
+  assert.equal(closePosts, 1);
+  assert.equal(originalQueries, 2);
+  const closedOriginal = await prisma.payment.findUniqueOrThrow({
+    where: { id: original.payment.id },
+  });
+  assert.equal(closedOriginal.status, "CLOSED");
+  assert.equal(closedOriginal.closeState, "CONFIRMED");
+  assert.equal(closedOriginal.recoveryAttempts, 1);
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: original.reservation.id },
+      })
+    ).status,
+    "EXPIRED",
+  );
+  assert.equal(
+    await prisma.paymentEvent.count({
+      where: { paymentId: original.payment.id, type: "WECHAT_CLOSE_CONFIRMED" },
+    }),
+    1,
+  );
+  await recovery.recover(original.payment.id);
+  assert.equal(closePosts, 1);
+  // Even a late signed success after closure is recorded; never restore a released reservation.
+  const closedLate = notification(
+    original.transaction,
+    `${prefix}-closed-late`,
+  );
+  await payments.notify(closedLate.body, closedLate.headers);
+  assert.equal(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: original.payment.id },
+      })
+    ).failureCode,
+    "FULFILLMENT_REVIEW_REQUIRED",
+  );
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: original.reservation.id },
+      })
+    ).status,
+    "EXPIRED",
+  );
+
+  const uncertainClose = await fixture(true);
+  recoveryClient.queryTransaction = async (no) => ({
+    ...unpaid,
+    out_trade_no: no,
+  });
+  recoveryClient.closeTransaction = async (no) => {
+    assert.equal(no, uncertainClose.payment.merchantPaymentNo);
+    closePosts++;
+    throw new Error("synthetic close timeout");
+  };
+  await recovery.recover(uncertainClose.payment.id);
+  assert.equal(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: uncertainClose.payment.id },
+      })
+    ).closeState,
+    "UNKNOWN",
+  );
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: uncertainClose.reservation.id },
+      })
+    ).status,
+    "HOLD",
+  );
+  const postsBeforeRecheck = closePosts;
+  await prisma.payment.update({
+    where: { id: uncertainClose.payment.id },
+    data: { recoveryNextCheckAt: new Date(0) },
+  });
+  recoveryClient.queryTransaction = async (no) => ({
+    ...unpaid,
+    out_trade_no: no,
+    trade_state: "CLOSED",
+  });
+  await recovery.recover(uncertainClose.payment.id);
+  assert.equal(closePosts, postsBeforeRecheck);
+  assert.equal(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: uncertainClose.payment.id },
+      })
+    ).status,
+    "CLOSED",
+  );
+
+  const recoveryRace = await fixture();
+  let raceQueries = 0;
+  recoveryClient.queryTransaction = async (no) => {
+    raceQueries++;
+    return {
+      ...unpaid,
+      out_trade_no: no,
+      trade_state: raceQueries === 1 ? "NOTPAY" : "CLOSED",
+    };
+  };
+  recoveryClient.closeTransaction = async (no) => {
+    assert.equal(no, recoveryRace.payment.merchantPaymentNo);
+    closePosts++;
+    const signed = notification(
+      recoveryRace.transaction,
+      `${prefix}-recovery-callback-race`,
+    );
+    await payments.notify(signed.body, signed.headers);
+  };
+  await recovery.closeOwnOrder(recoveryRace.principal, recoveryRace.order.id);
+  assert.equal(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: recoveryRace.payment.id },
+      })
+    ).status,
+    "SUCCEEDED",
+  );
+  assert.equal(
+    (
+      await prisma.order.findUniqueOrThrow({
+        where: { id: recoveryRace.order.id },
+      })
+    ).status,
+    "PAID",
+  );
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: recoveryRace.reservation.id },
+      })
+    ).status,
+    "CONFIRMED",
+  );
+
+  const exhausted = await fixture(true);
+  await prisma.payment.update({
+    where: { id: exhausted.payment.id },
+    data: {
+      recoveryAttempts: 12,
+      recoveryLeaseToken: "synthetic-crashed-lease",
+      recoveryLeaseUntil: new Date(0),
+      recoveryNextCheckAt: null,
+    },
+  });
+  const exhaustedPosts = closePosts;
+  const recoveryWorker = new WechatRecoveryWorker(prisma, recovery);
+  // Restrict worker scan to this run's originals, leaving all unrelated DB records untouched.
+  const workerPrisma = {
+    payment: { findMany: async () => [exhausted.payment] },
+  };
+  const isolatedWorker = new WechatRecoveryWorker(
+    workerPrisma as never,
+    recovery,
+  );
+  await isolatedWorker.run();
+  await isolatedWorker.run();
+  assert.equal(closePosts, exhaustedPosts);
+  assert.ok(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: exhausted.payment.id },
+      })
+    ).recoveryReviewAt,
+  );
+  assert.equal(
+    await prisma.outboxEvent.count({
+      where: {
+        aggregateId: exhausted.order.id,
+        type: "WECHAT_RECOVERY_REVIEW_REQUIRED",
+      },
+    }),
+    1,
+  );
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: exhausted.reservation.id },
+      })
+    ).status,
+    "HOLD",
+  );
+  await assert.rejects(
+    prisma.payment.update({
+      where: { id: exhausted.payment.id },
+      data: { recoveryAttempts: 13 },
+    }),
+  );
+  await assert.rejects(
+    prisma.payment.update({
+      where: { id: exhausted.payment.id },
+      data: { recoveryLeaseToken: "invalid-pair" },
+    }),
+  );
+  recoveryWorker.onModuleDestroy();
+
   const refunds = new RefundsService(
     prisma,
     new AccessControlService(),
@@ -696,6 +953,13 @@ try {
       verified: true,
       concurrentNotificationExactlyOnce: true,
       concurrentPrepaySingleDispatch: true,
+      originalQueryCloseRecheckConfirmed: true,
+      multiInstancePaymentRecoveryLease: true,
+      closeTimeoutRetainsHoldAndUsesOriginal: true,
+      successNotificationWinsCloseRace: true,
+      latePaymentAfterCloseRequiresReview: true,
+      crashedFinalLeaseEscalatesOnce: true,
+      recoveryDatabaseGuards: true,
       prepayTimeoutNeverResubmitted: prepayPosts === 2,
       pendingWechatCancellationDoesNotRelease: true,
       prepayDatabaseGuards: true,

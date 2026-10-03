@@ -2,7 +2,7 @@
 
 ## 当前可发布范围
 
-已实现本地Mock商城链路及退款核心、微信支付验签/查单、JSAPI持久化签名预下单/RSA调起参数（显式默认关闭）、退款签名POST（显式关闭）、退款通知/原单查询/恢复租约/对账差异。**不能直接作为真实经营版上线**：微信查单/渠道关单自动补偿及真实资金验收未完成，管理端生产登录/MFA接入未完成，技师H5/经营概览仍是演示，短信、地图、热线处置链路未完成，服务开始后的部分退款/争议规则未定义。修改provider标签或开关不会补齐这些能力。
+已实现本地Mock商城链路及退款核心、微信支付验签/查单、JSAPI持久化签名预下单/RSA调起参数、原单查单/幂等关单/再次核实及有限恢复、退款签名POST、退款通知/原单查询/恢复租约/对账差异。三个开关显式默认关闭。**不能直接作为真实经营版上线**：真实资金验收和人工异常修正未完成，管理端生产登录/MFA接入未完成，技师H5/经营概览仍是演示，短信、地图、热线处置链路未完成，服务开始后的部分退款/争议规则未定义。修改provider标签或开关不会补齐这些能力。
 
 以下步骤可部署到隔离验收环境；生产收款须先消除上述门禁并经人工签字。未操作120.55.187.102生产服务，不能覆盖该服务器现有商城或直接复用其数据库。
 
@@ -53,7 +53,7 @@ bash scripts/database-init.sh
 
 ## 4. 安全配置、初始组织和双人财务角色
 
-按 [环境变量清单](ENV_VARIABLES.md) 创建 `/etc/zhongyuan-daojia/api.env`，密钥只读；`NODE_ENV=production`、`API_HOST=127.0.0.1`、`API_PORT=3210`，所有真实provider、加密密钥、验签材料和热线必须经过核验。`WECHAT_PAY_PREPAY_ENABLED=false`、`WECHAT_PAY_REFUND_ENABLED=false`。生产启动门禁不通过时必须修复缺项，不可改成development来规避。
+按 [环境变量清单](ENV_VARIABLES.md) 创建 `/etc/zhongyuan-daojia/api.env`，密钥只读；`NODE_ENV=production`、`API_HOST=127.0.0.1`、`API_PORT=3210`，所有真实provider、加密密钥、验签材料和热线必须经过核验。`WECHAT_PAY_PREPAY_ENABLED=false`、`WECHAT_PAY_REFUND_ENABLED=false`、`WECHAT_PAY_RECOVERY_ENABLED=false`。生产启动门禁不通过时必须修复缺项，不可改成development来规避。独立私有验收环境可明确使用test/Mock，但只能监听回环地址，不能冒充生产经营版。
 
 生产管理端须先接入正式登录和MFA，目前不能用开发固定code登录生产。两位真实微信用户完成登录后，由企业管理员核验身份，再把UserID填入一次性BOOTSTRAP变量，执行：
 
@@ -75,7 +75,7 @@ pnpm --filter @zydj/api exec tsx scripts/bootstrap-production.ts
 
 1. 在微信公众平台配置合法request域名、隐私保护指引、服务协议/退款规则与客服入口；上传前将app.ts改为HTTPS地址，build生成app.js/pages/utils JS；开发工具打开合法域名校验。
 2. 核对AppID、商户号绑定、APIv3/商户证书及私钥、平台验签公钥ID或证书、通知URL、NTP时间同步、证书轮换流程。
-3. JSAPI代码已完成但开关保持false。在真实微信登录、AppID/商户绑定、HTTPS回调、资金责任签字及异常值班就绪后，仅隔离受控验收环境允许开启WECHAT_PAY_PREPAY_ENABLED=true。先极小额订单，验证SDK取消/失败/超时/重复回调与查单。DISPATCHING/UNKNOWN/遗留NONE不重新POST，原单未关闭不能取消释放预约；渠道关单/自动恢复未完成，**此项仍阻止公开生产收款**。
+3. JSAPI和原单补偿代码已完成，三个开关保持false。在真实微信登录、AppID/商户绑定、HTTPS回调、资金责任签字及异常值班就绪后，仅隔离受控验收环境允许分别开启WECHAT_PAY_PREPAY_ENABLED/WECHAT_PAY_RECOVERY_ENABLED。先极小额订单，验证SDK取消/失败/超时/重复回调、双实例恢复和关单/到账竞态。DISPATCHING/UNKNOWN/遗留NONE不重新预下单；204、NOTPAY、订单不存在和网络异常不释放预约，必须原单验签CLOSED。未完成真机资金及人工处置验收仍阻止公开生产收款。
 4. 退款开关仅在正式双人复核、业务规则批准、回调可达、监控/人工值班就绪后开启。先极小额受控订单；申请人不能审核自己；额度由服务器计算。
 5. 真实POST超时会变UNKNOWN并保留额度；进程在POST前/后崩溃均不自动再次POST，只查原out_refund_no。PROCESSING/UNKNOWN/ABNORMAL退避查询最多12次，CLOSED转人工。若微信明确未受理/关闭，当前没有自动解冻/重发接口，必须财务核实后开发受审修正流程，不能直接改库或另建单。
 6. 已成功退款只能一次计账，退款成功后对账差异必须为0或经签字解释；微信与数据库状态不一致立即停止新资金业务，保留审计。

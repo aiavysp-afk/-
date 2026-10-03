@@ -10,6 +10,15 @@ const productionAuth = {
 } as const;
 
 describe("production safety gate", () => {
+  it("keeps original-order recovery independently opt-in", () => {
+    expect(
+      validateEnv({
+        PAYMENT_PROVIDER: "wechat",
+        WECHAT_PAY_PREPAY_ENABLED: "true",
+      }).WECHAT_PAY_RECOVERY_ENABLED,
+    ).toBe("false");
+    expect(() => validateEnv({ WECHAT_PAY_RECOVERY_ENABLED: "yes" })).toThrow();
+  });
   it("keeps the prepay gate opt-in independently of provider selection", () => {
     expect(
       validateEnv({ PAYMENT_PROVIDER: "wechat" }).WECHAT_PAY_PREPAY_ENABLED,

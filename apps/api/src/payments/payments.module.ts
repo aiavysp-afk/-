@@ -14,6 +14,8 @@ import { RefundsController } from "./refunds.controller.js";
 import { RefundsService } from "./refunds.service.js";
 import { RefundReconciliationWorker } from "./refund-reconciliation.worker.js";
 import { WechatPrepayService } from "./wechat-prepay.service.js";
+import { WechatRecoveryService } from "./wechat-recovery.service.js";
+import { WechatRecoveryWorker } from "./wechat-recovery.worker.js";
 
 @Module({
   imports: [AuthModule, OrdersModule],
@@ -30,6 +32,8 @@ import { WechatPrepayService } from "./wechat-prepay.service.js";
     WechatPayClient,
     WechatPrepayService,
     WechatPaymentsService,
+    WechatRecoveryService,
+    WechatRecoveryWorker,
     PaymentReconciliationService,
     RefundsService,
     RefundReconciliationWorker,

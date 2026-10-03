@@ -270,6 +270,13 @@ enum WechatPrepayState {
   UNKNOWN
 }
 
+enum WechatCloseState {
+  NONE
+  DISPATCHING
+  UNKNOWN
+  CONFIRMED
+}
+
 model Payment {
   id                    String            @id @default(cuid())
   orderId               String            @unique
@@ -285,6 +292,20 @@ model Payment {
   prepayRequestedAt     DateTime?
   prepayReadyAt         DateTime?
   prepayFailureCode     String?
+  closeState            WechatCloseState  @default(NONE)
+  closeRequestedAt      DateTime?
+  closeReason           String?
+  closeDispatchedAt     DateTime?
+  closeVerifiedAt       DateTime?
+  closeAttempts         Int               @default(0)
+  providerTradeState    String?
+  providerCheckedAt     DateTime?
+  recoveryAttempts      Int               @default(0)
+  recoveryNextCheckAt   DateTime?
+  recoveryLeaseToken    String?
+  recoveryLeaseUntil    DateTime?
+  recoveryFailureCode   String?
+  recoveryReviewAt      DateTime?
   providerTransactionId String?           @unique
   failureCode           String?
   createdAt             DateTime          @default(now())
@@ -295,6 +316,7 @@ model Payment {
   refunds               Refund[]
 
   @@index([status, createdAt])
+  @@index([provider, status, recoveryNextCheckAt])
 }
 
 model PaymentEvent {

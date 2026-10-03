@@ -40,6 +40,8 @@ const EnvSchema = z.object({
   WECHAT_PAY_NOTIFY_URL: z.string().default(""),
   // Separate opt-in: credentials/provider selection never authorize a payment POST.
   WECHAT_PAY_PREPAY_ENABLED: z.enum(["false", "true"]).default("false"),
+  // Independent opt-in for automatic original-order query/close compensation.
+  WECHAT_PAY_RECOVERY_ENABLED: z.enum(["false", "true"]).default("false"),
   // Opt-in only after two-person finance review and controlled merchant acceptance.
   WECHAT_PAY_REFUND_ENABLED: z.enum(["false", "true"]).default("false"),
   WECHAT_PAY_REFUND_NOTIFY_URL: z.string().default(""),

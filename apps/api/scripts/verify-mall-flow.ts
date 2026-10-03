@@ -16,7 +16,12 @@ if (!databaseUrl)
 const target = new URL(databaseUrl);
 if (
   !["127.0.0.1", "localhost"].includes(target.hostname) ||
-  target.pathname !== "/zhongyuan_daojia_test"
+  !(
+    target.pathname === "/zhongyuan_daojia_test" ||
+    (process.env.CONFIRM_PRIVATE_ACCEPTANCE_TEST === "true" &&
+      target.pathname === "/zydj_acceptance_smoke" &&
+      target.username === "zydj_acceptance")
+  )
 )
   throw new Error("Only the dedicated local test database is allowed");
 process.env.DATABASE_URL = databaseUrl;
@@ -24,6 +29,8 @@ process.env.NODE_ENV = "test";
 process.env.AUTH_PROVIDER = "mock";
 process.env.PAYMENT_PROVIDER = "mock";
 process.env.WECHAT_PAY_REFUND_ENABLED = "false";
+process.env.WECHAT_PAY_PREPAY_ENABLED = "false";
+process.env.WECHAT_PAY_RECOVERY_ENABLED = "false";
 process.env.AUTH_SESSION_PEPPER = `test-only-${randomUUID()}`;
 process.env.DATA_ENCRYPTION_KEY_BASE64 = Buffer.alloc(32, 1).toString("base64");
 const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
@@ -475,13 +482,13 @@ try {
   assert.equal(
     (
       await call(
-        `/orders/${cancelOrder.id}/cancel`,
+        `/payments/orders/${cancelOrder.id}/close`,
         customer.token,
         {},
         undefined,
-        201,
+        200,
       )
-    ).status,
+    ).order.status,
     "CANCELLED",
   );
   await call(
@@ -516,6 +523,41 @@ try {
       amountFen: BigInt(cancelOrder.payableFen),
     },
   });
+  await call(
+    `/payments/orders/${cancelOrder.id}/close`,
+    "",
+    {},
+    undefined,
+    401,
+  );
+  await call(
+    `/payments/orders/${cancelOrder.id}/close`,
+    stranger.token,
+    {},
+    undefined,
+    403,
+  );
+  // Provider mode is restored immediately; gate stays closed and performs no channel action.
+  runtimeConfig.set("PAYMENT_PROVIDER", "wechat");
+  try {
+    await call(
+      `/payments/orders/${cancelOrder.id}/close`,
+      customer.token,
+      {},
+      undefined,
+      503,
+    );
+  } finally {
+    runtimeConfig.set("PAYMENT_PROVIDER", "mock");
+  }
+  assert.equal(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: protectedPayment.id },
+      })
+    ).closeRequestedAt,
+    null,
+  );
   const protectedSlots = await call(
     `/availability/slots?serviceId=${service.id}&date=${date}`,
   );
@@ -740,13 +782,13 @@ try {
       assert.equal(orderPage.data.orders[0].status, "PENDING_PAYMENT");
     }
     assert.equal(sdkCalls, 3);
-    assert.equal(reconcileCalls, 2);
+    assert.equal(reconcileCalls, 3);
     ready = false;
     await orderPage.action({
       currentTarget: { dataset: { id: "page-wechat", action: "pay" } },
     });
     assert.equal(sdkCalls, 3);
-    assert.equal(reconcileCalls, 3);
+    assert.equal(reconcileCalls, 4);
     assert.match(orderPage.data.error, /结果未确认/);
     assert.equal(orderPage.data.orders[0].status, "PENDING_PAYMENT");
     checks.push(

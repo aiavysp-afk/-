@@ -15,13 +15,26 @@ import type { AuthPrincipal } from "../auth/auth.types.js";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import { WechatPaymentsService } from "./wechat-payments.service.js";
+import { WechatRecoveryService } from "./wechat-recovery.service.js";
 
 @Controller("payments")
 export class WechatPaymentsController {
   constructor(
     @Inject(WechatPaymentsService)
     private readonly payments: WechatPaymentsService,
+    @Inject(WechatRecoveryService)
+    private readonly recovery: WechatRecoveryService,
   ) {}
+
+  @Post("orders/:id/close")
+  @HttpCode(200)
+  @UseGuards(SessionAuthGuard)
+  async closeOwnOrder(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("id") orderId: string,
+  ) {
+    return { data: await this.recovery.closeOwnOrder(principal, orderId) };
+  }
 
   @Post("wechat/notify")
   async notify(

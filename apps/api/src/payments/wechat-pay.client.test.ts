@@ -25,14 +25,14 @@ const env: Record<string, string> = {
 const client = () =>
   new WechatPayClient({ get: (key: string) => env[key] ?? "" } as never);
 function response(
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | null,
   status = 200,
   corrupt = false,
 ) {
-  const raw = JSON.stringify(body);
+  const raw = body === null ? "" : JSON.stringify(body);
   const timestamp = String(Math.floor(Date.now() / 1000));
   const nonce = "test-nonce";
-  return new Response(raw, {
+  return new Response(status === 204 ? null : raw, {
     status,
     headers: {
       "wechatpay-timestamp": timestamp,
@@ -61,12 +61,80 @@ describe("WechatPayClient", () => {
   });
   afterEach(() => {
     delete env.WECHAT_PAY_PREPAY_ENABLED;
+    delete env.WECHAT_PAY_RECOVERY_ENABLED;
     delete env.WECHAT_PAY_NOTIFY_URL;
     delete env.AUTH_PROVIDER;
     delete env.WECHAT_PAY_REFUND_ENABLED;
     delete env.WECHAT_PAY_REFUND_NOTIFY_URL;
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+  it("signs original-order close POST bytes and verifies the empty 204", async () => {
+    env.WECHAT_PAY_RECOVERY_ENABLED = "true";
+    const remote = vi.fn().mockResolvedValue(response(null, 204));
+    vi.stubGlobal("fetch", remote);
+    await client().closeTransaction("PAY123456");
+    const [url, options] = remote.mock.calls[0]!;
+    const path = "/v3/pay/transactions/out-trade-no/PAY123456/close";
+    expect(url).toBe(`https://api.mch.weixin.qq.com${path}`);
+    expect(options.method).toBe("POST");
+    expect(options.body).toBe(JSON.stringify({ mchid: "1234567890" }));
+    const auth = options.headers.Authorization as string;
+    expect(
+      verify(
+        "RSA-SHA256",
+        Buffer.from(
+          `POST\n${path}\n${auth.match(/timestamp="([^"]+)"/)![1]}\n${auth.match(/nonce_str="([^"]+)"/)![1]}\n${options.body}\n`,
+        ),
+        merchant.publicKey,
+        Buffer.from(auth.match(/signature="([^"]+)"/)![1]!, "base64"),
+      ),
+    ).toBe(true);
+  });
+  it("close has an independent default-closed gate", async () => {
+    const remote = vi.fn();
+    vi.stubGlobal("fetch", remote);
+    env.WECHAT_PAY_PREPAY_ENABLED = "true";
+    await expect(client().closeTransaction("PAY123456")).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(remote).not.toHaveBeenCalled();
+  });
+  it.each(["unsigned", "tampered", "non204"])(
+    "rejects invalid close acknowledgement: %s",
+    async (mode) => {
+      env.WECHAT_PAY_RECOVERY_ENABLED = "true";
+      const res =
+        mode === "unsigned"
+          ? new Response(null, { status: 204 })
+          : mode === "tampered"
+            ? response(null, 204, true)
+            : response({}, 200);
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res));
+      await expect(
+        client().closeTransaction("PAY123456"),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    },
+  );
+  it("accepts signed CLOSED without amount but not SUCCESS without settlement fields", async () => {
+    const base = {
+      appid: env.WECHAT_MINIAPP_APP_ID,
+      mchid: env.WECHAT_MCH_ID,
+      out_trade_no: "PAY123456",
+    };
+    const remote = vi
+      .fn()
+      .mockResolvedValueOnce(response({ ...base, trade_state: "CLOSED" }))
+      .mockResolvedValueOnce(
+        response({ ...base, trade_state: "SUCCESS", trade_type: "JSAPI" }),
+      );
+    vi.stubGlobal("fetch", remote);
+    expect((await client().queryTransaction("PAY123456")).trade_state).toBe(
+      "CLOSED",
+    );
+    await expect(client().queryTransaction("PAY123456")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
   it("signs exact JSAPI POST bytes and the four-line RSA SDK message", async () => {
     env.WECHAT_PAY_PREPAY_ENABLED = "true";

@@ -249,6 +249,10 @@ export class PaymentsService {
         ...(onlyOrderId ? { id: onlyOrderId } : {}),
         status: OrderStatus.PENDING_PAYMENT,
         paymentExpiresAt: { lte: now },
+        OR: [
+          { payment: null },
+          { payment: { provider: PaymentProvider.MOCK } },
+        ],
       },
       include: { payment: true },
       take: onlyOrderId ? 1 : 100,
@@ -256,13 +260,27 @@ export class PaymentsService {
     let expired = 0;
     for (const order of orders) {
       // A real provider payment needs verified query + remote close before release.
-      // This worker currently owns only local/mock expiration.
+      // The separate original-order recovery worker owns real channel close/query.
       if (order.payment?.provider === PaymentProvider.WECHAT) continue;
       const next = this.stateMachine.transition(
         order.status,
         "PAYMENT_EXPIRED",
       );
       const changed = await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${order.id} FOR UPDATE`;
+        // The initial scan can race with prepay creation. Re-read after the same Order lock.
+        const current = await tx.order.findUniqueOrThrow({
+          where: { id: order.id },
+          include: { payment: true },
+        });
+        if (
+          current.status !== OrderStatus.PENDING_PAYMENT ||
+          !current.paymentExpiresAt ||
+          current.paymentExpiresAt > now ||
+          current.payment?.provider === PaymentProvider.WECHAT ||
+          (current.payment && current.payment.status !== PaymentStatus.PENDING)
+        )
+          return false;
         const result = await tx.order.updateMany({
           where: { id: order.id, status: OrderStatus.PENDING_PAYMENT },
           data: { status: next },
@@ -274,14 +292,14 @@ export class PaymentsService {
             data: { status: ReservationStatus.EXPIRED },
           });
         }
-        if (order.payment?.status === PaymentStatus.PENDING) {
+        if (current.payment?.status === PaymentStatus.PENDING) {
           await tx.payment.updateMany({
-            where: { id: order.payment.id, status: PaymentStatus.PENDING },
+            where: { id: current.payment.id, status: PaymentStatus.PENDING },
             data: { status: PaymentStatus.CLOSED, closedAt: now },
           });
           await tx.paymentEvent.create({
             data: {
-              paymentId: order.payment.id,
+              paymentId: current.payment.id,
               type: "PAYMENT_CLOSED_BY_TIMEOUT",
               payload: {},
             },

@@ -17,6 +17,7 @@ export const WechatTransactionSchema = z.object({
     "REVOKED",
     "USERPAYING",
     "PAYERROR",
+    "ACCEPTED",
   ]),
   success_time: z.iso.datetime({ offset: true }).optional(),
   amount: z.object({
@@ -25,6 +26,30 @@ export const WechatTransactionSchema = z.object({
   }),
 });
 export type WechatTransaction = z.infer<typeof WechatTransactionSchema>;
+
+const WechatQuerySchema = WechatTransactionSchema.extend({
+  // Official unpaid/closed query responses may omit the amount and trade type.
+  amount: WechatTransactionSchema.shape.amount.partial().optional(),
+});
+export type WechatQueryResult = z.infer<typeof WechatQuerySchema>;
+
+export function parseWechatQueryTransaction(
+  value: unknown,
+  config: Pick<WechatVerifierConfig, "appId" | "merchantId">,
+): WechatQueryResult {
+  const parsed = WechatQuerySchema.safeParse(value);
+  if (
+    !parsed.success ||
+    parsed.data.appid !== config.appId ||
+    parsed.data.mchid !== config.merchantId ||
+    (parsed.data.trade_type && parsed.data.trade_type !== "JSAPI")
+  )
+    throw new BadRequestException("微信查单身份或格式无效");
+  // Settlement still requires a complete amount, currency, transaction ID and success time.
+  if (parsed.data.trade_state === "SUCCESS")
+    return parseWechatTransaction(value, config);
+  return parsed.data;
+}
 
 const NotificationSchema = z.object({
   id: Identifier,

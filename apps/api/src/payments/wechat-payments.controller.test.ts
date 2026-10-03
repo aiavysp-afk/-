@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import { WechatPaymentsController } from "./wechat-payments.controller.js";
 import { WechatPaymentsService } from "./wechat-payments.service.js";
+import { WechatRecoveryService } from "./wechat-recovery.service.js";
 
 const service = {
   notify: vi.fn().mockResolvedValue({ duplicate: false }),
@@ -18,6 +19,7 @@ const service = {
   controllers: [WechatPaymentsController],
   providers: [
     { provide: WechatPaymentsService, useValue: service },
+    { provide: WechatRecoveryService, useValue: { closeOwnOrder: vi.fn() } },
     {
       provide: SessionAuthGuard,
       useValue: {
@@ -80,5 +82,15 @@ describe("Wechat notification HTTP boundary", () => {
     });
     expect(response.statusCode).toBe(401);
     expect(service.reconcile).not.toHaveBeenCalled();
+  });
+  it("requires a session for original-order cancellation", async () => {
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/v1/payments/orders/order-1/close",
+        })
+      ).statusCode,
+    ).toBe(401);
   });
 });

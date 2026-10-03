@@ -103,6 +103,15 @@ function fixture() {
 }
 
 describe("durable WeChat prepay", () => {
+  it("never returns SDK parameters after a close request is recorded", async () => {
+    const f = fixture();
+    await f.service.createIntent(principal, "order");
+    f.order.payment.closeRequestedAt = new Date();
+    await expect(
+      f.service.createIntent(principal, "order"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(f.client.prepay).toHaveBeenCalledOnce();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-04T00:00:00Z"));

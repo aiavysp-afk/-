@@ -65,6 +65,8 @@ export class WechatPrepayService {
           existing.amountFen !== order.payableFen
         )
           throw new ConflictException("支付记录与订单不一致");
+        if (existing.closeRequestedAt)
+          throw new ConflictException("原单正在确认关闭，不能继续调起支付");
         return { payment: existing, expiresAt, request: null };
       }
       // WeChat rounds very short deadlines up to one minute; do not exceed the reservation deadline.
@@ -185,7 +187,10 @@ export class WechatPrepayService {
     });
     // Persist the response even if a cancellation/notification won the race, but never expose usable SDK parameters.
     this.assertPayable(current.order, principal.userId);
-    if (current.payment.status !== PaymentStatus.PENDING)
+    if (
+      current.payment.status !== PaymentStatus.PENDING ||
+      current.payment.closeRequestedAt
+    )
       throw new ConflictException("支付结果已变化，请刷新订单");
     return this.toIntent(current.payment, current.order.paymentExpiresAt!);
   }
@@ -245,6 +250,8 @@ export class WechatPrepayService {
     if (!Number.isSafeInteger(amountFen) || amountFen <= 0)
       throw new ConflictException("支付金额超出安全范围");
     const ready =
+      !payment.closeRequestedAt &&
+      payment.status === PaymentStatus.PENDING &&
       payment.prepayState === WechatPrepayState.READY &&
       !!payment.providerReference &&
       !!payment.prepayReadyAt &&
