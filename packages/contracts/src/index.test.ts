@@ -6,6 +6,8 @@ import {
   MoneyFenSchema,
   OrderCreateSchema,
   PaymentIntentSchema,
+  RefundRequestSchema,
+  RefundReviewSchema,
   ServiceAdminUpdateSchema,
   ShiftCreateSchema,
   WechatMiniappLoginRequestSchema,
@@ -13,6 +15,9 @@ import {
 } from "./index.js";
 
 describe("money contract", () => {
+  it("preserves cents instead of rounding payable prices", () => {
+    expect(formatMoney(19880)).toBe("¥198.80");
+  });
   it("accepts integer fen and rejects floating values", () => {
     expect(MoneyFenSchema.parse(19800)).toBe(19800);
     expect(() => MoneyFenSchema.parse(19.8)).toThrow();
@@ -20,6 +25,31 @@ describe("money contract", () => {
 
   it("formats customer-facing whole-yuan prices", () => {
     expect(formatMoney(26800)).toBe("¥268");
+  });
+});
+describe("refund contract", () => {
+  it("rejects client-supplied amount and identity", () => {
+    expect(
+      RefundRequestSchema.safeParse({
+        reason: "CUSTOMER_CANCELLED",
+        amountFen: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      RefundRequestSchema.safeParse({
+        reason: "CUSTOMER_CANCELLED",
+        requestedById: "admin",
+      }).success,
+    ).toBe(false);
+  });
+  it("accepts only defined review outcomes", () => {
+    expect(RefundReviewSchema.parse({ code: "CONFIRMED" })).toEqual({
+      code: "CONFIRMED",
+    });
+    expect(
+      RefundReviewSchema.safeParse({ code: "CONFIRMED", reviewedById: "self" })
+        .success,
+    ).toBe(false);
   });
 });
 

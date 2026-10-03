@@ -1,2 +1,51 @@
-Page({data:{categories:['全部','按摩舒缓','SPA 放松','足部养护'],active:0,services:[{name:'肩颈舒缓',desc:'肩、颈、背部重点放松',time:'60 分钟',price:'198'},{name:'全身释压 SPA',desc:'全身分区放松与舒缓收尾',time:'90 分钟',price:'268'},{name:'足部舒缓',desc:'足部清洁与非医疗放松',time:'60 分钟',price:'198'}]},select(e:any){this.setData({active:e.currentTarget.dataset.index})}});
-
+import type { ServiceItem } from "@zydj/contracts";
+import { api, money } from "../../utils/api";
+type Card = ServiceItem & { price: string };
+Page({
+  data: {
+    categories: ["全部", "按摩舒缓", "SPA 放松", "足部养护"],
+    active: 0,
+    all: [] as Card[],
+    services: [] as Card[],
+    loading: false,
+    error: "",
+  },
+  async onShow() {
+    await this.load();
+  },
+  async load() {
+    this.setData({ loading: true, error: "" });
+    try {
+      const all = (await api<ServiceItem[]>("/catalog/services")).map(
+        (item) => ({ ...item, price: money(item.priceFen) }),
+      );
+      this.setData({ all });
+      this.filter();
+    } catch (error) {
+      this.setData({
+        error: error instanceof Error ? error.message : "目录加载失败",
+      });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+  select(e: { currentTarget: { dataset: { index: number } } }) {
+    this.setData({ active: Number(e.currentTarget.dataset.index) });
+    this.filter();
+  },
+  filter() {
+    const category = ["", "MASSAGE", "SPA_RELAXATION", "FOOT_CARE"][
+      this.data.active
+    ];
+    this.setData({
+      services: this.data.all.filter(
+        (item) => !category || item.category === category,
+      ),
+    });
+  },
+  book(e: { currentTarget: { dataset: { slug: string } } }) {
+    wx.navigateTo({
+      url: `/pages/booking/index?slug=${encodeURIComponent(e.currentTarget.dataset.slug)}`,
+    });
+  },
+});

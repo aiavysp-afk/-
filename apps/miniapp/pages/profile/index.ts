@@ -3,6 +3,7 @@ import {
   getStoredSession,
   loginWithWechat,
 } from "../../utils/auth";
+import { api } from "../../utils/api";
 
 Page({
   data: {
@@ -42,9 +43,15 @@ Page({
       });
     }
   },
-  logout() {
+  async logout() {
+    try {
+      await api("/auth/logout", "POST", {});
+    } catch {
+      wx.showToast({ title: "服务端注销未确认，请稍后重试", icon: "none" });
+      return;
+    }
     clearStoredSession();
     this.setData({ loggedIn: false, displayName: "微信用户" });
-    wx.showToast({ title: "已退出当前设备", icon: "success" });
+    wx.showToast({ title: "会话已安全注销", icon: "success" });
   },
 });

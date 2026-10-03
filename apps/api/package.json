@@ -10,6 +10,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:mall": "tsx scripts/verify-mall-flow.ts",
+    "test:wechat-db": "tsx scripts/verify-wechat-payments.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"
@@ -33,5 +35,7 @@
     "tsx": "4.20.6",
     "vitest": "3.2.4"
   },
-  "prisma": { "seed": "tsx prisma/seed.ts" }
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
 }

@@ -5,6 +5,7 @@ const EnvSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   API_PORT: z.coerce.number().int().positive().default(3100),
+  API_HOST: z.string().default("127.0.0.1"),
   CORS_ORIGINS: z
     .string()
     .default(
@@ -37,6 +38,9 @@ const EnvSchema = z.object({
   WECHAT_PAY_PUBLIC_KEY_PATH: z.string().default(""),
   WECHAT_PAY_PLATFORM_CERT_PATH: z.string().default(""),
   WECHAT_PAY_NOTIFY_URL: z.string().default(""),
+  // Opt-in only after two-person finance review and controlled merchant acceptance.
+  WECHAT_PAY_REFUND_ENABLED: z.enum(["false", "true"]).default("false"),
+  WECHAT_PAY_REFUND_NOTIFY_URL: z.string().default(""),
   SMS_PROVIDER: z.enum(["mock", "aliyun"]).default("mock"),
   MAP_PROVIDER: z.enum(["mock", "tencent"]).default("mock"),
   SAFETY_HOTLINE: z.string().default(""),
@@ -162,6 +166,11 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     if (!env.SAFETY_HOTLINE) invalid.push("SAFETY_HOTLINE");
 
     if (env.PAYMENT_PROVIDER === "wechat") {
+      if (
+        env.WECHAT_PAY_REFUND_ENABLED === "true" &&
+        !/^https:\/\//.test(env.WECHAT_PAY_REFUND_NOTIFY_URL)
+      )
+        invalid.push("WECHAT_PAY_REFUND_NOTIFY_URL");
       if (hasCanonicalMerchantConfig && hasLegacyMerchantConfig) {
         invalid.push("新旧微信支付商户配置不能混用");
       }

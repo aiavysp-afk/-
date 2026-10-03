@@ -74,6 +74,23 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  PROCESSING
+  UNKNOWN
+  ABNORMAL
+  CLOSED
+  SUCCEEDED
+  REJECTED
+}
+
+enum RefundReason {
+  CUSTOMER_CANCELLED
+  UNFULFILLABLE
+  LATE_PAYMENT
+}
+
 model Organization {
   id           String                   @id @default(cuid())
   name         String
@@ -254,6 +271,8 @@ model Payment {
   status                PaymentStatus   @default(PENDING)
   merchantPaymentNo     String          @unique
   amountFen             BigInt
+  refundReservedFen     BigInt          @default(0)
+  refundedFen           BigInt          @default(0)
   providerReference     String?
   providerTransactionId String?         @unique
   failureCode           String?
@@ -262,6 +281,7 @@ model Payment {
   succeededAt           DateTime?
   closedAt              DateTime?
   events                PaymentEvent[]
+  refunds               Refund[]
 
   @@index([status, createdAt])
 }
@@ -276,6 +296,60 @@ model PaymentEvent {
   createdAt       DateTime @default(now())
 
   @@index([paymentId, createdAt])
+}
+
+model Refund {
+  id                    String       @id @default(cuid())
+  paymentId             String
+  payment               Payment      @relation(fields: [paymentId], references: [id])
+  merchantRefundNo      String       @unique
+  amountFen             BigInt
+  status                RefundStatus @default(REQUESTED)
+  reason                RefundReason
+  policyVersion         String
+  requestedById         String
+  reviewedById          String?
+  reviewCode            String?
+  idempotencyKey        String
+  requestFingerprint    String
+  providerRefundId      String?      @unique
+  requestedAt           DateTime     @default(now())
+  reviewedAt            DateTime?
+  submittedAt           DateTime?
+  succeededAt           DateTime?
+  nextCheckAt           DateTime?
+  checkAttempts         Int          @default(0)
+  updatedAt             DateTime     @updatedAt
+  events                RefundEvent[]
+  posting               RefundLedgerPosting?
+
+  @@unique([paymentId, idempotencyKey])
+  @@index([paymentId, status])
+  @@index([status, nextCheckAt])
+}
+
+model RefundEvent {
+  id              String   @id @default(cuid())
+  refundId        String
+  refund          Refund   @relation(fields: [refundId], references: [id])
+  type            String
+  actorId         String?
+  providerEventId String?  @unique
+  payload         Json
+  createdAt       DateTime @default(now())
+
+  @@index([refundId, createdAt])
+}
+
+// A single posting represents two equal debit/credit legs. Success is appended once.
+model RefundLedgerPosting {
+  id            String   @id @default(cuid())
+  refundId      String   @unique
+  refund        Refund   @relation(fields: [refundId], references: [id])
+  amountFen     BigInt
+  debitAccount  String   @default("CUSTOMER_REFUND_LIABILITY")
+  creditAccount String   @default("CHANNEL_REFUND_OUTFLOW")
+  createdAt     DateTime @default(now())
 }
 
 model OrderItem {

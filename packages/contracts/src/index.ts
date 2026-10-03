@@ -200,6 +200,48 @@ export const PublicConfigSchema = z.object({
   }),
 });
 
+export const RefundReasonSchema = z.enum([
+  "CUSTOMER_CANCELLED",
+  "UNFULFILLABLE",
+  "LATE_PAYMENT",
+]);
+export const RefundRequestSchema = z
+  .object({ reason: RefundReasonSchema })
+  .strict();
+export const RefundReviewSchema = z
+  .object({
+    code: z.enum([
+      "CONFIRMED",
+      "INSUFFICIENT_EVIDENCE",
+      "DUPLICATE_REQUEST",
+      "POLICY_REVIEW_REQUIRED",
+    ]),
+  })
+  .strict();
+export const RefundStatusSchema = z.enum([
+  "REQUESTED",
+  "APPROVED",
+  "PROCESSING",
+  "UNKNOWN",
+  "ABNORMAL",
+  "CLOSED",
+  "SUCCEEDED",
+  "REJECTED",
+]);
+export const RefundViewSchema = z.object({
+  id: z.string(),
+  paymentId: z.string(),
+  orderId: z.string(),
+  amountFen: MoneyFenSchema,
+  status: RefundStatusSchema,
+  reason: RefundReasonSchema,
+  policyVersion: z.string(),
+  requestedAt: IsoDateTimeSchema,
+  reviewedAt: IsoDateTimeSchema.nullable(),
+  submittedAt: IsoDateTimeSchema.nullable(),
+  succeededAt: IsoDateTimeSchema.nullable(),
+});
+
 export const WechatMiniappLoginRequestSchema = z.object({
   code: z.string().trim().min(1).max(128),
 });
@@ -249,6 +291,9 @@ export type OrderView = z.infer<typeof OrderViewSchema>;
 export type PaymentProvider = z.infer<typeof PaymentProviderSchema>;
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type PaymentIntent = z.infer<typeof PaymentIntentSchema>;
+export type RefundRequest = z.infer<typeof RefundRequestSchema>;
+export type RefundReview = z.infer<typeof RefundReviewSchema>;
+export type RefundView = z.infer<typeof RefundViewSchema>;
 export type PublicConfig = z.infer<typeof PublicConfigSchema>;
 export type WechatMiniappLoginRequest = z.infer<
   typeof WechatMiniappLoginRequestSchema
@@ -258,4 +303,4 @@ export type AuthUser = z.infer<typeof AuthUserSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 
 export const formatMoney = (fen: number): string =>
-  `¥${(fen / 100).toFixed(0)}`;
+  `¥${(fen / 100).toFixed(fen % 100 === 0 ? 0 : 2)}`;

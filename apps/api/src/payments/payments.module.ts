@@ -10,11 +10,28 @@ import { WechatPaymentsController } from "./wechat-payments.controller.js";
 import { WechatPaymentsService } from "./wechat-payments.service.js";
 import { PaymentReconciliationController } from "./payment-reconciliation.controller.js";
 import { PaymentReconciliationService } from "./payment-reconciliation.service.js";
+import { RefundsController } from "./refunds.controller.js";
+import { RefundsService } from "./refunds.service.js";
+import { RefundReconciliationWorker } from "./refund-reconciliation.worker.js";
 
 @Module({
   imports: [AuthModule, OrdersModule],
-  controllers: [PaymentsController, WechatPaymentsController, PaymentReconciliationController],
-  providers: [PaymentsService, PaymentGatewayService, PaymentExpiryWorker, WechatPayClient, WechatPaymentsService, PaymentReconciliationService],
+  controllers: [
+    PaymentsController,
+    WechatPaymentsController,
+    PaymentReconciliationController,
+    RefundsController,
+  ],
+  providers: [
+    PaymentsService,
+    PaymentGatewayService,
+    PaymentExpiryWorker,
+    WechatPayClient,
+    WechatPaymentsService,
+    PaymentReconciliationService,
+    RefundsService,
+    RefundReconciliationWorker,
+  ],
   exports: [PaymentsService, PaymentGatewayService],
 })
 export class PaymentsModule {}

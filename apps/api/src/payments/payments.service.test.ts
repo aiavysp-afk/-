@@ -62,6 +62,8 @@ describe("PaymentsService", () => {
   it("creates one mock payment intent with audit and payment event", async () => {
     const payment = paymentRecord();
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: { findUniqueOrThrow: vi.fn().mockResolvedValue(orderRecord()) },
       payment: { create: vi.fn().mockResolvedValue(payment) },
       paymentEvent: { create: vi.fn().mockResolvedValue({}) },
       auditLog: { create: vi.fn().mockResolvedValue({}) },
@@ -120,6 +122,40 @@ describe("PaymentsService", () => {
     });
   });
 
+  it("rejects a payment intent if the order was cancelled while waiting for its row lock", async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUniqueOrThrow: vi
+          .fn()
+          .mockResolvedValue(orderRecord({ status: OrderStatus.CANCELLED })),
+      },
+      payment: { create: vi.fn() },
+    };
+    const prisma = {
+      order: { findUnique: vi.fn().mockResolvedValue(orderRecord()) },
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const gateway = {
+      prepare: () => ({
+        provider: PaymentProvider.MOCK,
+        providerReference: "mock-test",
+      }),
+    };
+    const service = new PaymentsService(
+      prisma as never,
+      config(),
+      new OrderStateMachine(),
+      gateway as never,
+    );
+    await expect(
+      service.createIntent(principal, "order-1"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.payment.create).not.toHaveBeenCalled();
+  });
+
   it("confirms a mock payment and atomically confirms the reservation", async () => {
     const pending = paymentRecord({
       order: orderRecord({
@@ -138,7 +174,10 @@ describe("PaymentsService", () => {
       $queryRaw: vi.fn().mockResolvedValue([]),
       payment: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(succeeded),
+        findUniqueOrThrow: vi
+          .fn()
+          .mockResolvedValueOnce(pending)
+          .mockResolvedValueOnce(succeeded),
       },
       order: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       appointmentReservation: {

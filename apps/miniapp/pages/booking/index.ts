@@ -1,0 +1,150 @@
+import type {
+  AvailabilitySlot,
+  BookingHold,
+  OrderQuote,
+  OrderView,
+  ServiceItem,
+} from "@zydj/contracts";
+import { api, money, newKey, shanghaiTime } from "../../utils/api";
+import { getStoredSession, loginWithWechat } from "../../utils/auth";
+Page({
+  data: {
+    service: null as ServiceItem | null,
+    price: "",
+    date: "",
+    slots: [] as (AvailabilitySlot & { label: string; key: string })[],
+    selected: -1,
+    contactName: "",
+    phone: "",
+    detail: "",
+    busy: false,
+    error: "",
+    consent: false,
+    reservationId: "",
+    orderKey: "",
+    quote: "",
+  },
+  async onLoad(options: { slug?: string }) {
+    try {
+      if (!options.slug) throw new Error("缺少服务参数");
+      const service = await api<ServiceItem>(
+        `/catalog/services/${encodeURIComponent(options.slug)}`,
+      );
+      this.setData({
+        service,
+        price: money(service.priceFen),
+        date: new Date(Date.now() + 8 * 3600_000 + 86400_000)
+          .toISOString()
+          .slice(0, 10),
+      });
+      await this.loadSlots();
+    } catch (error) {
+      this.fail(error);
+    }
+  },
+  fail(error: unknown) {
+    this.setData({
+      error: error instanceof Error ? error.message : "请求失败",
+    });
+  },
+  async loadSlots() {
+    if (!this.data.service) return;
+    this.setData({ error: "", selected: -1 });
+    try {
+      const slots = await api<AvailabilitySlot[]>(
+        `/availability/slots?serviceId=${encodeURIComponent(this.data.service.id)}&date=${this.data.date}`,
+      );
+      this.setData({
+        slots: slots.map((slot) => ({
+          ...slot,
+          label: shanghaiTime(slot.startsAt),
+          key: `${slot.therapistId}-${slot.startsAt}`,
+        })),
+      });
+    } catch (error) {
+      this.fail(error);
+    }
+  },
+  async dateChanged(e: { detail: { value: string } }) {
+    if (this.data.reservationId) return;
+    this.setData({ date: e.detail.value });
+    await this.loadSlots();
+  },
+  select(e: { currentTarget: { dataset: { index: number } } }) {
+    if (!this.data.reservationId)
+      this.setData({ selected: Number(e.currentTarget.dataset.index) });
+  },
+  input(e: {
+    currentTarget: { dataset: { field: string } };
+    detail: { value: string };
+  }) {
+    const field = e.currentTarget.dataset.field;
+    if (
+      ["contactName", "phone", "detail"].includes(field) &&
+      !this.data.reservationId
+    )
+      this.setData({ [field]: e.detail.value });
+  },
+  consentChanged(e: { detail: { value: string[] } }) {
+    this.setData({ consent: e.detail.value.includes("agree") });
+  },
+  async create() {
+    if (this.data.busy) return;
+    const slot = this.data.slots[this.data.selected],
+      service = this.data.service;
+    if (
+      !service ||
+      !slot ||
+      !this.data.consent ||
+      this.data.contactName.trim().length < 2 ||
+      !/^1\d{10}$/.test(this.data.phone) ||
+      this.data.detail.trim().length < 5
+    ) {
+      this.fail(
+        new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"),
+      );
+      return;
+    }
+    this.setData({ busy: true, error: "" });
+    try {
+      if (!getStoredSession()) await loginWithWechat();
+      if (!this.data.reservationId) {
+        const hold = await api<BookingHold>("/booking-holds", "POST", {
+          serviceId: service.id,
+          therapistId: slot.therapistId,
+          startsAt: slot.startsAt,
+        });
+        this.setData({ reservationId: hold.id, orderKey: newKey() });
+      }
+      if (!this.data.quote) {
+        const quote = await api<OrderQuote>("/orders/quote", "POST", {
+          reservationId: this.data.reservationId,
+        });
+        this.setData({ quote: money(quote.payableFen) });
+      }
+      await api<OrderView>(
+        "/orders",
+        "POST",
+        {
+          reservationId: this.data.reservationId,
+          address: {
+            contactName: this.data.contactName.trim(),
+            phone: this.data.phone,
+            detail: this.data.detail.trim(),
+          },
+        },
+        this.data.orderKey,
+      );
+      this.setData({ reservationId: "", orderKey: "" });
+      wx.showToast({ title: "订单已创建，请到订单页支付", icon: "none" });
+      wx.switchTab({ url: "/pages/orders/index" });
+    } catch (error) {
+      this.fail(error);
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  onUnload() {
+    this.setData({ contactName: "", phone: "", detail: "" });
+  },
+});

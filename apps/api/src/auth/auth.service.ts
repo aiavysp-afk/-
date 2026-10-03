@@ -63,6 +63,8 @@ export class AuthService {
         },
       });
       const user = externalIdentity.user;
+      if (user.status !== "ACTIVE")
+        throw new UnauthorizedException("账号不可用");
 
       await tx.session.create({
         data: { userId: user.id, tokenHash, expiresAt },

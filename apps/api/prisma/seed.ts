@@ -14,6 +14,20 @@ import type { AppEnv } from "../src/config/env.js";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production")
+    throw new Error(
+      "Development seed is forbidden in production; use reviewed production bootstrap",
+    );
+  if (process.env.SEED_DEVELOPMENT_IDENTITIES === "true") {
+    const target = new URL(process.env.DATABASE_URL ?? "");
+    if (
+      !["localhost", "127.0.0.1"].includes(target.hostname) ||
+      !["/zhongyuan_daojia", "/zhongyuan_daojia_test"].includes(target.pathname)
+    )
+      throw new Error(
+        "Development identities require an explicitly local development database",
+      );
+  }
   const organization = await prisma.organization.upsert({
     where: { id: "org-zhongyuan-pilot" },
     update: { name: "中原到家（试运营）" },
@@ -65,6 +79,54 @@ async function main() {
     }) as ConfigService<AppEnv, true>;
     const crypto = new AuthCryptoService(config);
     const appId = process.env.WECHAT_MINIAPP_APP_ID ?? "wxab76ea213eb6d01a";
+    for (const role of [
+      UserRole.FINANCE_REQUESTER,
+      UserRole.FINANCE_APPROVER,
+    ]) {
+      const code =
+        role === UserRole.FINANCE_REQUESTER
+          ? "local-finance-requester"
+          : "local-finance-approver";
+      const openId = `mock-${createHash("sha256").update(code).digest("hex").slice(0, 32)}`;
+      const user = await prisma.user.upsert({
+        where: { id: `user-${code}` },
+        update: { status: "ACTIVE" },
+        create: {
+          id: `user-${code}`,
+          role,
+          displayName:
+            role === UserRole.FINANCE_REQUESTER
+              ? "本地退款申请"
+              : "本地独立复核",
+        },
+      });
+      await prisma.staffMembership.upsert({
+        where: {
+          userId_organizationId_role: {
+            userId: user.id,
+            organizationId: organization.id,
+            role,
+          },
+        },
+        update: { status: "ACTIVE" },
+        create: { userId: user.id, organizationId: organization.id, role },
+      });
+      await prisma.externalIdentity.upsert({
+        where: {
+          provider_subjectHash: {
+            provider: IdentityProvider.WECHAT_MINIAPP,
+            subjectHash: crypto.hashIdentity(appId, openId),
+          },
+        },
+        update: {},
+        create: {
+          provider: IdentityProvider.WECHAT_MINIAPP,
+          userId: user.id,
+          subjectHash: crypto.hashIdentity(appId, openId),
+          subjectEncrypted: crypto.encrypt(openId),
+        },
+      });
+    }
     const developmentCode = "local-catalog-operator";
     const openId = `mock-${createHash("sha256").update(developmentCode).digest("hex").slice(0, 32)}`;
     const subjectHash = crypto.hashIdentity(appId, openId);

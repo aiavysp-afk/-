@@ -1,15 +1,28 @@
 declare function App<T extends object>(options: T): void;
-declare function Page<T extends object>(options: T & ThisType<T & { setData(data: Record<string, unknown>): void }>): void;
+declare function Page<T extends object>(
+  options: T & ThisType<T & { setData(data: Record<string, unknown>): void }>,
+): void;
 declare function getApp<T extends object>(): T;
 declare const wx: {
-  showToast(options: { title: string; icon: 'none' | 'success' | 'error' | 'loading' }): void;
+  navigateTo(options: { url: string }): void;
+  switchTab(options: { url: string }): void;
+  showModal(options: {
+    title: string;
+    content: string;
+    success(result: { confirm: boolean; cancel: boolean }): void;
+    fail(): void;
+  }): void;
+  showToast(options: {
+    title: string;
+    icon: "none" | "success" | "error" | "loading";
+  }): void;
   login(options: {
     success(result: { code: string }): void;
     fail(error: { errMsg: string }): void;
   }): void;
   request<T>(options: {
     url: string;
-    method: 'GET' | 'POST';
+    method: "GET" | "POST";
     data?: unknown;
     header?: Record<string, string>;
     success(result: { statusCode: number; data: T }): void;

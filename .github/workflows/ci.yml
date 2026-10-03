@@ -1,0 +1,40 @@
+name: Mall verification
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: zhongyuan
+          POSTGRES_PASSWORD: local_only
+          POSTGRES_DB: zhongyuan_daojia_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U zhongyuan -d zhongyuan_daojia_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_daojia_test?schema=public
+      MALL_TEST_DATABASE_URL: postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_daojia_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @zydj/api exec prisma generate
+      - run: bash scripts/database-init.sh
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --filter @zydj/api test:mall

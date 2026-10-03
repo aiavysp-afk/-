@@ -1,0 +1,24 @@
+[Unit]
+Description=Zhongyuan Daojia API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zydj
+Group=zydj
+WorkingDirectory=/opt/zhongyuan-daojia/current/apps/api
+EnvironmentFile=/etc/zhongyuan-daojia/api.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/zhongyuan-daojia /etc/zhongyuan-daojia
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 中原到家 API
-  version: 0.6.0
+  version: 0.8.0
   description: M2 开发接口；金额单位固定为人民币分。
 servers:
   - url: http://localhost:3100
@@ -368,6 +368,319 @@ paths:
         "403": { description: 不能确认其他用户支付 }
         "404": { description: 生产环境隐藏接口或支付记录不存在 }
         "409": { description: 支付超时、金额不一致或状态冲突 }
+  /v1/payments/wechat/notify:
+    post:
+      summary: 微信支付成功通知
+      description: 仅微信支付模式可用；以原始报文字节验签，解密后核对 AppID、商户号、交易类型、金额和流水。成功或幂等重复返回空 204；晚到款记录待处理事件，不恢复失效预约。
+      parameters:
+        - {
+            in: header,
+            name: Wechatpay-Timestamp,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: header,
+            name: Wechatpay-Nonce,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: header,
+            name: Wechatpay-Serial,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: header,
+            name: Wechatpay-Signature,
+            required: true,
+            schema: { type: string },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, event_type, resource_type, resource]
+              properties:
+                id: { type: string }
+                event_type: { const: TRANSACTION.SUCCESS }
+                resource_type: { const: encrypt-resource }
+                resource:
+                  type: object
+                  required: [original_type, algorithm, ciphertext, nonce]
+                  properties:
+                    original_type: { const: transaction }
+                    algorithm: { const: AEAD_AES_256_GCM }
+                    ciphertext: { type: string }
+                    nonce: { type: string }
+                    associated_data: { type: string }
+      responses:
+        "204": { description: 已在数据库提交成功或确认幂等重复 }
+        "400": { description: 格式、解密或交易身份校验失败 }
+        "401": { description: 缺失签名、过期时间戳、错误公钥 ID 或验签失败 }
+        "404": { description: Mock 模式或未找到微信支付记录 }
+        "409": { description: 金额、流水、事件 ID 或预约状态冲突 }
+        "500": { description: 数据库提交未成功，渠道应重试 }
+        "503": { description: 验签配置未就绪 }
+  /v1/payments/{id}/reconcile:
+    post:
+      summary: 主动核实本人微信支付结果
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 已验签查单；成功交易使用通知相同的原子状态补偿
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      status: { type: string }
+                      providerState: { type: string }
+                      fulfillmentReviewRequired: { type: boolean }
+        "401": { description: 未登录 }
+        "403": { description: 支付不属于本人 }
+        "404": { description: 支付不存在或当前为 Mock 模式 }
+        "409": { description: 非微信支付或查单结果与本地不一致 }
+        "502": { description: 网络、渠道接口或响应验签失败 }
+        "503": { description: 商户签名或验签材料未就绪 }
+  /v1/admin/organizations/{organizationId}/payments/reconciliation/{date}:
+    post:
+      summary: 核对指定组织已结束日期的微信交易账单
+      description: 需要本组织 finance.approve 权限；校验元数据签名和文件 SHA1，生成差异报告并写审计。退款行需进一步查原退款号。商户范围存在不能归属本组织的行时只返回处理标志，不披露跨组织流水。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: path,
+            name: date,
+            required: true,
+            schema: { type: string, format: date },
+            description: 北京时间日期,
+          }
+      responses:
+        "200":
+          description: 核对完成，报告不修改支付或退款状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      date: { type: string, format: date }
+                      organizationId: { type: string }
+                      fileHash: { type: string }
+                      matched: { type: boolean }
+                      channelPaidFen:
+                        { type: string, description: 整数分字符串 }
+                      channelFeeFen:
+                        {
+                          type: string,
+                          description: 含退款负手续费的整数分字符串,
+                        }
+                      merchantScopeReviewRequired: { type: boolean }
+                      differences:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            merchantPaymentNo: { type: string }
+                            kind: { type: string }
+                            channelFen: { type: string }
+                            localFen: { type: string }
+        "400": { description: 日期、账单格式、解压或当前容量限制 }
+        "401": { description: 未登录 }
+        "403": { description: 不具备指定组织的财务复核权限 }
+        "404": { description: Mock 模式 }
+        "502": { description: 渠道、验签、文件摘要或大小校验失败 }
+        "503": { description: 商户签名或验签材料未就绪 }
+  /v1/orders/{orderId}/refunds:
+    parameters:
+      - { in: path, name: orderId, required: true, schema: { type: string } }
+    get:
+      summary: 查看本人订单退款记录
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 本人退款记录列表 }
+        "403": { description: 非本人订单 }
+    post:
+      summary: 客户申请开始前剩余额度全退（金额原因服务端判定）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: header,
+            name: Idempotency-Key,
+            required: true,
+            schema: { type: string, minLength: 16, maxLength: 128 },
+          }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201": { description: 申请或幂等重放，REQUESTED不代表到账 }
+        "409": { description: 额度或履约状态不允许退款 }
+  /v1/admin/organizations/{organizationId}/payments:
+    get:
+      summary: 财务权限读取最近50笔支付预算
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200":
+          { description: 支付/订单状态、已退、占用、余额（余额不保证退款资格） }
+        "403": { description: 缺少组织财务权限 }
+  /v1/admin/organizations/{organizationId}/payments/{paymentId}/refunds:
+    parameters:
+      - {
+          in: path,
+          name: organizationId,
+          required: true,
+          schema: { type: string },
+        }
+      - { in: path, name: paymentId, required: true, schema: { type: string } }
+    get:
+      summary: 财务查看退款和状态事件
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 退款、申请/复核身份与事件 }
+    post:
+      summary: 财务申请全额退款，finance.request，金额服务端计算
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: header,
+            name: Idempotency-Key,
+            required: true,
+            schema: { type: string, minLength: 16, maxLength: 128 },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason:
+                  { enum: [CUSTOMER_CANCELLED, UNFULFILLABLE, LATE_PAYMENT] }
+      responses:
+        "201": { description: 申请已占用额度或同键重放 }
+        "400": { description: 拒绝额外金额/身份字段 }
+        "403": { description: 无组织财务申请权限 }
+        "409": { description: 规则/额度/幂等冲突 }
+  /v1/admin/organizations/{organizationId}/refunds/{id}/{action}:
+    post:
+      summary: 独立财务复核、提交或原单查单
+      description: approve/reject需严格结论code；submit/reconcile空对象。申请人不能复核或提交，ADMIN同样受限。UNKNOWN保留额度，禁止另建退款号。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - {
+            in: path,
+            name: action,
+            required: true,
+            schema: { enum: [approve, reject, submit, reconcile] },
+          }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                code:
+                  {
+                    enum:
+                      [
+                        CONFIRMED,
+                        INSUFFICIENT_EVIDENCE,
+                        DUPLICATE_REQUEST,
+                        POLICY_REVIEW_REQUIRED,
+                      ],
+                  }
+      responses:
+        "200": { description: 原退款当前状态，不必然成功 }
+        "403": { description: 自审/自行提交或无组织权限 }
+        "409": { description: 状态/规则/额度已变化 }
+        "503":
+          { description: 真实门禁关闭或渠道不确定；不确定已占用额度并转UNKNOWN }
+  /v1/payments/wechat/refund-notify:
+    post:
+      summary: 微信退款原始字节验签及解密通知
+      security: []
+      parameters:
+        - {
+            in: header,
+            name: Wechatpay-Timestamp,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: header,
+            name: Wechatpay-Nonce,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: header,
+            name: Wechatpay-Serial,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: header,
+            name: Wechatpay-Signature,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "204": { description: 提交成功或同笔重复通知，空响应 }
+        "400": { description: 原始报文/解密/身份无效 }
+        "401": { description: 验签失败 }
+        "409": { description: 金额/支付流水不一致或退款未提交 }
+  /v1/dev/organizations/{organizationId}/refunds/{id}/succeed:
+    post:
+      summary: 独立复核人确认本地Mock成功，production固定404
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 模拟成功或幂等重复 }
+        "404": { description: 非Mock/生产禁止 }
 components:
   securitySchemes:
     bearerAuth:

@@ -24,12 +24,13 @@ import type {
   ServiceItem,
 } from "@zydj/contracts";
 import "./styles.css";
+import { RefundWorkspace } from "./refunds";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 const TOKEN_STORAGE_KEY = "zydj.admin.access-token";
 
-type Section = "dashboard" | "catalog";
+type Section = "dashboard" | "catalog" | "refunds";
 type CatalogRow = AdminServiceItem | ServiceItem;
 
 const nav: Array<{
@@ -42,7 +43,7 @@ const nav: Array<{
   { icon: UsersRound, label: "技师管理" },
   { icon: Sparkles, label: "服务项目", section: "catalog" },
   { icon: CalendarDays, label: "排班中心" },
-  { icon: CircleDollarSign, label: "财务结算" },
+  { icon: CircleDollarSign, label: "退款复核", section: "refunds" },
   { icon: MessageCircleWarning, label: "安全值班" },
   { icon: MapPinned, label: "服务区域" },
   { icon: ShieldCheck, label: "权限审计" },
@@ -384,7 +385,7 @@ function CatalogWorkspace({
               </span>
               <span>{service.durationMinutes} 分钟</span>
               <span className="catalog-price">
-                ¥{(service.priceFen / 100).toFixed(0)}
+                ¥{(service.priceFen / 100).toFixed(2)}
               </span>
               <span>
                 <em
@@ -437,12 +438,12 @@ function App() {
   );
   const [displayName, setDisplayName] = useState("平台管理员");
 
-  async function developmentLogin() {
+  async function developmentLogin(code = "local-catalog-operator") {
     const response = await apiRequest<{ data: AuthSession }>(
       "/auth/wechat-miniapp",
       {
         method: "POST",
-        body: JSON.stringify({ code: "local-catalog-operator" }),
+        body: JSON.stringify({ code }),
       },
     );
     localStorage.setItem(TOKEN_STORAGE_KEY, response.data.accessToken);
@@ -488,9 +489,21 @@ function App() {
       <main>
         <header>
           <div>
-            <p>2026 年 10 月 3 日 · 周六</p>
+            <p>
+              {new Date().toLocaleDateString("zh-CN", {
+                timeZone: "Asia/Shanghai",
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
             <h1>
-              {section === "dashboard" ? "下午好，运营中心" : "服务目录管理"}
+              {section === "dashboard"
+                ? "运营中心"
+                : section === "refunds"
+                  ? "退款申请与复核"
+                  : "服务目录管理"}
             </h1>
           </div>
           <div className="header-actions">
@@ -514,10 +527,12 @@ function App() {
         </header>
         {section === "dashboard" ? (
           <Dashboard />
+        ) : section === "refunds" ? (
+          <RefundWorkspace token={token} login={developmentLogin} />
         ) : (
           <CatalogWorkspace
             token={token}
-            onDevelopmentLogin={developmentLogin}
+            onDevelopmentLogin={() => developmentLogin()}
           />
         )}
       </main>
@@ -525,4 +540,6 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
+const root = ReactDOM.createRoot(document.getElementById("root")!);
+root.render(<App />);
+if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());

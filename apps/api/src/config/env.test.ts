@@ -10,6 +10,19 @@ const productionAuth = {
 } as const;
 
 describe("production safety gate", () => {
+  it("defaults real refund submission to closed and requires an HTTPS callback when enabled", () => {
+    expect(
+      validateEnv({ NODE_ENV: "development" }).WECHAT_PAY_REFUND_ENABLED,
+    ).toBe("false");
+    expect(() =>
+      validateEnv({
+        NODE_ENV: "production",
+        PAYMENT_PROVIDER: "wechat",
+        WECHAT_PAY_REFUND_ENABLED: "true",
+      }),
+    ).toThrow("WECHAT_PAY_REFUND_NOTIFY_URL");
+    expect(() => validateEnv({ WECHAT_PAY_REFUND_ENABLED: "yes" })).toThrow();
+  });
   it("rejects mock integrations in production", () => {
     expect(() => validateEnv({ NODE_ENV: "production" })).toThrow(
       "生产配置未通过安全门禁",

@@ -4,7 +4,8 @@
     "pages/services/index",
     "pages/therapists/index",
     "pages/orders/index",
-    "pages/profile/index"
+    "pages/profile/index",
+    "pages/booking/index"
   ],
   "window": {
     "navigationStyle": "custom",
@@ -27,4 +28,3 @@
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }
-

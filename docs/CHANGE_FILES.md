@@ -1,0 +1,104 @@
+# 本次改动文件清单
+
+日期：2026-10-04。相对初始main提交e448c3e，共94个文件（含新增、修改和从Git移除的构建缓存）。包含本地连续开发的支付通知/查单/账单安全修复与本次退款闭环交付。
+
+核心改动：退款数据/4批增量迁移、双人复核和预算一致性、微信签名通知/POST/查询恢复、小程序商城接入、管理端退款UI、自动验证/CI、环境变量及隔离部署。
+
+以下两个tsbuildinfo仅从仓库跟踪移除，本地文件保留且被.gitignore忽略；不删除用户源代码。小程序JS是与TS一致的实际运行文件，应随源码一同提交。
+
+- `.env.example`
+- `.github/workflows/ci.yml`
+- `.gitignore`
+- `DECISIONS.md`
+- `README.md`
+- `apps/admin-web/src/main.tsx`
+- `apps/admin-web/src/refunds.tsx`
+- `apps/admin-web/src/styles.css`
+- `apps/admin-web/tsconfig.app.tsbuildinfo`
+- `apps/api/package.json`
+- `apps/api/prisma/migrations/20261003235000_refund_core/migration.sql`
+- `apps/api/prisma/migrations/20261004000500_refund_consistency/migration.sql`
+- `apps/api/prisma/migrations/20261004005000_refund_review_guards/migration.sql`
+- `apps/api/prisma/migrations/20261004005500_refund_review_code_not_null/migration.sql`
+- `apps/api/prisma/schema.prisma`
+- `apps/api/prisma/seed.ts`
+- `apps/api/scripts/bootstrap-production.ts`
+- `apps/api/scripts/create-browser-fixture.ts`
+- `apps/api/scripts/verify-mall-flow.ts`
+- `apps/api/scripts/verify-wechat-payments.ts`
+- `apps/api/src/auth/auth.service.test.ts`
+- `apps/api/src/auth/auth.service.ts`
+- `apps/api/src/config/env.test.ts`
+- `apps/api/src/config/env.ts`
+- `apps/api/src/main.ts`
+- `apps/api/src/orders/order-state-machine.ts`
+- `apps/api/src/payments/payment-reconciliation.controller.ts`
+- `apps/api/src/payments/payment-reconciliation.service.test.ts`
+- `apps/api/src/payments/payment-reconciliation.service.ts`
+- `apps/api/src/payments/payments.module.ts`
+- `apps/api/src/payments/payments.service.test.ts`
+- `apps/api/src/payments/payments.service.ts`
+- `apps/api/src/payments/refund-policy.test.ts`
+- `apps/api/src/payments/refund-policy.ts`
+- `apps/api/src/payments/refund-protocol.test.ts`
+- `apps/api/src/payments/refund-reconciliation.worker.test.ts`
+- `apps/api/src/payments/refund-reconciliation.worker.ts`
+- `apps/api/src/payments/refunds.controller.ts`
+- `apps/api/src/payments/refunds.service.test.ts`
+- `apps/api/src/payments/refunds.service.ts`
+- `apps/api/src/payments/trade-bill.test.ts`
+- `apps/api/src/payments/trade-bill.ts`
+- `apps/api/src/payments/wechat-pay.client.test.ts`
+- `apps/api/src/payments/wechat-pay.client.ts`
+- `apps/api/src/payments/wechat-pay.protocol.test.ts`
+- `apps/api/src/payments/wechat-pay.protocol.ts`
+- `apps/api/src/payments/wechat-payments.controller.test.ts`
+- `apps/api/src/payments/wechat-payments.controller.ts`
+- `apps/api/src/payments/wechat-payments.service.test.ts`
+- `apps/api/src/payments/wechat-payments.service.ts`
+- `apps/miniapp/app.js`
+- `apps/miniapp/app.json`
+- `apps/miniapp/package.json`
+- `apps/miniapp/pages/booking/index.js`
+- `apps/miniapp/pages/booking/index.json`
+- `apps/miniapp/pages/booking/index.ts`
+- `apps/miniapp/pages/booking/index.wxml`
+- `apps/miniapp/pages/booking/index.wxss`
+- `apps/miniapp/pages/home/index.js`
+- `apps/miniapp/pages/orders/index.js`
+- `apps/miniapp/pages/orders/index.ts`
+- `apps/miniapp/pages/orders/index.wxml`
+- `apps/miniapp/pages/orders/index.wxss`
+- `apps/miniapp/pages/profile/index.js`
+- `apps/miniapp/pages/profile/index.ts`
+- `apps/miniapp/pages/services/index.js`
+- `apps/miniapp/pages/services/index.ts`
+- `apps/miniapp/pages/services/index.wxml`
+- `apps/miniapp/pages/therapists/index.js`
+- `apps/miniapp/tsconfig.build.json`
+- `apps/miniapp/turbo.json`
+- `apps/miniapp/types/global.d.ts`
+- `apps/miniapp/utils/api.js`
+- `apps/miniapp/utils/api.ts`
+- `apps/miniapp/utils/auth.js`
+- `apps/workbench-h5/tsconfig.app.tsbuildinfo`
+- `docs/CHANGE_FILES.md`
+- `docs/DEPLOYMENT.md`
+- `docs/ENV_VARIABLES.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+- `docs/INTEGRATION_GATES.md`
+- `docs/REFUND_IMPLEMENTATION.md`
+- `docs/SELF_TEST_REPORT.md`
+- `docs/WECHAT_PAY_IMPLEMENTATION.md`
+- `docs/openapi.v1.yaml`
+- `infra/database-init.sql`
+- `infra/docker-compose.dev.yml`
+- `infra/nginx.example.conf`
+- `infra/zhongyuan-daojia.service`
+- `packages/contracts/src/index.test.ts`
+- `packages/contracts/src/index.ts`
+- `scripts/database-init.ps1`
+- `scripts/database-init.sh`
+- `turbo.json`
+
+不包含：生产.env、证书/私钥、运行日志、node_modules、dist、.codex-runtime验收截图。人工上线检查项见DEPLOYMENT.md末节。

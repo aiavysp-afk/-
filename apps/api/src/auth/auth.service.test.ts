@@ -14,6 +14,7 @@ describe("AuthService", () => {
         upsert: vi.fn().mockResolvedValue({
           user: {
             id: "user-1",
+            status: "ACTIVE",
             displayName: "微信用户",
             memberships: [],
           },

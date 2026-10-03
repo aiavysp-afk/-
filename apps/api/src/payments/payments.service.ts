@@ -10,6 +10,7 @@ import {
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
+  Prisma,
   ReservationStatus,
   type Payment,
 } from "@prisma/client";
@@ -56,6 +57,16 @@ export class PaymentsService {
     const preparation = this.gateway.prepare(merchantPaymentNo);
     try {
       const payment = await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${order.id} FOR UPDATE`;
+        const currentOrder = await tx.order.findUniqueOrThrow({
+          where: { id: order.id },
+        });
+        if (
+          currentOrder.status !== OrderStatus.PENDING_PAYMENT ||
+          !currentOrder.paymentExpiresAt ||
+          currentOrder.paymentExpiresAt.getTime() <= Date.now()
+        )
+          throw new ConflictException("订单在创建支付期间已失效");
         const record = await tx.payment.create({
           data: {
             orderId: order.id,
@@ -86,6 +97,11 @@ export class PaymentsService {
       });
       return this.toIntent(payment, order.paymentExpiresAt);
     } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== "P2002"
+      )
+        throw error;
       const existing = await this.prisma.payment.findUnique({
         where: { orderId: order.id },
       });
@@ -146,6 +162,14 @@ export class PaymentsService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${payment.order.id} FOR UPDATE`;
+      const current = await tx.payment.findUniqueOrThrow({
+        where: { id: payment.id },
+      });
+      if (
+        current.status === PaymentStatus.SUCCEEDED &&
+        current.providerTransactionId === providerTransactionId
+      )
+        return current;
       const paymentUpdate = await tx.payment.updateMany({
         where: { id: payment.id, status: PaymentStatus.PENDING },
         data: {

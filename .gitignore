@@ -20,5 +20,7 @@ secrets/
 certs/
 coverage/
 *.log
+*.tsbuildinfo
+.codex-runtime/
 .DS_Store
 apps/api/prisma/dev.db
