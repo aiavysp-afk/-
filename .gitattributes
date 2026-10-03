@@ -1,0 +1,2 @@
+# Linux deployment scripts must remain executable by Bash when archived on Windows.
+*.sh text eol=lf
