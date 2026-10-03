@@ -51,6 +51,8 @@
 
 ## MFA增量变量
 
+后台交接增量：`STAFF_BROWSER_LOGIN_ENABLED`默认false；仅受控验收显式true，production仅接受wechat第一因子且电脑接口要求受信HTTPS Origin。`BROWSER_LOGIN_TEST_DATABASE_URL`仅用于专用隔离HTTP/DB测试，目标限制与MFA测试相同。浏览器新会话最多一小时且不超过手机期限，没有可配置的角色、回调、设备秘钥或绕过MFA变量。见[交接交付](BROWSER_LOGIN_IMPLEMENTATION.md)。
+
 | 变量 | 用途与约束 |
 | --- | --- |
 | STAFF_MFA_REQUIRED | 默认false，仅非生产开发可不强制；私有验收配置true。production无论该值如何均强制工作人员当前会话MFA，不是生产绕过开关。 |

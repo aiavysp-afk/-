@@ -119,7 +119,10 @@ async function apiRequest<T>(
     message?: string;
   };
   if (!response.ok) {
-    throw new Error(body.message ?? `请求失败（${response.status}）`);
+    throw Object.assign(
+      new Error(body.message ?? `请求失败（${response.status}）`),
+      { status: response.status },
+    );
   }
   return body as T;
 }
@@ -436,13 +439,14 @@ function CatalogWorkspace({
 function App() {
   const [section, setSection] = useState<Section>("dashboard");
   const [token, setToken] = useState(
-    () => localStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
+    () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
   );
   const [displayName, setDisplayName] = useState("未登录");
   const currentToken = useRef(token);
   currentToken.current = token;
 
   useEffect(() => {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     if (!token) return;
     let current = true;
     void apiRequest<{ data: { displayName: string } }>("/auth/me", {
@@ -451,8 +455,14 @@ function App() {
       .then((r) => {
         if (current) setDisplayName(r.data.displayName);
       })
-      .catch(() => {
-        if (current) setDisplayName("会话待重新验证");
+      .catch((error: { status?: number }) => {
+        if (!current || currentToken.current !== token) return;
+        if (error.status === 401) {
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          currentToken.current = "";
+          setToken("");
+          setDisplayName("未登录");
+        } else setDisplayName("会话待重新验证");
       });
     return () => {
       current = false;
@@ -461,13 +471,18 @@ function App() {
 
   async function logout() {
     const logoutToken = token;
-    await apiRequest("/auth/logout", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify({}),
-    });
+    try {
+      await apiRequest("/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+    } catch (error) {
+      if ((error as { status?: number }).status !== 401) throw error;
+    }
     if (currentToken.current !== logoutToken) return;
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    currentToken.current = "";
     setToken("");
     setDisplayName("未登录");
   }
@@ -480,9 +495,25 @@ function App() {
         body: JSON.stringify({ code }),
       },
     );
-    localStorage.setItem(TOKEN_STORAGE_KEY, response.data.accessToken);
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, response.data.accessToken);
+    currentToken.current = response.data.accessToken;
     setToken(response.data.accessToken);
     setDisplayName(response.data.user.displayName);
+  }
+
+  function acceptBrowserSession(session: AuthSession) {
+    if (currentToken.current) {
+      void apiRequest(
+        "/auth/logout",
+        { method: "POST", body: "{}" },
+        session.accessToken,
+      ).catch(() => {});
+      return;
+    }
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, session.accessToken);
+    currentToken.current = session.accessToken;
+    setToken(session.accessToken);
+    setDisplayName(session.user.displayName);
   }
 
   return (
@@ -564,7 +595,11 @@ function App() {
         {section === "dashboard" ? (
           <Dashboard />
         ) : section === "security" ? (
-          <SecurityWorkspace token={token} onLogout={logout} />
+          <SecurityWorkspace
+            token={token}
+            onLogout={logout}
+            onSession={acceptBrowserSession}
+          />
         ) : section === "refunds" ? (
           <RefundWorkspace token={token} login={developmentLogin} />
         ) : (

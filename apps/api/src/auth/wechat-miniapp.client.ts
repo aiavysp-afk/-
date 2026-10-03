@@ -53,8 +53,20 @@ export class WechatMiniappClient {
     if (!response.ok) {
       throw new ServiceUnavailableException("微信登录服务响应异常");
     }
-    const payload = (await response.json()) as WechatCodeSessionResponse;
-    if (payload.errcode || !payload.openid) {
+    let payload: WechatCodeSessionResponse;
+    try {
+      payload = (await response.json()) as WechatCodeSessionResponse;
+    } catch {
+      throw new ServiceUnavailableException("微信登录服务响应格式异常");
+    }
+    if (
+      !payload ||
+      payload.errcode ||
+      typeof payload.openid !== "string" ||
+      !payload.openid ||
+      payload.openid.length > 128 ||
+      (payload.unionid !== undefined && typeof payload.unionid !== "string")
+    ) {
       throw new UnauthorizedException("微信登录凭证无效或已过期");
     }
     return { openId: payload.openid, unionId: payload.unionid };

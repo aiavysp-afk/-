@@ -24,6 +24,7 @@ jobs:
       MALL_TEST_DATABASE_URL: postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_daojia_test?schema=public
       PAYMENT_DB_TEST_URL: postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_daojia_test?schema=public
       MFA_TEST_DATABASE_URL: postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_daojia_test?schema=public
+      BROWSER_LOGIN_TEST_DATABASE_URL: postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_daojia_test?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -36,6 +37,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @zydj/api exec prisma generate
       - run: node --test scripts/serve-private-preview.test.mjs
+      - run: bash -n scripts/deploy-private-acceptance.sh
       - run: bash scripts/database-init.sh
       - run: pnpm typecheck
       - run: pnpm test
@@ -43,3 +45,4 @@ jobs:
       - run: pnpm --filter @zydj/api test:mall
       - run: pnpm --filter @zydj/api test:wechat-db
       - run: pnpm --filter @zydj/api test:mfa
+      - run: pnpm --filter @zydj/api test:browser-login

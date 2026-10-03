@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import type { AuthSession } from "@zydj/contracts";
+import { BrowserLogin } from "./browser-login";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 type MfaStatus = {
@@ -18,9 +20,11 @@ type Enrollment = {
 export function SecurityWorkspace({
   token,
   onLogout,
+  onSession,
 }: {
   token: string;
   onLogout: () => Promise<void>;
+  onSession: (session: AuthSession) => void;
 }) {
   const currentToken = useRef(token);
   currentToken.current = token;
@@ -109,9 +113,7 @@ export function SecurityWorkspace({
         第一层是微信身份会话，第二层是独立验证器动态码。后台人员生产操作必须通过两层验证。
       </p>
       {!token ? (
-        <div className="environment-banner">
-          尚未登录。正式微信后台登录入口仍待接入与真机验收；这里不能用固定账号代替正式登录。
-        </div>
+        <BrowserLogin onSession={onSession} />
       ) : (
         <>
           <div className="toolbar">

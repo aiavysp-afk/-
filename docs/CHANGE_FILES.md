@@ -1,6 +1,6 @@
 # 本次改动文件清单
 
-日期：2026-10-04。相对初始main e448c3e累计129个文件；本轮相对6ac98a6新增/修改33个文件。本轮增加后台MFA基础、第14批迁移、账户安全页、生产强制权限门禁、实际HTTP验证及升级前专用库备份。正式微信浏览器登录/真人设备/受审恢复仍未完成；不提交密钥、运行配置、归档、node_modules或截图。此前tsbuildinfo仅解除跟踪，本地保留。
+日期：2026-10-04。相对初始main e448c3e累计145个文件；本轮相对f168daa新增/修改40个文件。完成后台安全微信配对交接、第15批迁移、来源标记/一次性并发领取/独立MFA、电脑与小程序确认页、270项代码测试及HTTP/数据库/编译JS验证。服务器因容量余量未升级，仍14批/2cda5189；不提交密钥、运行配置、归档、node_modules或截图。真人微信与独立设备验收/受审恢复仍待完成。
 
 ## 本轮文件
 
@@ -8,24 +8,32 @@
 - `.github/workflows/ci.yml`
 - `DECISIONS.md`
 - `README.md`
+- `apps/admin-web/src/browser-login.tsx`
 - `apps/admin-web/src/main.tsx`
 - `apps/admin-web/src/security.tsx`
 - `apps/api/package.json`
-- `apps/api/prisma/migrations/20261004031000_staff_mfa/migration.sql`
+- `apps/api/prisma/migrations/20261004052000_browser_login/migration.sql`
 - `apps/api/prisma/schema.prisma`
-- `apps/api/scripts/verify-mall-flow.ts`
-- `apps/api/scripts/verify-mfa-flow.ts`
-- `apps/api/src/auth/access-control.service.test.ts`
-- `apps/api/src/auth/access-control.service.ts`
+- `apps/api/scripts/verify-browser-login.ts`
+- `apps/api/src/auth/auth-crypto.service.ts`
 - `apps/api/src/auth/auth.module.ts`
 - `apps/api/src/auth/auth.service.ts`
-- `apps/api/src/auth/auth.types.ts`
-- `apps/api/src/auth/mfa.controller.ts`
-- `apps/api/src/auth/mfa.service.test.ts`
-- `apps/api/src/auth/mfa.service.ts`
-- `apps/api/src/auth/totp.test.ts`
-- `apps/api/src/auth/totp.ts`
+- `apps/api/src/auth/browser-login.controller.ts`
+- `apps/api/src/auth/browser-login.service.test.ts`
+- `apps/api/src/auth/browser-login.service.ts`
+- `apps/api/src/auth/wechat-miniapp.client.test.ts`
+- `apps/api/src/auth/wechat-miniapp.client.ts`
 - `apps/api/src/config/env.ts`
+- `apps/miniapp/app.json`
+- `apps/miniapp/pages/admin-login/index.js`
+- `apps/miniapp/pages/admin-login/index.json`
+- `apps/miniapp/pages/admin-login/index.ts`
+- `apps/miniapp/pages/admin-login/index.wxml`
+- `apps/miniapp/pages/admin-login/index.wxss`
+- `apps/miniapp/pages/profile/index.js`
+- `apps/miniapp/pages/profile/index.ts`
+- `apps/miniapp/pages/profile/index.wxml`
+- `docs/BROWSER_LOGIN_IMPLEMENTATION.md`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
 - `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`
@@ -33,10 +41,9 @@
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/PRIVATE_ACCEPTANCE_DEPLOYMENT.md`
 - `docs/SELF_TEST_REPORT.md`
-- `docs/STAFF_MFA_IMPLEMENTATION.md`
 - `docs/openapi.v1.yaml`
 - `scripts/deploy-private-acceptance.sh`
-- `scripts/setup-private-acceptance.mjs`
+- `scripts/serve-private-preview.mjs`
 
 ## 全部累计文件
 
@@ -46,6 +53,7 @@
 - `.gitignore`
 - `DECISIONS.md`
 - `README.md`
+- `apps/admin-web/src/browser-login.tsx`
 - `apps/admin-web/src/main.tsx`
 - `apps/admin-web/src/refunds.tsx`
 - `apps/admin-web/src/security.tsx`
@@ -59,24 +67,32 @@
 - `apps/api/prisma/migrations/20261004014500_wechat_prepay/migration.sql`
 - `apps/api/prisma/migrations/20261004022000_wechat_recovery/migration.sql`
 - `apps/api/prisma/migrations/20261004031000_staff_mfa/migration.sql`
+- `apps/api/prisma/migrations/20261004052000_browser_login/migration.sql`
 - `apps/api/prisma/schema.prisma`
 - `apps/api/prisma/seed.ts`
 - `apps/api/scripts/bootstrap-production.ts`
 - `apps/api/scripts/create-browser-fixture.ts`
+- `apps/api/scripts/verify-browser-login.ts`
 - `apps/api/scripts/verify-mall-flow.ts`
 - `apps/api/scripts/verify-mfa-flow.ts`
 - `apps/api/scripts/verify-wechat-payments.ts`
 - `apps/api/src/auth/access-control.service.test.ts`
 - `apps/api/src/auth/access-control.service.ts`
+- `apps/api/src/auth/auth-crypto.service.ts`
 - `apps/api/src/auth/auth.module.ts`
 - `apps/api/src/auth/auth.service.test.ts`
 - `apps/api/src/auth/auth.service.ts`
 - `apps/api/src/auth/auth.types.ts`
+- `apps/api/src/auth/browser-login.controller.ts`
+- `apps/api/src/auth/browser-login.service.test.ts`
+- `apps/api/src/auth/browser-login.service.ts`
 - `apps/api/src/auth/mfa.controller.ts`
 - `apps/api/src/auth/mfa.service.test.ts`
 - `apps/api/src/auth/mfa.service.ts`
 - `apps/api/src/auth/totp.test.ts`
 - `apps/api/src/auth/totp.ts`
+- `apps/api/src/auth/wechat-miniapp.client.test.ts`
+- `apps/api/src/auth/wechat-miniapp.client.ts`
 - `apps/api/src/config/env.test.ts`
 - `apps/api/src/config/env.ts`
 - `apps/api/src/main.ts`
@@ -119,6 +135,11 @@
 - `apps/miniapp/app.js`
 - `apps/miniapp/app.json`
 - `apps/miniapp/package.json`
+- `apps/miniapp/pages/admin-login/index.js`
+- `apps/miniapp/pages/admin-login/index.json`
+- `apps/miniapp/pages/admin-login/index.ts`
+- `apps/miniapp/pages/admin-login/index.wxml`
+- `apps/miniapp/pages/admin-login/index.wxss`
 - `apps/miniapp/pages/booking/index.js`
 - `apps/miniapp/pages/booking/index.json`
 - `apps/miniapp/pages/booking/index.ts`
@@ -131,6 +152,7 @@
 - `apps/miniapp/pages/orders/index.wxss`
 - `apps/miniapp/pages/profile/index.js`
 - `apps/miniapp/pages/profile/index.ts`
+- `apps/miniapp/pages/profile/index.wxml`
 - `apps/miniapp/pages/services/index.js`
 - `apps/miniapp/pages/services/index.ts`
 - `apps/miniapp/pages/services/index.wxml`
@@ -142,6 +164,7 @@
 - `apps/miniapp/utils/api.ts`
 - `apps/miniapp/utils/auth.js`
 - `apps/workbench-h5/tsconfig.app.tsbuildinfo`
+- `docs/BROWSER_LOGIN_IMPLEMENTATION.md`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
 - `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`

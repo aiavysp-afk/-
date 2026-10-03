@@ -50,6 +50,7 @@ createServer(async (req, res) => {
           method: req.method,
           headers: {
             "Content-Type": "application/json",
+            ...(req.headers.origin ? { Origin: req.headers.origin } : {}),
             ...(req.headers.authorization
               ? { Authorization: req.headers.authorization }
               : {}),

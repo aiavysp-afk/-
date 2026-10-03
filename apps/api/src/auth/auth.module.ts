@@ -8,12 +8,15 @@ import { SessionAuthGuard } from "./session-auth.guard.js";
 import { WechatMiniappClient } from "./wechat-miniapp.client.js";
 import { MfaController } from "./mfa.controller.js";
 import { MfaService } from "./mfa.service.js";
+import { BrowserLoginService } from "./browser-login.service.js";
+import { BrowserLoginController } from "./browser-login.controller.js";
 
 @Module({
-  controllers: [AuthController, AuditController, MfaController],
+  controllers: [AuthController, AuditController, MfaController, BrowserLoginController],
   providers: [
     AuthService,
     MfaService,
+    BrowserLoginService,
     AuthCryptoService,
     WechatMiniappClient,
     SessionAuthGuard,

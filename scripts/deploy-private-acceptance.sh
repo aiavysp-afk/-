@@ -10,7 +10,10 @@ release="$base/releases/$release_id"
 [[ $(realpath "$release") == "$base/releases/$release_id" && -f "$release/apps/api/dist/main.js" ]] || exit 1
 [[ $(<"$release/DEPLOY_COMMIT") == "$release_id" ]] || { echo 'Artifact commit mismatch'; exit 1; }
 free_kib=$(df -Pk "$base" | awk 'NR==2 {print $4}')
-(( free_kib > 3145728 )) || { echo 'Less than 3 GiB free; refusing new installation'; exit 1; }
+# Keep 3 GiB for the live business, plus conservative new-release/migration/backup headroom.
+headroom_kib=524288
+[[ -x "$base/runtime/node-v24.19.0-linux-x64/bin/node" && -d "$base/store" ]] || headroom_kib=1572864
+(( free_kib > 3145728 + headroom_kib )) || { echo 'Insufficient live-business reserve plus release headroom; refusing installation'; exit 1; }
 for port in 3210 3212 3213; do
   if ss -lntH | awk '{print $4}' | grep -Eq ":${port}$"; then
     systemctl is-active --quiet "zhongyuan-daojia-acceptance-$([[ $port == 3210 ]] && echo api || { [[ $port == 3212 ]] && echo admin || echo h5; }).service" || { echo 'Target port belongs to another service'; exit 1; }

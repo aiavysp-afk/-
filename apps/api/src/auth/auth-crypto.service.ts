@@ -32,6 +32,10 @@ export class AuthCryptoService {
     return this.hash("session", token);
   }
 
+  hashBrowserLogin(purpose: string, value: string) {
+    return this.hash(`browser-login:${purpose}`, value);
+  }
+
   hashIdentity(appId: string, subject: string) {
     return this.hash("wechat-miniapp-identity", `${appId}:${subject}`);
   }

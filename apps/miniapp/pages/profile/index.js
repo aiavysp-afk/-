@@ -42,6 +42,9 @@ Page({
             });
         }
     },
+    openAdminLogin() {
+        wx.navigateTo({ url: "/pages/admin-login/index" });
+    },
     async logout() {
         try {
             await (0, api_1.api)("/auth/logout", "POST", {});

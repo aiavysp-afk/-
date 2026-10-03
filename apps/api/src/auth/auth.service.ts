@@ -67,7 +67,13 @@ export class AuthService {
         throw new UnauthorizedException("账号不可用");
 
       await tx.session.create({
-        data: { userId: user.id, tokenHash, expiresAt },
+        data: {
+          userId: user.id,
+          tokenHash,
+          expiresAt,
+          authChannel: "WECHAT_MINIAPP",
+          authProvider: this.config.get("AUTH_PROVIDER", { infer: true }),
+        },
       });
       await tx.auditLog.create({
         data: {

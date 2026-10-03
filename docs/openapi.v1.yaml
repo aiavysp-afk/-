@@ -1,12 +1,119 @@
 openapi: 3.1.0
 info:
   title: 中原到家 API
-  version: 0.8.0
+  version: 0.9.0
   description: M2 开发接口；金额单位固定为人民币分。
 servers:
   - url: http://localhost:3100
     description: 本地开发
 paths:
+  /v1/auth/browser-login/config:
+    get:
+      summary: 获取登录交接开关与明确provider标签
+      responses:
+        "200":
+          {
+            description: enabled/provider/audience/固定三分钟期限，无秘密且no-store,
+          }
+  /v1/auth/browser-login/create:
+    post:
+      summary: 发起一次性后台配对，默认门禁关闭
+      description: 生产必须精确受信HTTPS Origin；只有真实socket peer用于共享限流。不得传身份/角色/redirect。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200":
+          {
+            description: 一次性pairCode/browserSecret/confirmationCode/expiresAt，no-store；秘密只留原电脑,
+          }
+        "400": { description: 参数错误 }
+        "403": { description: 不可信Origin }
+        "429": { description: 持久化创建限流 }
+        "503": { description: 门禁关闭 }
+  /v1/auth/browser-login/inspect:
+    post:
+      summary: 手机新微信会话核验配对，不回显核对数字或设备秘密
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pairCode]
+              properties:
+                { pairCode: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" } }
+      responses:
+        "200":
+          {
+            description: 固定audience/createdAt/expiresAt/provider，无身份秘密，no-store,
+          }
+        "401": { description: 非五分钟新小程序会话或过期配对 }
+        "403": { description: 客户或无有效staff资格 }
+        "409": { description: 配对已处理 }
+        "429": { description: 核验限流 }
+  /v1/auth/browser-login/approve:
+    post:
+      summary: 手机明确批准本人的电脑配对，不能批准自带的角色或回调
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pairCode, confirmationCode]
+              properties:
+                pairCode: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+                confirmationCode: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "200": { description: approved=true，无会话令牌，no-store }
+        "400": { description: 严格参数错误 }
+        "401":
+          { description: 无效源会话/核对错误/到期，错误次数持久化；五次取消 }
+        "403": { description: 无staff资格 }
+        "409": { description: 已批准/取消/消费 }
+        "429": { description: 核验限流 }
+  /v1/auth/browser-login/poll:
+    post:
+      summary: 原电脑持有高熵秘密查询配对状态，两秒间隔
+      requestBody: { $ref: "#/components/requestBodies/BrowserLoginProof" }
+      responses:
+        "200": { description: 只有status，不泄露身份/token/核对数字，no-store }
+        "401": { description: 凭证或期限无效 }
+        "403": { description: Origin不可信 }
+        "429": { description: 轮询过快 }
+  /v1/auth/browser-login/claim:
+    post:
+      summary: 原电脑仅一次领取全新后台会话，重新核验手机来源身份
+      description: 最多一小时，不继承手机MFA；领取响应丢失不能重发令牌，须重新配对。
+      requestBody: { $ref: "#/components/requestBodies/BrowserLoginProof" }
+      responses:
+        "200":
+          description: 一次性新AuthSession，no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  { data: { $ref: "#/components/schemas/AuthSession" } }
+        "401": { description: 源微信会话失效/陈旧/来源错误或设备秘密无效 }
+        "403": { description: staff资格已撤销或Origin不可信 }
+        "409": { description: 未批准/已领取/已取消 }
+  /v1/auth/browser-login/cancel:
+    post:
+      summary: 原电脑取消本次配对，不注销已经领取的会话
+      requestBody: { $ref: "#/components/requestBodies/BrowserLoginProof" }
+      responses:
+        "200": { description: cancelled=true，无令牌，no-store }
+        "401": { description: 凭证或期限无效 }
+        "403": { description: Origin不可信 }
+        "409": { description: 已领取，应独立注销电脑会话 }
   /v1/health:
     get:
       summary: 存活检查
@@ -112,7 +219,7 @@ paths:
               additionalProperties: false
               required: [code]
               properties:
-                code: { type: string, pattern: '^[0-9]{6}$' }
+                code: { type: string, pattern: "^[0-9]{6}$" }
       responses:
         "200": { description: 当前会话MFA有效期，不超过原会话期限 }
         "400": { description: 参数错误 }
@@ -132,7 +239,7 @@ paths:
               additionalProperties: false
               required: [code]
               properties:
-                code: { type: string, pattern: '^[0-9]{6}$' }
+                code: { type: string, pattern: "^[0-9]{6}$" }
       responses:
         "200": { description: 当前会话MFA有效期 }
         "400": { description: 参数错误 }
@@ -763,6 +870,23 @@ paths:
         "200": { description: 模拟成功或幂等重复 }
         "404": { description: 非Mock/生产禁止 }
 components:
+  requestBodies:
+    BrowserLoginProof:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [pairCode, browserSecret]
+            properties:
+              pairCode: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+              browserSecret:
+                {
+                  type: string,
+                  pattern: "^[A-Za-z0-9_-]{43}$",
+                  writeOnly: true,
+                }
   securitySchemes:
     bearerAuth:
       type: http

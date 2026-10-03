@@ -150,8 +150,36 @@ model Session {
   lastSeenAt       DateTime  @default(now())
   createdAt        DateTime  @default(now())
   mfaVerifiedUntil DateTime?
+  authChannel      String    @default("LEGACY")
+  authProvider     String    @default("unknown")
 
   @@index([userId, expiresAt])
+}
+
+model BrowserLoginChallenge {
+  id                String    @id
+  browserSecretHash String
+  confirmationHash  String
+  status            String    @default("PENDING")
+  failedAttempts    Int       @default(0)
+  approvedUserId    String?
+  approvedSessionId String?
+  claimedSessionId  String?   @unique
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  approvedAt        DateTime?
+  consumedAt        DateTime?
+  lastPolledAt      DateTime?
+
+  @@index([expiresAt])
+}
+
+model BrowserLoginRateLimit {
+  key       String   @id
+  count     Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 model MfaCredential {

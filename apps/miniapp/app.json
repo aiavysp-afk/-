@@ -5,7 +5,8 @@
     "pages/therapists/index",
     "pages/orders/index",
     "pages/profile/index",
-    "pages/booking/index"
+    "pages/booking/index",
+    "pages/admin-login/index"
   ],
   "window": {
     "navigationStyle": "custom",
