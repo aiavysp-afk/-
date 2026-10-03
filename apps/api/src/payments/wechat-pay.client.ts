@@ -9,6 +9,8 @@ import { ConfigService } from "@nestjs/config";
 import { createHash, randomBytes, sign, X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { AppEnv } from "../config/env.js";
+import type { WechatJsapiRequest } from "./payment-gateway.service.js";
+import type { WechatPayParameters } from "@zydj/contracts";
 import {
   decodeWechatNotification,
   decodeWechatRefundNotification,
@@ -59,6 +61,91 @@ export class WechatPayClient {
       await this.request(path),
       this.verifierConfig(),
     );
+  }
+
+  assertPrepayEnabled() {
+    this.assertEnabled();
+    if (
+      this.config.get("WECHAT_PAY_PREPAY_ENABLED", { infer: true }) !== "true"
+    )
+      throw new ServiceUnavailableException("真实微信预下单门禁未开启");
+    if (this.config.get("AUTH_PROVIDER", { infer: true }) !== "wechat")
+      throw new ServiceUnavailableException("真实预下单必须使用微信身份登录");
+    const callback = this.config.get("WECHAT_PAY_NOTIFY_URL", { infer: true });
+    let url: URL;
+    try {
+      url = new URL(callback);
+    } catch {
+      throw new ServiceUnavailableException("支付通知地址未配置");
+    }
+    if (url.protocol !== "https:" || url.username || url.password || url.hash)
+      throw new ServiceUnavailableException(
+        "支付通知地址必须是无凭据的HTTPS地址",
+      );
+    this.verifierConfig();
+  }
+
+  async prepay(request: WechatJsapiRequest) {
+    this.assertPrepayEnabled();
+    if (
+      request.appid !==
+        this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true }) ||
+      request.mchid !== this.config.get("WECHAT_MCH_ID", { infer: true }) ||
+      request.notify_url !==
+        this.config.get("WECHAT_PAY_NOTIFY_URL", { infer: true }) ||
+      !/^[A-Za-z0-9_\-|*]{6,32}$/.test(request.out_trade_no) ||
+      !request.description ||
+      [...request.description].length > 127 ||
+      !Number.isSafeInteger(request.amount.total) ||
+      request.amount.total <= 0 ||
+      request.amount.currency !== "CNY" ||
+      !request.payer.openid ||
+      request.payer.openid.length > 128 ||
+      request.payer.openid.startsWith("mock-") ||
+      !request.time_expire ||
+      Date.parse(request.time_expire) <= Date.now() + 60_000 ||
+      !Number.isFinite(Date.parse(request.time_expire))
+    )
+      throw new BadRequestException("微信预下单请求无效");
+    const result = await this.request(
+      "/v3/pay/transactions/jsapi",
+      "POST",
+      JSON.stringify(request),
+    );
+    if (
+      typeof result.prepay_id !== "string" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(result.prepay_id)
+    )
+      throw new BadGatewayException("微信预下单响应格式无效");
+    return result.prepay_id;
+  }
+
+  paymentParameters(prepayId: string): WechatPayParameters {
+    this.assertPrepayEnabled();
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(prepayId))
+      throw new BadRequestException("微信预支付标识无效");
+    const timeStamp = String(Math.floor(Date.now() / 1000));
+    const nonceStr = randomBytes(16).toString("hex");
+    const packageValue = `prepay_id=${prepayId}`;
+    try {
+      const appId = this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true });
+      const paySign = sign(
+        "RSA-SHA256",
+        Buffer.from(`${appId}\n${timeStamp}\n${nonceStr}\n${packageValue}\n`),
+        readFileSync(
+          this.config.get("WECHAT_PAY_PRIVATE_KEY_PATH", { infer: true }),
+        ),
+      ).toString("base64");
+      return {
+        timeStamp,
+        nonceStr,
+        package: packageValue,
+        signType: "RSA",
+        paySign,
+      };
+    } catch {
+      throw new ServiceUnavailableException("微信支付调起签名材料尚未就绪");
+    }
   }
 
   async queryRefund(outRefundNo: string) {

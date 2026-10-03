@@ -6,6 +6,7 @@ import {
   MoneyFenSchema,
   OrderCreateSchema,
   PaymentIntentSchema,
+  WechatPayParametersSchema,
   RefundRequestSchema,
   RefundReviewSchema,
   ServiceAdminUpdateSchema,
@@ -15,6 +16,26 @@ import {
 } from "./index.js";
 
 describe("money contract", () => {
+  it("accepts RSA SDK parameters and refuses V2/invalid prepay packages", () => {
+    const params = {
+      timeStamp: "123",
+      nonceStr: "nonce",
+      package: "prepay_id=wx-test",
+      signType: "RSA",
+      paySign: "signature",
+    };
+    expect(WechatPayParametersSchema.safeParse(params).success).toBe(true);
+    expect(
+      WechatPayParametersSchema.safeParse({ ...params, signType: "MD5" })
+        .success,
+    ).toBe(false);
+    expect(
+      WechatPayParametersSchema.safeParse({
+        ...params,
+        package: "prepay_id=x\nextra",
+      }).success,
+    ).toBe(false);
+  });
   it("preserves cents instead of rounding payable prices", () => {
     expect(formatMoney(19880)).toBe("¥198.80");
   });

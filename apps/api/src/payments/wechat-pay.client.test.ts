@@ -60,27 +60,112 @@ describe("WechatPayClient", () => {
             .toString()) as never);
   });
   afterEach(() => {
+    delete env.WECHAT_PAY_PREPAY_ENABLED;
+    delete env.WECHAT_PAY_NOTIFY_URL;
+    delete env.AUTH_PROVIDER;
     delete env.WECHAT_PAY_REFUND_ENABLED;
     delete env.WECHAT_PAY_REFUND_NOTIFY_URL;
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
+  it("signs exact JSAPI POST bytes and the four-line RSA SDK message", async () => {
+    env.WECHAT_PAY_PREPAY_ENABLED = "true";
+    env.AUTH_PROVIDER = "wechat";
+    env.WECHAT_PAY_NOTIFY_URL =
+      "https://api.example.test/v1/payments/wechat/notify";
+    const remote = vi
+      .fn()
+      .mockResolvedValue(response({ prepay_id: "wx-prepay-1" }));
+    vi.stubGlobal("fetch", remote);
+    const request = {
+      appid: "test-app",
+      mchid: "1234567890",
+      description: "中原到家-SPA",
+      out_trade_no: "PAY123456",
+      notify_url: env.WECHAT_PAY_NOTIFY_URL,
+      time_expire: new Date(Date.now() + 900_000).toISOString(),
+      amount: { total: 19880, currency: "CNY" as const },
+      payer: { openid: "real-openid" },
+    };
+    expect(await client().prepay(request)).toBe("wx-prepay-1");
+    const [url, options] = remote.mock.calls[0]!;
+    const auth = options.headers.Authorization as string;
+    expect(url).toBe("https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi");
+    expect(options.body).toBe(JSON.stringify(request));
+    expect(
+      verify(
+        "RSA-SHA256",
+        Buffer.from(
+          `POST\n/v3/pay/transactions/jsapi\n${auth.match(/timestamp="([^"]+)"/)![1]}\n${auth.match(/nonce_str="([^"]+)"/)![1]}\n${options.body}\n`,
+        ),
+        merchant.publicKey,
+        Buffer.from(auth.match(/signature="([^"]+)"/)![1]!, "base64"),
+      ),
+    ).toBe(true);
+    const sdk = client().paymentParameters("wx-prepay-1");
+    expect(sdk.signType).toBe("RSA");
+    expect(
+      verify(
+        "RSA-SHA256",
+        Buffer.from(
+          `${env.WECHAT_MINIAPP_APP_ID}\n${sdk.timeStamp}\n${sdk.nonceStr}\n${sdk.package}\n`,
+        ),
+        merchant.publicKey,
+        Buffer.from(sdk.paySign, "base64"),
+      ),
+    ).toBe(true);
+  });
+  it("prepay gate refuses provider-only and mock authentication without fetch", async () => {
+    const remote = vi.fn();
+    vi.stubGlobal("fetch", remote);
+    expect(() => client().assertPrepayEnabled()).toThrow(
+      ServiceUnavailableException,
+    );
+    env.WECHAT_PAY_PREPAY_ENABLED = "true";
+    env.AUTH_PROVIDER = "mock";
+    expect(() => client().assertPrepayEnabled()).toThrow(
+      ServiceUnavailableException,
+    );
+    expect(remote).not.toHaveBeenCalled();
+  });
+  it("does not accept tampered prepay responses", async () => {
+    env.WECHAT_PAY_PREPAY_ENABLED = "true";
+    env.AUTH_PROVIDER = "wechat";
+    env.WECHAT_PAY_NOTIFY_URL =
+      "https://api.example.test/v1/payments/wechat/notify";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(response({ prepay_id: "wx-prepay-1" }, 200, true)),
+    );
+    await expect(
+      client().prepay({
+        appid: "test-app",
+        mchid: "1234567890",
+        description: "SPA",
+        out_trade_no: "PAY123456",
+        notify_url: env.WECHAT_PAY_NOTIFY_URL,
+        time_expire: new Date(Date.now() + 900_000).toISOString(),
+        amount: { total: 19880, currency: "CNY" },
+        payer: { openid: "real-openid" },
+      }),
+    ).rejects.toThrow("验签失败");
+  });
   it("signs exact POST bytes only when the real refund gate is enabled", async () => {
     env.WECHAT_PAY_REFUND_ENABLED = "true";
     env.WECHAT_PAY_REFUND_NOTIFY_URL =
       "https://api.example.test/v1/payments/wechat/refund-notify";
-    const remote = vi
-      .fn()
-      .mockResolvedValue(
-        response({
-          transaction_id: "TX1",
-          out_trade_no: "PAY1",
-          out_refund_no: "RF1",
-          refund_id: "WRF1",
-          status: "PROCESSING",
-          amount: { total: 19880, refund: 19880 },
-        }),
-      );
+    const remote = vi.fn().mockResolvedValue(
+      response({
+        transaction_id: "TX1",
+        out_trade_no: "PAY1",
+        out_refund_no: "RF1",
+        refund_id: "WRF1",
+        status: "PROCESSING",
+        amount: { total: 19880, refund: 19880 },
+      }),
+    );
     vi.stubGlobal("fetch", remote);
     const provider = client();
     await provider.submitRefund(

@@ -176,6 +176,14 @@ export const PaymentStatusSchema = z.enum([
   "REFUNDED",
 ]);
 
+export const WechatPayParametersSchema = z.object({
+  timeStamp: z.string().regex(/^\d+$/),
+  nonceStr: z.string().min(1).max(32),
+  package: z.string().regex(/^prepay_id=[A-Za-z0-9_-]{1,128}$/),
+  signType: z.literal("RSA"),
+  paySign: z.string().min(1),
+});
+
 export const PaymentIntentSchema = z.object({
   id: z.string(),
   orderId: z.string(),
@@ -184,6 +192,8 @@ export const PaymentIntentSchema = z.object({
   amountFen: MoneyFenSchema,
   expiresAt: IsoDateTimeSchema,
   mockConfirmationAvailable: z.boolean(),
+  prepayState: z.enum(["NONE", "DISPATCHING", "READY", "UNKNOWN"]).optional(),
+  wechatPayParameters: WechatPayParametersSchema.optional(),
 });
 
 export const PublicConfigSchema = z.object({
@@ -291,6 +301,7 @@ export type OrderView = z.infer<typeof OrderViewSchema>;
 export type PaymentProvider = z.infer<typeof PaymentProviderSchema>;
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type PaymentIntent = z.infer<typeof PaymentIntentSchema>;
+export type WechatPayParameters = z.infer<typeof WechatPayParametersSchema>;
 export type RefundRequest = z.infer<typeof RefundRequestSchema>;
 export type RefundReview = z.infer<typeof RefundReviewSchema>;
 export type RefundView = z.infer<typeof RefundViewSchema>;

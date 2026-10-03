@@ -263,21 +263,32 @@ model Order {
   @@index([organizationId, status, appointmentStart])
 }
 
+enum WechatPrepayState {
+  NONE
+  DISPATCHING
+  READY
+  UNKNOWN
+}
+
 model Payment {
-  id                    String          @id @default(cuid())
-  orderId               String          @unique
-  order                 Order           @relation(fields: [orderId], references: [id])
+  id                    String            @id @default(cuid())
+  orderId               String            @unique
+  order                 Order             @relation(fields: [orderId], references: [id])
   provider              PaymentProvider
-  status                PaymentStatus   @default(PENDING)
-  merchantPaymentNo     String          @unique
+  status                PaymentStatus     @default(PENDING)
+  merchantPaymentNo     String            @unique
   amountFen             BigInt
-  refundReservedFen     BigInt          @default(0)
-  refundedFen           BigInt          @default(0)
+  refundReservedFen     BigInt            @default(0)
+  refundedFen           BigInt            @default(0)
   providerReference     String?
-  providerTransactionId String?         @unique
+  prepayState           WechatPrepayState @default(NONE)
+  prepayRequestedAt     DateTime?
+  prepayReadyAt         DateTime?
+  prepayFailureCode     String?
+  providerTransactionId String?           @unique
   failureCode           String?
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
   succeededAt           DateTime?
   closedAt              DateTime?
   events                PaymentEvent[]
@@ -299,29 +310,29 @@ model PaymentEvent {
 }
 
 model Refund {
-  id                    String       @id @default(cuid())
-  paymentId             String
-  payment               Payment      @relation(fields: [paymentId], references: [id])
-  merchantRefundNo      String       @unique
-  amountFen             BigInt
-  status                RefundStatus @default(REQUESTED)
-  reason                RefundReason
-  policyVersion         String
-  requestedById         String
-  reviewedById          String?
-  reviewCode            String?
-  idempotencyKey        String
-  requestFingerprint    String
-  providerRefundId      String?      @unique
-  requestedAt           DateTime     @default(now())
-  reviewedAt            DateTime?
-  submittedAt           DateTime?
-  succeededAt           DateTime?
-  nextCheckAt           DateTime?
-  checkAttempts         Int          @default(0)
-  updatedAt             DateTime     @updatedAt
-  events                RefundEvent[]
-  posting               RefundLedgerPosting?
+  id                 String               @id @default(cuid())
+  paymentId          String
+  payment            Payment              @relation(fields: [paymentId], references: [id])
+  merchantRefundNo   String               @unique
+  amountFen          BigInt
+  status             RefundStatus         @default(REQUESTED)
+  reason             RefundReason
+  policyVersion      String
+  requestedById      String
+  reviewedById       String?
+  reviewCode         String?
+  idempotencyKey     String
+  requestFingerprint String
+  providerRefundId   String?              @unique
+  requestedAt        DateTime             @default(now())
+  reviewedAt         DateTime?
+  submittedAt        DateTime?
+  succeededAt        DateTime?
+  nextCheckAt        DateTime?
+  checkAttempts      Int                  @default(0)
+  updatedAt          DateTime             @updatedAt
+  events             RefundEvent[]
+  posting            RefundLedgerPosting?
 
   @@unique([paymentId, idempotencyKey])
   @@index([paymentId, status])

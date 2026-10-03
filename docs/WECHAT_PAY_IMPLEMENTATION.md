@@ -12,7 +12,7 @@
 
 若订单已取消、支付截止时间已过或预约已释放，支付仍记录 `SUCCEEDED`，同时标记 `FULFILLMENT_REVIEW_REQUIRED` 并写待处理 Outbox。订单保持取消或转为取消，不恢复冲突预约。该待处理事件尚需接入运营界面、消息消费与人工安排/退款工作流。
 
-Mock 超时工作器跳过微信支付记录。真实微信支付需补充主动查单、渠道关单、再核实后释放的完整流程；当前预下单关闭，因此本地不存在可实际发起支付的微信订单。
+Mock 超时工作器跳过微信支付记录。JSAPI持久化签名POST、响应验签和RSA调起参数已加入，默认开关false；详见[预下单交付](WECHAT_PREPAY_IMPLEMENTATION.md)。真实微信支付仍需补充渠道关单、再核实后释放与自动查询。微信待查订单禁止本地取消或预约清理释放。
 
 ## 日账单核对
 
@@ -26,7 +26,7 @@ Mock 超时工作器跳过微信支付记录。真实微信支付需补充主动
 
 ## 退款范围
 
-退款记录、申请/独立复核、累计额度占用、固定业务号、签名通知/原单查询/恢复租约、成功一次记账已完成。真实退款POST由 `WECHAT_PAY_REFUND_ENABLED=false` 默认关闭；批准后先提交本地PROCESSING记录，再调用签名POST；网络不确定保留额度并转UNKNOWN，不自动重发POST或生成新单号。完整范围与接口见 [退款实现](REFUND_IMPLEMENTATION.md)。真实JSAPI预下单仍为503门禁，未发起实际资金交易。
+退款记录、申请/独立复核、累计额度占用、固定业务号、签名通知/原单查询/恢复租约、成功一次记账已完成。真实退款POST由 `WECHAT_PAY_REFUND_ENABLED=false` 默认关闭；批准后先提交本地PROCESSING记录，再调用签名POST；网络不确定保留额度并转UNKNOWN，不自动重发POST或生成新单号。完整范围与接口见 [退款实现](REFUND_IMPLEMENTATION.md)。真实JSAPI由独立WECHAT_PAY_PREPAY_ENABLED=false显式门禁控制；本轮未发起实际资金交易。
 
 ## 本地证据与官方来源
 

@@ -218,9 +218,13 @@ describe("OrdersService", () => {
     const current = orderRecord();
     const cancelled = orderRecord({ status: OrderStatus.CANCELLED });
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
       order: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(cancelled),
+        findUniqueOrThrow: vi
+          .fn()
+          .mockResolvedValueOnce(current)
+          .mockResolvedValue(cancelled),
       },
       appointmentReservation: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -250,5 +254,33 @@ describe("OrdersService", () => {
       where: { id: "reservation-1", status: ReservationStatus.HOLD },
       data: { status: ReservationStatus.RELEASED },
     });
+  });
+  it("does not release a reservation when a WeChat intent appeared while cancellation waited for the order lock", async () => {
+    const current = orderRecord();
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      order: {
+        findUniqueOrThrow: vi.fn(async () => ({
+          ...current,
+          payment: { provider: "WECHAT", status: "PENDING" },
+        })),
+        updateMany: vi.fn(),
+      },
+      appointmentReservation: { updateMany: vi.fn() },
+    };
+    const prisma = {
+      order: { findUnique: vi.fn(async () => current) },
+      $transaction: vi.fn(async (cb: any) => cb(tx)),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+    );
+    await expect(service.cancelOwn(principal, current.id)).rejects.toThrow(
+      "原单尚未确认关闭",
+    );
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+    expect(tx.appointmentReservation.updateMany).not.toHaveBeenCalled();
   });
 });

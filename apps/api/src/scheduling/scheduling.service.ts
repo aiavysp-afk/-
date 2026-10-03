@@ -67,6 +67,14 @@ export class SchedulingService {
         OR: [
           { status: ReservationStatus.CONFIRMED },
           { status: ReservationStatus.HOLD, expiresAt: { gt: now } },
+          {
+            status: ReservationStatus.HOLD,
+            order: {
+              is: {
+                payment: { is: { provider: "WECHAT", status: "PENDING" } },
+              },
+            },
+          },
         ],
       },
     });
@@ -239,6 +247,14 @@ export class SchedulingService {
           where: {
             status: ReservationStatus.HOLD,
             expiresAt: { lte: now },
+            // A pending channel transaction cannot be treated as unpaid by a booking cleanup path either.
+            NOT: {
+              order: {
+                is: {
+                  payment: { is: { provider: "WECHAT", status: "PENDING" } },
+                },
+              },
+            },
             OR: [
               { therapistId: input.therapistId },
               { customerId: principal.userId },

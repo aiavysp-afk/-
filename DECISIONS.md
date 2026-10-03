@@ -74,3 +74,10 @@
 - 真实退款POST改为显式默认关闭开关，网络前持久化原业务号；不确定时只查原单，不自动再次POST。真实JSAPI预下单仍未启用。
 - 小程序构建实际生成CommonJS运行文件；订单、目录和退款页接入HTTP，注销需吊销服务端会话。价格展示保留分而非四舍五入整元。
 - 本地完整Mock自测不等于真机或生产资金验收，交付文档明确生产阻断项与独立部署路径。
+
+## 2026-10-04｜JSAPI预下单下一步
+
+- JSAPI由独立WechatPrepayService持久化唯一Payment及DISPATCHING后签名POST；READY缓存标识，仅重新签SDK参数。UNKNOWN/崩溃/遗留NONE不自动重发。
+- WECHAT_PAY_PREPAY_ENABLED默认false，微信身份、当前AppID哈希、服务端整数分/期限及HTTPS回调是必要条件；provider标签不授权POST。
+- SDK成功不能确认本地订单，必须验签通知/查单；微信PENDING原单未确认关闭时，取消和新预约过期清理均不能释放占位。
+- 渠道关单/自动补偿及真机资金验收仍阻止公开生产收款，本轮没有访问真实资金接口或改动现有生产服务器。

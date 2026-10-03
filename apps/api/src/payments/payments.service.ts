@@ -21,6 +21,8 @@ import type { AppEnv } from "../config/env.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { OrderStateMachine } from "../orders/order-state-machine.js";
 import { PaymentGatewayService } from "./payment-gateway.service.js";
+import { WechatPrepayService } from "./wechat-prepay.service.js";
+import { Optional } from "@nestjs/common";
 
 @Injectable()
 export class PaymentsService {
@@ -29,9 +31,15 @@ export class PaymentsService {
     private readonly config: ConfigService<AppEnv, true>,
     private readonly stateMachine: OrderStateMachine,
     private readonly gateway: PaymentGatewayService,
+    @Optional() private readonly wechatPrepay?: WechatPrepayService,
   ) {}
 
   async createIntent(principal: AuthPrincipal, orderId: string) {
+    if (this.config.get("PAYMENT_PROVIDER", { infer: true }) === "wechat") {
+      if (!this.wechatPrepay)
+        throw new InternalServerErrorException("微信预下单服务未配置");
+      return this.wechatPrepay.createIntent(principal, orderId);
+    }
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { payment: true },

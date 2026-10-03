@@ -13,6 +13,7 @@ import { PaymentReconciliationService } from "./payment-reconciliation.service.j
 import { RefundsController } from "./refunds.controller.js";
 import { RefundsService } from "./refunds.service.js";
 import { RefundReconciliationWorker } from "./refund-reconciliation.worker.js";
+import { WechatPrepayService } from "./wechat-prepay.service.js";
 
 @Module({
   imports: [AuthModule, OrdersModule],
@@ -27,6 +28,7 @@ import { RefundReconciliationWorker } from "./refund-reconciliation.worker.js";
     PaymentGatewayService,
     PaymentExpiryWorker,
     WechatPayClient,
+    WechatPrepayService,
     WechatPaymentsService,
     PaymentReconciliationService,
     RefundsService,

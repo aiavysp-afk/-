@@ -4,6 +4,15 @@ declare function Page<T extends object>(
 ): void;
 declare function getApp<T extends object>(): T;
 declare const wx: {
+  requestPayment(options: {
+    timeStamp: string;
+    nonceStr: string;
+    package: string;
+    signType: "RSA";
+    paySign: string;
+    success(): void;
+    fail(error: { errMsg: string }): void;
+  }): void;
   navigateTo(options: { url: string }): void;
   switchTab(options: { url: string }): void;
   showModal(options: {

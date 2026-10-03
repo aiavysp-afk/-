@@ -45,7 +45,7 @@ describe("PaymentGatewayService", () => {
     });
   });
 
-  it("keeps real WeChat prepay disabled until the controlled integration", () => {
+  it("refuses a non-durable direct WeChat preparation", () => {
     const gateway = new PaymentGatewayService(
       config({ PAYMENT_PROVIDER: "wechat" }),
     );

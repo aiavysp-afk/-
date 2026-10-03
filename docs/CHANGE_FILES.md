@@ -1,16 +1,14 @@
 # 本次改动文件清单
 
-日期：2026-10-04。相对初始main提交e448c3e，共94个文件（含新增、修改和从Git移除的构建缓存）。包含本地连续开发的支付通知/查单/账单安全修复与本次退款闭环交付。
+日期：2026-10-04。相对初始main提交e448c3e，共103个文件（含新增、修改和从Git移除的构建缓存）。此前退款交付94个文件；本轮在main e8129c5之上继续加入JSAPI预下单、RSA调起参数、微信待查预约保护与增量验证。
 
-核心改动：退款数据/4批增量迁移、双人复核和预算一致性、微信签名通知/POST/查询恢复、小程序商城接入、管理端退款UI、自动验证/CI、环境变量及隔离部署。
+核心改动：退款数据/4批增量迁移、双人复核和预算一致性、微信签名通知/POST/查询恢复、小程序商城接入、管理端退款UI、自动验证/CI、环境变量及隔离部署；新增第12批预下单迁移和单次持久化派发服务。
 
 以下两个tsbuildinfo仅从仓库跟踪移除，本地文件保留且被.gitignore忽略；不删除用户源代码。小程序JS是与TS一致的实际运行文件，应随源码一同提交。
 
 - `.env.example`
 - `.github/workflows/ci.yml`
 - `.gitignore`
-- `DECISIONS.md`
-- `README.md`
 - `apps/admin-web/src/main.tsx`
 - `apps/admin-web/src/refunds.tsx`
 - `apps/admin-web/src/styles.css`
@@ -20,6 +18,7 @@
 - `apps/api/prisma/migrations/20261004000500_refund_consistency/migration.sql`
 - `apps/api/prisma/migrations/20261004005000_refund_review_guards/migration.sql`
 - `apps/api/prisma/migrations/20261004005500_refund_review_code_not_null/migration.sql`
+- `apps/api/prisma/migrations/20261004014500_wechat_prepay/migration.sql`
 - `apps/api/prisma/schema.prisma`
 - `apps/api/prisma/seed.ts`
 - `apps/api/scripts/bootstrap-production.ts`
@@ -32,6 +31,10 @@
 - `apps/api/src/config/env.ts`
 - `apps/api/src/main.ts`
 - `apps/api/src/orders/order-state-machine.ts`
+- `apps/api/src/orders/orders.service.test.ts`
+- `apps/api/src/orders/orders.service.ts`
+- `apps/api/src/payments/payment-gateway.service.test.ts`
+- `apps/api/src/payments/payment-gateway.service.ts`
 - `apps/api/src/payments/payment-reconciliation.controller.ts`
 - `apps/api/src/payments/payment-reconciliation.service.test.ts`
 - `apps/api/src/payments/payment-reconciliation.service.ts`
@@ -56,6 +59,9 @@
 - `apps/api/src/payments/wechat-payments.controller.ts`
 - `apps/api/src/payments/wechat-payments.service.test.ts`
 - `apps/api/src/payments/wechat-payments.service.ts`
+- `apps/api/src/payments/wechat-prepay.service.test.ts`
+- `apps/api/src/payments/wechat-prepay.service.ts`
+- `apps/api/src/scheduling/scheduling.service.ts`
 - `apps/miniapp/app.js`
 - `apps/miniapp/app.json`
 - `apps/miniapp/package.json`
@@ -82,23 +88,26 @@
 - `apps/miniapp/utils/api.ts`
 - `apps/miniapp/utils/auth.js`
 - `apps/workbench-h5/tsconfig.app.tsbuildinfo`
+- `DECISIONS.md`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
 - `docs/ENV_VARIABLES.md`
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/INTEGRATION_GATES.md`
+- `docs/openapi.v1.yaml`
 - `docs/REFUND_IMPLEMENTATION.md`
 - `docs/SELF_TEST_REPORT.md`
 - `docs/WECHAT_PAY_IMPLEMENTATION.md`
-- `docs/openapi.v1.yaml`
+- `docs/WECHAT_PREPAY_IMPLEMENTATION.md`
 - `infra/database-init.sql`
 - `infra/docker-compose.dev.yml`
 - `infra/nginx.example.conf`
 - `infra/zhongyuan-daojia.service`
 - `packages/contracts/src/index.test.ts`
 - `packages/contracts/src/index.ts`
+- `README.md`
 - `scripts/database-init.ps1`
 - `scripts/database-init.sh`
 - `turbo.json`
 
-不包含：生产.env、证书/私钥、运行日志、node_modules、dist、.codex-runtime验收截图。人工上线检查项见DEPLOYMENT.md末节。
+不包含：生产.env、证书/私钥、运行日志、node_modules、dist、.codex-runtime验收截图。人工上线检查项见DEPLOYMENT.md末节；预下单验收边界见WECHAT_PREPAY_IMPLEMENTATION.md。

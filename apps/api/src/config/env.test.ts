@@ -10,6 +10,12 @@ const productionAuth = {
 } as const;
 
 describe("production safety gate", () => {
+  it("keeps the prepay gate opt-in independently of provider selection", () => {
+    expect(
+      validateEnv({ PAYMENT_PROVIDER: "wechat" }).WECHAT_PAY_PREPAY_ENABLED,
+    ).toBe("false");
+    expect(() => validateEnv({ WECHAT_PAY_PREPAY_ENABLED: "yes" })).toThrow();
+  });
   it("defaults real refund submission to closed and requires an HTTPS callback when enabled", () => {
     expect(
       validateEnv({ NODE_ENV: "development" }).WECHAT_PAY_REFUND_ENABLED,

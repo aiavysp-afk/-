@@ -8,6 +8,7 @@ export interface WechatJsapiPrepareInput {
   outTradeNo: string;
   totalFen: number;
   payerOpenId: string;
+  expiresAt?: Date;
 }
 
 export interface WechatJsapiRequest {
@@ -18,6 +19,7 @@ export interface WechatJsapiRequest {
   notify_url: string;
   amount: { total: number; currency: "CNY" };
   payer: { openid: string };
+  time_expire?: string;
 }
 
 @Injectable()
@@ -39,7 +41,7 @@ export class PaymentGatewayService {
       };
     }
     throw new ServiceUnavailableException(
-      "微信 JSAPI 支付尚未完成受控开通，未发起真实预下单",
+      "微信支付必须通过持久化预下单服务，不能直接使用无记录网关",
     );
   }
 
@@ -52,6 +54,13 @@ export class PaymentGatewayService {
       notify_url: this.config.get("WECHAT_PAY_NOTIFY_URL", { infer: true }),
       amount: { total: input.totalFen, currency: "CNY" },
       payer: { openid: input.payerOpenId },
+      ...(input.expiresAt
+        ? {
+            time_expire: input.expiresAt
+              .toISOString()
+              .replace(/\.\d{3}Z$/, "+00:00"),
+          }
+        : {}),
     };
   }
 }

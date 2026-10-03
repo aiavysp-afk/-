@@ -330,7 +330,7 @@ paths:
   /v1/orders/{id}/payment-intent:
     post:
       summary: 为当前用户的待支付订单创建支付意图
-      description: 每个订单最多一条支付记录；开发环境返回 MOCK，微信模式在受控接入完成前返回 503，不发起真实预下单。
+      description: 每个订单最多一条支付记录。MOCK仅限非生产。微信预下单需显式开启门禁并使用微信身份；先持久化DISPATCHING再签名POST，READY返回RSA调起参数，DISPATCHING/UNKNOWN/遗留NONE只返回原记录，不重新POST。最终支付状态以验签通知/查单为准。
       security: [{ bearerAuth: [] }]
       parameters:
         - in: path
@@ -350,7 +350,9 @@ paths:
         "403": { description: 不能支付其他用户订单 }
         "404": { description: 订单不存在 }
         "409": { description: 订单状态不允许支付或支付已超时 }
-        "503": { description: 微信 JSAPI 尚未完成受控开通，未发起真实预下单 }
+        "502":
+          { description: 预下单结果未确认，保留原单并人工查单，禁止自动重发 }
+        "503": { description: 微信预下单开关关闭、微信身份或签名配置未就绪 }
   /v1/dev/payments/{id}/succeed:
     post:
       summary: 在本地开发模式确认 Mock 支付成功
@@ -887,6 +889,19 @@ components:
         mockConfirmationAvailable:
           type: boolean
           description: 只有非生产 Mock 模式为 true
+        prepayState:
+          type: string
+          enum: [NONE, DISPATCHING, READY, UNKNOWN]
+        wechatPayParameters:
+          type: object
+          description: 仅待支付且READY的微信单返回；前端成功回调不能直接确认订单已支付
+          required: [timeStamp, nonceStr, package, signType, paySign]
+          properties:
+            timeStamp: { type: string }
+            nonceStr: { type: string, maxLength: 32 }
+            package: { type: string, description: prepay_id=预支付标识 }
+            signType: { type: string, enum: [RSA] }
+            paySign: { type: string }
     Membership:
       type: object
       required: [organizationId, role]

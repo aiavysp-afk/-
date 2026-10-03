@@ -220,6 +220,26 @@ try {
     "published catalog/detail, slots, quote, encrypted address and concurrent idempotent ordering",
   );
 
+  const runtimeConfig = app.get(ConfigService);
+  runtimeConfig.set("PAYMENT_PROVIDER", "wechat");
+  try {
+    await call(
+      `/orders/${order.id}/payment-intent`,
+      customer.token,
+      {},
+      undefined,
+      503,
+    );
+    assert.equal(
+      await prisma.payment.count({ where: { orderId: order.id } }),
+      0,
+    );
+  } finally {
+    runtimeConfig.set("PAYMENT_PROVIDER", "mock");
+  }
+  checks.push(
+    "real HTTP WeChat prepay routing and closed gate create no payment/no channel POST",
+  );
   const intents = await Promise.all([
     call(
       `/orders/${order.id}/payment-intent`,
@@ -471,6 +491,81 @@ try {
     undefined,
     409,
   );
+  // Protect the alternate booking cleanup path from releasing an uncertain WeChat payment.
+  await prisma.order.update({
+    where: { id: cancelOrder.id },
+    data: {
+      status: "PENDING_PAYMENT",
+      paymentExpiresAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 900_000),
+    },
+  });
+  await prisma.appointmentReservation.update({
+    where: { id: cancelHold.id },
+    data: {
+      status: "HOLD",
+      expiresAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 900_000),
+    },
+  });
+  const protectedPayment = await prisma.payment.create({
+    data: {
+      orderId: cancelOrder.id,
+      provider: "WECHAT",
+      merchantPaymentNo: `PAY${randomUUID().replaceAll("-", "").slice(0, 25)}`,
+      amountFen: BigInt(cancelOrder.payableFen),
+    },
+  });
+  const protectedSlots = await call(
+    `/availability/slots?serviceId=${service.id}&date=${date}`,
+  );
+  assert.ok(
+    !protectedSlots.some(
+      (slot: any) =>
+        slot.therapistId === therapist.user.id &&
+        slot.startsAt === cancelHold.startsAt,
+    ),
+  );
+  await call(
+    "/booking-holds",
+    customer.token,
+    {
+      serviceId: service.id,
+      therapistId: therapist.user.id,
+      startsAt: cancelHold.startsAt,
+    },
+    undefined,
+    409,
+  );
+  assert.equal(
+    (await prisma.order.findUniqueOrThrow({ where: { id: cancelOrder.id } }))
+      .status,
+    "PENDING_PAYMENT",
+  );
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: cancelHold.id },
+      })
+    ).status,
+    "HOLD",
+  );
+  // Restore only this script's synthetic fixture so later page tests can use the same test timetable.
+  await prisma.payment.update({
+    where: { id: protectedPayment.id },
+    data: { status: "CLOSED", closedAt: new Date() },
+  });
+  await prisma.order.update({
+    where: { id: cancelOrder.id },
+    data: { status: "CANCELLED" },
+  });
+  await prisma.appointmentReservation.update({
+    where: { id: cancelHold.id },
+    data: { status: "RELEASED" },
+  });
+  checks.push(
+    "expired pending WeChat holds stay unavailable and cannot be released by a new booking's cleanup",
+  );
   await call("/auth/logout", customer.token, {});
   await call("/auth/me", customer.token, undefined, undefined, 401);
   checks.push(
@@ -573,6 +668,89 @@ try {
     );
     checks.push(
       "compiled miniapp catalog, booking, login, payment and own refund page logic against HTTP",
+    );
+    // Isolated SDK callbacks/transport substitutes: no wx.requestPayment is run on a real device.
+    let sdkCalls = 0,
+      reconcileCalls = 0;
+    let sdkMode = "success",
+      ready = true;
+    const virtualOrder = {
+      ...pending,
+      id: "page-wechat",
+      status: "PENDING_PAYMENT",
+    };
+    globals.wx.requestPayment = (options: any) => {
+      sdkCalls++;
+      assert.equal(options.signType, "RSA");
+      assert.equal(options.package, "prepay_id=wx-local-page");
+      if (sdkMode === "success") options.success();
+      else
+        options.fail({
+          errMsg:
+            sdkMode === "cancel"
+              ? "requestPayment:fail cancel"
+              : "requestPayment:fail test",
+        });
+    };
+    const liveRequest = globals.wx.request;
+    globals.wx.request = (options: any) => {
+      const path = new URL(options.url).pathname.replace(/^\/v1/, "");
+      if (path.startsWith("/dev/payments/"))
+        throw new Error("WeChat page must never confirm mock success");
+      let data: any;
+      if (path === "/orders/page-wechat/payment-intent")
+        data = {
+          id: "page-payment",
+          orderId: "page-wechat",
+          provider: "WECHAT",
+          status: "PENDING",
+          amountFen: 19880,
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          mockConfirmationAvailable: false,
+          prepayState: ready ? "READY" : "UNKNOWN",
+          ...(ready
+            ? {
+                wechatPayParameters: {
+                  timeStamp: "123",
+                  nonceStr: "local",
+                  package: "prepay_id=wx-local-page",
+                  signType: "RSA",
+                  paySign: "test-placeholder",
+                },
+              }
+            : {}),
+        };
+      else if (path === "/payments/page-payment/reconcile") {
+        reconcileCalls++;
+        data = { status: "PENDING", providerState: "NOTPAY" };
+      } else if (path === "/orders") data = [virtualOrder];
+      else if (path === "/orders/page-wechat/refunds") data = [];
+      else {
+        liveRequest(options);
+        return;
+      }
+      options.success({ statusCode: 200, data: { data } });
+    };
+    for (const mode of ["success", "cancel", "failure"]) {
+      sdkMode = mode;
+      await orderPage.action({
+        currentTarget: { dataset: { id: "page-wechat", action: "pay" } },
+      });
+      assert.equal(orderPage.data.error, "");
+      assert.equal(orderPage.data.orders[0].status, "PENDING_PAYMENT");
+    }
+    assert.equal(sdkCalls, 3);
+    assert.equal(reconcileCalls, 2);
+    ready = false;
+    await orderPage.action({
+      currentTarget: { dataset: { id: "page-wechat", action: "pay" } },
+    });
+    assert.equal(sdkCalls, 3);
+    assert.equal(reconcileCalls, 3);
+    assert.match(orderPage.data.error, /结果未确认/);
+    assert.equal(orderPage.data.orders[0].status, "PENDING_PAYMENT");
+    checks.push(
+      "compiled WeChat page SDK success/cancel/failure and UNKNOWN use server query, never local settlement or mock confirmation (isolated SDK/transport fixtures)",
     );
   } finally {
     globals.wx = previous.wx;

@@ -5,7 +5,13 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { OrderStatus, Prisma, ReservationStatus } from "@prisma/client";
+import {
+  OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
+  Prisma,
+  ReservationStatus,
+} from "@prisma/client";
 import type {
   OrderCreate,
   OrderQuote,
@@ -233,6 +239,21 @@ export class OrdersService {
     );
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id} FOR UPDATE`;
+      const locked = await tx.order.findUniqueOrThrow({
+        where: { id },
+        include: { items: true, payment: true },
+      });
+      if (locked.status === OrderStatus.CANCELLED) return locked;
+      if (locked.status !== current.status)
+        throw new ConflictException("订单状态已变化");
+      if (
+        locked.payment?.provider === PaymentProvider.WECHAT &&
+        locked.payment.status === PaymentStatus.PENDING
+      )
+        throw new ConflictException(
+          "微信支付原单尚未确认关闭，请先查单并联系人工处理；不能直接释放预约",
+        );
       const result = await tx.order.updateMany({
         where: { id, customerId: principal.userId, status: current.status },
         data: { status: next },

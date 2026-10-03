@@ -26,6 +26,9 @@ import { OrdersService } from "../src/orders/orders.service.js";
 import { RefundsService } from "../src/payments/refunds.service.js";
 import { AccessControlService } from "../src/auth/access-control.service.js";
 import { RefundReconciliationWorker } from "../src/payments/refund-reconciliation.worker.js";
+import { WechatPrepayService } from "../src/payments/wechat-prepay.service.js";
+import { PaymentGatewayService } from "../src/payments/payment-gateway.service.js";
+import { AuthCryptoService } from "../src/auth/auth-crypto.service.js";
 
 const databaseUrl = process.env.PAYMENT_DB_TEST_URL;
 if (!databaseUrl)
@@ -33,10 +36,10 @@ if (!databaseUrl)
 const target = new URL(databaseUrl);
 if (
   !["127.0.0.1", "localhost"].includes(target.hostname) ||
-  target.pathname !== "/zhongyuan_daojia"
+  !["/zhongyuan_daojia", "/zhongyuan_daojia_test"].includes(target.pathname)
 )
   throw new Error(
-    "This verifier only accepts the local zhongyuan_daojia development database",
+    "This verifier only accepts the dedicated local development/test databases",
   );
 const prisma = new PrismaService({ datasourceUrl: databaseUrl });
 const prefix = `payment-verification-${randomUUID()}`;
@@ -250,6 +253,152 @@ try {
     };
     return { order, payment, reservation, transaction, principal };
   }
+
+  const prepayConfig = new ConfigService({
+    NODE_ENV: "test",
+    PAYMENT_PROVIDER: "wechat",
+    AUTH_PROVIDER: "wechat",
+    BRAND_NAME: "中原到家",
+    WECHAT_MINIAPP_APP_ID: protocolConfig.appId,
+    WECHAT_MCH_ID: protocolConfig.merchantId,
+    WECHAT_PAY_NOTIFY_URL:
+      "https://localhost.invalid/v1/payments/wechat/notify",
+    AUTH_SESSION_PEPPER: `local-verification-${randomUUID()}`,
+    DATA_ENCRYPTION_KEY_BASE64: Buffer.alloc(32, 2).toString("base64"),
+  }) as never;
+  const prepayCrypto = new AuthCryptoService(prepayConfig);
+  let prepayPosts = 0;
+  let failPrepay = false;
+  const prepayClient = {
+    assertPrepayEnabled: () => {},
+    prepay: async (request: any) => {
+      prepayPosts++;
+      assert.equal(request.amount.total, 19800);
+      assert.equal(request.amount.currency, "CNY");
+      assert.equal(request.appid, protocolConfig.appId);
+      assert.equal(request.mchid, protocolConfig.merchantId);
+      assert.ok(request.time_expire.endsWith("+00:00"));
+      if (failPrepay) throw new Error("simulated prepay timeout");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return "wx-local-prepay";
+    },
+    paymentParameters: () => ({
+      timeStamp: "123",
+      nonceStr: "local",
+      package: "prepay_id=wx-local-prepay",
+      signType: "RSA",
+      paySign: "local-only-placeholder",
+    }),
+  };
+  const prepay = new WechatPrepayService(
+    prisma,
+    prepayConfig,
+    prepayCrypto,
+    new PaymentGatewayService(prepayConfig),
+    prepayClient as never,
+  );
+  async function prepayFixture() {
+    const result = await fixture();
+    // Only this verifier's newly-created, event-free fixture is removed, never an existing merchant payment.
+    await prisma.payment.delete({ where: { id: result.payment.id } });
+    const subject = `verification-openid-${randomUUID()}`;
+    await prisma.externalIdentity.create({
+      data: {
+        userId: result.principal.userId,
+        provider: "WECHAT_MINIAPP",
+        subjectHash: prepayCrypto.hashIdentity(protocolConfig.appId, subject),
+        subjectEncrypted: prepayCrypto.encrypt(subject),
+      },
+    });
+    return result;
+  }
+  const preparedFixture = await prepayFixture();
+  const prepayResults = await Promise.all(
+    Array.from({ length: 8 }, () =>
+      prepay.createIntent(preparedFixture.principal, preparedFixture.order.id),
+    ),
+  );
+  assert.equal(prepayPosts, 1);
+  assert.equal(new Set(prepayResults.map((intent) => intent.id)).size, 1);
+  const readyIntent = await prepay.createIntent(
+    preparedFixture.principal,
+    preparedFixture.order.id,
+  );
+  assert.equal(readyIntent.prepayState, "READY");
+  assert.equal(readyIntent.wechatPayParameters?.signType, "RSA");
+  assert.equal(prepayPosts, 1);
+  assert.equal(
+    (
+      await prisma.order.findUniqueOrThrow({
+        where: { id: preparedFixture.order.id },
+      })
+    ).status,
+    "PENDING_PAYMENT",
+  );
+  await assert.rejects(
+    orders.cancelOwn(preparedFixture.principal, preparedFixture.order.id),
+    /原单尚未确认关闭/,
+  );
+  assert.equal(
+    (
+      await prisma.appointmentReservation.findUniqueOrThrow({
+        where: { id: preparedFixture.reservation.id },
+      })
+    ).status,
+    "HOLD",
+  );
+  await payments.applyTransaction(
+    {
+      ...preparedFixture.transaction,
+      out_trade_no: (
+        await prisma.payment.findUniqueOrThrow({
+          where: { id: readyIntent.id },
+        })
+      ).merchantPaymentNo,
+    },
+    `${prefix}-prepay-paid`,
+    "QUERY",
+  );
+  assert.equal(
+    (
+      await prisma.order.findUniqueOrThrow({
+        where: { id: preparedFixture.order.id },
+      })
+    ).status,
+    "PAID",
+  );
+  await assert.rejects(
+    prepay.createIntent(preparedFixture.principal, preparedFixture.order.id),
+  );
+  assert.equal(prepayPosts, 1);
+
+  const unknownFixture = await prepayFixture();
+  failPrepay = true;
+  await assert.rejects(
+    prepay.createIntent(unknownFixture.principal, unknownFixture.order.id),
+    /结果未确认/,
+  );
+  const unknownIntent = await prepay.createIntent(
+    unknownFixture.principal,
+    unknownFixture.order.id,
+  );
+  assert.equal(unknownIntent.prepayState, "UNKNOWN");
+  assert.equal(unknownIntent.wechatPayParameters, undefined);
+  assert.equal(prepayPosts, 2);
+  await assert.rejects(
+    prisma.payment.update({
+      where: { id: unknownIntent.id },
+      data: { prepayState: "READY" },
+    }),
+  );
+  assert.equal(
+    (
+      await prisma.payment.findUniqueOrThrow({
+        where: { id: unknownIntent.id },
+      })
+    ).prepayState,
+    "UNKNOWN",
+  );
 
   const first = await fixture();
   const signed = notification(first.transaction, `${prefix}-concurrent`);
@@ -546,6 +695,10 @@ try {
     JSON.stringify({
       verified: true,
       concurrentNotificationExactlyOnce: true,
+      concurrentPrepaySingleDispatch: true,
+      prepayTimeoutNeverResubmitted: prepayPosts === 2,
+      pendingWechatCancellationDoesNotRelease: true,
+      prepayDatabaseGuards: true,
       mismatchedAmountRejected: true,
       latePaymentReviewRecorded: true,
       cancelPaymentRaceConsistent: true,
