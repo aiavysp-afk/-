@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  THERAPIST
+  OPERATOR
+  DISPATCHER
+  FINANCE_REQUESTER
+  FINANCE_APPROVER
+  SAFETY_DUTY
+  ADMIN
+}
+
+enum IdentityProvider {
+  WECHAT_MINIAPP
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ServiceCategory {
+  MASSAGE
+  SPA_RELAXATION
+  FOOT_CARE
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  DISPATCHING
+  ASSIGNED
+  EN_ROUTE
+  ARRIVED
+  IN_SERVICE
+  AWAITING_CONFIRMATION
+  COMPLETED
+  CANCELLED
+  REFUNDING
+  REFUNDED
+}
+
+enum ShiftStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum ReservationStatus {
+  HOLD
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
+enum PaymentProvider {
+  MOCK
+  WECHAT
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  CLOSED
+  FAILED
+  REFUNDING
+  REFUNDED
+}
+
+model Organization {
+  id           String                   @id @default(cuid())
+  name         String
+  createdAt    DateTime                 @default(now())
+  users        User[]
+  memberships  StaffMembership[]
+  services     Service[]
+  orders       Order[]
+  shifts       TherapistShift[]
+  reservations AppointmentReservation[]
+}
+
+model User {
+  id                    String                   @id @default(cuid())
+  organizationId        String?
+  organization          Organization?            @relation(fields: [organizationId], references: [id])
+  role                  UserRole
+  displayName           String
+  phoneEncrypted        String?
+  status                String                   @default("ACTIVE")
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  identities            ExternalIdentity[]
+  sessions              Session[]
+  memberships           StaffMembership[]
+  customerOrders        Order[]                  @relation("CustomerOrders")
+  therapistOrders       Order[]                  @relation("TherapistOrders")
+  therapistShifts       TherapistShift[]         @relation("TherapistShifts")
+  customerReservations  AppointmentReservation[] @relation("CustomerReservations")
+  therapistReservations AppointmentReservation[] @relation("TherapistReservations")
+}
+
+model ExternalIdentity {
+  id               String           @id @default(cuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider         IdentityProvider
+  subjectHash      String
+  subjectEncrypted String
+  unionIdHash      String?
+  unionIdEncrypted String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([provider, subjectHash])
+  @@index([userId, provider])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastSeenAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model StaffMembership {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           UserRole
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([userId, organizationId, role])
+  @@index([organizationId, status, role])
+}
+
+model Service {
+  id              String                   @id @default(cuid())
+  organizationId  String
+  organization    Organization             @relation(fields: [organizationId], references: [id])
+  slug            String                   @unique
+  name            String
+  category        ServiceCategory
+  subtitle        String
+  badge           String?
+  description     String
+  durationMinutes Int
+  priceFen        BigInt
+  featured        Boolean                  @default(false)
+  published       Boolean                  @default(false)
+  steps           Json
+  boundaries      Json
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  orderItems      OrderItem[]
+  reservations    AppointmentReservation[]
+}
+
+model TherapistShift {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  therapistId    String
+  therapist      User         @relation("TherapistShifts", fields: [therapistId], references: [id])
+  startsAt       DateTime
+  endsAt         DateTime
+  status         ShiftStatus  @default(ACTIVE)
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, startsAt])
+  @@index([therapistId, status, startsAt])
+}
+
+model AppointmentReservation {
+  id               String            @id @default(cuid())
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  serviceId        String
+  service          Service           @relation(fields: [serviceId], references: [id])
+  therapistId      String
+  therapist        User              @relation("TherapistReservations", fields: [therapistId], references: [id])
+  customerId       String
+  customer         User              @relation("CustomerReservations", fields: [customerId], references: [id])
+  serviceAmountFen BigInt
+  startsAt         DateTime
+  endsAt           DateTime
+  expiresAt        DateTime
+  status           ReservationStatus @default(HOLD)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  order            Order?
+
+  @@index([organizationId, startsAt])
+  @@index([therapistId, status, startsAt])
+  @@index([customerId, status, expiresAt])
+}
+
+model Order {
+  id                 String                  @id @default(cuid())
+  orderNo            String                  @unique
+  organizationId     String
+  organization       Organization            @relation(fields: [organizationId], references: [id])
+  customerId         String
+  customer           User                    @relation("CustomerOrders", fields: [customerId], references: [id])
+  therapistId        String?
+  therapist          User?                   @relation("TherapistOrders", fields: [therapistId], references: [id])
+  reservationId      String?                 @unique
+  reservation        AppointmentReservation? @relation(fields: [reservationId], references: [id])
+  status             OrderStatus
+  appointmentStart   DateTime
+  appointmentEnd     DateTime
+  serviceAmountFen   BigInt
+  travelFeeFen       BigInt
+  discountFen        BigInt                  @default(0)
+  payableFen         BigInt
+  addressEncrypted   String
+  policyVersion      String
+  paymentExpiresAt   DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  items              OrderItem[]
+  events             OrderEvent[]
+  payment            Payment?
+  idempotencyKey     String
+  requestFingerprint String
+
+  @@unique([customerId, idempotencyKey])
+  @@index([organizationId, status, appointmentStart])
+}
+
+model Payment {
+  id                    String          @id @default(cuid())
+  orderId               String          @unique
+  order                 Order           @relation(fields: [orderId], references: [id])
+  provider              PaymentProvider
+  status                PaymentStatus   @default(PENDING)
+  merchantPaymentNo     String          @unique
+  amountFen             BigInt
+  providerReference     String?
+  providerTransactionId String?         @unique
+  failureCode           String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  succeededAt           DateTime?
+  closedAt              DateTime?
+  events                PaymentEvent[]
+
+  @@index([status, createdAt])
+}
+
+model PaymentEvent {
+  id              String   @id @default(cuid())
+  paymentId       String
+  payment         Payment  @relation(fields: [paymentId], references: [id])
+  type            String
+  providerEventId String?  @unique
+  payload         Json
+  createdAt       DateTime @default(now())
+
+  @@index([paymentId, createdAt])
+}
+
+model OrderItem {
+  id              String  @id @default(cuid())
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id])
+  serviceId       String
+  service         Service @relation(fields: [serviceId], references: [id])
+  serviceName     String
+  durationMinutes Int
+  unitPriceFen    BigInt
+  quantity        Int     @default(1)
+}
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  type      String
+  actorId   String?
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  actorId        String?
+  organizationId String?
+  action         String
+  resourceType   String
+  resourceId     String?
+  metadata       Json
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  aggregateId String
+  type        String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+
+  @@index([publishedAt, createdAt])
+}

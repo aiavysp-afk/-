@@ -1,0 +1,609 @@
+openapi: 3.1.0
+info:
+  title: 中原到家 API
+  version: 0.6.0
+  description: M2 开发接口；金额单位固定为人民币分。
+servers:
+  - url: http://localhost:3100
+    description: 本地开发
+paths:
+  /v1/health:
+    get:
+      summary: 存活检查
+      responses:
+        "200":
+          description: 服务存活
+  /v1/config/public:
+    get:
+      summary: 获取无秘密的公开配置
+      responses:
+        "200":
+          description: 公开配置
+  /v1/catalog/services:
+    get:
+      summary: 获取已发布服务目录
+      responses:
+        "200":
+          description: 服务列表
+  /v1/catalog/services/{slug}:
+    get:
+      summary: 按 slug 获取服务详情
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 服务详情 }
+        "404": { description: 服务不存在或未上架 }
+  /v1/auth/wechat-miniapp:
+    post:
+      summary: 使用微信小程序一次性 code 登录
+      description: 角色、用户 ID 和组织范围完全由服务端确定。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/AuthSession" }
+        "400": { description: 参数错误 }
+        "401": { description: 微信 code 无效或过期 }
+        "503": { description: 微信登录服务暂不可用 }
+  /v1/auth/me:
+    get:
+      summary: 获取当前身份与组织角色
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 当前身份 }
+        "401": { description: 未登录或会话失效 }
+  /v1/auth/logout:
+    post:
+      summary: 注销当前设备会话
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 已注销 }
+        "401": { description: 未登录或会话失效 }
+  /v1/admin/audit-logs:
+    get:
+      summary: 按当前工作人员 membership 范围读取审计摘要
+      description: organizationId 可选；传入其他组织时返回 403，响应不包含 metadata 中的敏感上下文。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: organizationId
+          schema: { type: string }
+      responses:
+        "200": { description: 授权组织内最近 50 条审计摘要 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无审计权限或跨组织访问 }
+  /v1/admin/catalog/services:
+    get:
+      summary: 获取当前运营身份可管理的服务目录
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: organizationId
+          schema: { type: string }
+      responses:
+        "200":
+          description: 包含已上架及已下架项目
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无目录管理权限或跨组织访问 }
+  /v1/admin/catalog/services/{id}:
+    patch:
+      summary: 编辑服务项目
+      description: 至少提供一个字段；priceFen 必须为整数人民币分。成功后写入审计日志。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServiceAdminUpdate" }
+      responses:
+        "200": { description: 已更新 }
+        "400": { description: 参数错误 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无目录管理权限或跨组织访问 }
+        "404": { description: 服务不存在 }
+  /v1/admin/catalog/services/{id}/publish:
+    post:
+      summary: 上架服务项目
+      description: 上架前校验项目资料完整性；状态变化会写入审计日志。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 已上架或原本已上架 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无目录管理权限、跨组织访问或资料不完整 }
+        "404": { description: 服务不存在 }
+  /v1/admin/catalog/services/{id}/unpublish:
+    post:
+      summary: 下架服务项目
+      description: 状态变化会写入审计日志。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 已下架或原本已下架 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无目录管理权限或跨组织访问 }
+        "404": { description: 服务不存在 }
+  /v1/availability/slots:
+    get:
+      summary: 查询服务在指定日期的可预约时段
+      description: 当前首发时区固定为 Asia/Shanghai，时段按 30 分钟递进。
+      parameters:
+        - in: query
+          name: serviceId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, format: date, example: "2026-10-04" }
+        - in: query
+          name: timeZone
+          schema:
+            { type: string, enum: [Asia/Shanghai], default: Asia/Shanghai }
+      responses:
+        "200":
+          description: 当前可用时段；不包含有效占位或已确认预约覆盖的区间
+        "400": { description: 日期或查询参数无效 }
+        "404": { description: 服务不存在或未上架 }
+  /v1/booking-holds:
+    post:
+      summary: 为当前用户创建十分钟预约占位
+      description: 结束时间由服务时长计算；数据库互斥约束保证同一技师同一时间只能成功一个占位。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingHoldCreate" }
+      responses:
+        "201": { description: 占位创建成功 }
+        "400": { description: 时间未对齐、不在班次内或超出预约范围 }
+        "401": { description: 未登录或会话失效 }
+        "404": { description: 服务不存在或未上架 }
+        "409": { description: 时段刚刚被其他请求占用 }
+  /v1/booking-holds/{id}/release:
+    post:
+      summary: 释放当前用户自己的预约占位
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 占位已释放 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 不能释放其他用户的占位 }
+        "404": { description: 占位不存在 }
+        "409": { description: 占位状态已经结束或变化 }
+  /v1/admin/scheduling/shifts:
+    get:
+      summary: 查询组织指定日期的技师排班
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: organizationId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200": { description: 授权组织内的排班 }
+        "400": { description: 查询参数无效 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无排班权限或跨组织访问 }
+    post:
+      summary: 新建技师排班
+      description: 仅 DISPATCHER 或所属组织 ADMIN；数据库拒绝同一技师的重叠班次。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShiftCreate" }
+      responses:
+        "201": { description: 排班创建成功 }
+        "400": { description: 参数无效或技师不属于组织 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 无排班权限或跨组织访问 }
+        "409": { description: 技师已有重叠排班 }
+  /v1/orders/quote:
+    post:
+      summary: 根据当前用户的预约占位计算服务端报价
+      description: 使用创建占位时冻结的服务价格；不接受客户端金额。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reservationId]
+              properties:
+                reservationId: { type: string }
+      responses:
+        "201":
+          description: 报价成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/OrderQuote" }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 预约占位不属于当前用户 }
+        "404": { description: 预约占位不存在 }
+        "409": { description: 预约占位已经结束或过期 }
+  /v1/orders:
+    get:
+      summary: 获取当前用户最近 50 笔订单
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 本人订单列表 }
+        "401": { description: 未登录或会话失效 }
+    post:
+      summary: 从有效预约占位幂等创建订单
+      description: 金额、技师和服务时长均由服务端快照；地址加密保存。相同幂等键仅允许相同请求重放。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 16, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderCreate" }
+      responses:
+        "201":
+          description: 首次创建或幂等重放；通过 meta.idempotentReplay 区分
+        "400": { description: 下单参数或幂等键无效 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 预约占位不属于当前用户 }
+        "404": { description: 预约占位不存在 }
+        "409": { description: 占位过期、状态冲突或幂等键复用冲突 }
+  /v1/orders/{id}:
+    get:
+      summary: 获取当前用户的一笔订单
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 订单详情，不返回加密地址原文 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 不能查看其他用户订单 }
+        "404": { description: 订单不存在 }
+  /v1/orders/{id}/cancel:
+    post:
+      summary: 取消当前用户自己的待支付订单
+      description: 订单、预约占位、订单事件、审计和 Outbox 在同一事务更新；重复取消幂等成功。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 已取消 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 不能取消其他用户订单 }
+        "404": { description: 订单不存在 }
+        "409": { description: 当前订单状态不允许取消 }
+  /v1/orders/{id}/payment-intent:
+    post:
+      summary: 为当前用户的待支付订单创建支付意图
+      description: 每个订单最多一条支付记录；开发环境返回 MOCK，微信模式在受控接入完成前返回 503，不发起真实预下单。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: 支付意图创建成功或返回已有支付意图
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/PaymentIntent" }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 不能支付其他用户订单 }
+        "404": { description: 订单不存在 }
+        "409": { description: 订单状态不允许支付或支付已超时 }
+        "503": { description: 微信 JSAPI 尚未完成受控开通，未发起真实预下单 }
+  /v1/dev/payments/{id}/succeed:
+    post:
+      summary: 在本地开发模式确认 Mock 支付成功
+      description: 仅 NODE_ENV 非 production 且 PAYMENT_PROVIDER=mock 时存在；生产环境固定返回 404。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: 支付成功或幂等返回已成功记录；订单转 PAID，预约转 CONFIRMED
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 不能确认其他用户支付 }
+        "404": { description: 生产环境隐藏接口或支付记录不存在 }
+        "409": { description: 支付超时、金额不一致或状态冲突 }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  schemas:
+    ServiceCategory:
+      type: string
+      enum: [MASSAGE, SPA_RELAXATION, FOOT_CARE]
+    ServiceItem:
+      type: object
+      required:
+        [
+          id,
+          slug,
+          name,
+          category,
+          subtitle,
+          description,
+          durationMinutes,
+          priceFen,
+          featured,
+          steps,
+          boundaries,
+        ]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        category: { $ref: "#/components/schemas/ServiceCategory" }
+        subtitle: { type: string }
+        description: { type: string }
+        durationMinutes: { type: integer, minimum: 1 }
+        priceFen: { type: integer, minimum: 0, description: 人民币分 }
+        badge: { type: string }
+        featured: { type: boolean }
+        steps:
+          type: array
+          items: { type: string }
+        boundaries:
+          type: array
+          items: { type: string }
+    AdminServiceItem:
+      allOf:
+        - { $ref: "#/components/schemas/ServiceItem" }
+        - type: object
+          required: [organizationId, published, updatedAt]
+          properties:
+            organizationId: { type: string }
+            published: { type: boolean }
+            updatedAt: { type: string, format: date-time }
+    ServiceAdminUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        category: { $ref: "#/components/schemas/ServiceCategory" }
+        subtitle: { type: string, minLength: 2, maxLength: 120 }
+        badge: { type: [string, "null"], maxLength: 30 }
+        description: { type: string, minLength: 10, maxLength: 2000 }
+        durationMinutes: { type: integer, minimum: 30, maximum: 480 }
+        priceFen: { type: integer, minimum: 0, maximum: 100000000 }
+        featured: { type: boolean }
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 120 }
+        boundaries:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 160 }
+    AvailabilitySlot:
+      type: object
+      required: [therapistId, startsAt, endsAt]
+      properties:
+        therapistId: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    BookingHoldCreate:
+      type: object
+      additionalProperties: false
+      required: [serviceId, therapistId, startsAt]
+      properties:
+        serviceId: { type: string }
+        therapistId: { type: string }
+        startsAt: { type: string, format: date-time }
+    ShiftCreate:
+      type: object
+      additionalProperties: false
+      required: [organizationId, therapistId, startsAt, endsAt]
+      properties:
+        organizationId: { type: string }
+        therapistId: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    ServiceAddress:
+      type: object
+      additionalProperties: false
+      required: [contactName, phone, detail]
+      properties:
+        contactName: { type: string, minLength: 2, maxLength: 40 }
+        phone: { type: string, pattern: "^1\\d{10}$" }
+        detail: { type: string, minLength: 5, maxLength: 200 }
+    OrderCreate:
+      type: object
+      additionalProperties: false
+      required: [reservationId, address]
+      properties:
+        reservationId: { type: string }
+        address: { $ref: "#/components/schemas/ServiceAddress" }
+    OrderQuote:
+      type: object
+      required:
+        [
+          reservationId,
+          serviceAmountFen,
+          travelFeeFen,
+          discountFen,
+          payableFen,
+          currency,
+          moneyUnit,
+        ]
+      properties:
+        reservationId: { type: string }
+        serviceAmountFen: { type: integer, minimum: 0 }
+        travelFeeFen: { type: integer, minimum: 0 }
+        discountFen: { type: integer, minimum: 0 }
+        payableFen: { type: integer, minimum: 0 }
+        currency: { type: string, enum: [CNY] }
+        moneyUnit: { type: string, enum: [fen] }
+    OrderView:
+      type: object
+      required:
+        [
+          id,
+          orderNo,
+          reservationId,
+          status,
+          serviceName,
+          appointmentStart,
+          appointmentEnd,
+          serviceAmountFen,
+          travelFeeFen,
+          discountFen,
+          payableFen,
+          paymentExpiresAt,
+          createdAt,
+        ]
+      properties:
+        id: { type: string }
+        orderNo: { type: string }
+        reservationId: { type: string }
+        status:
+          type: string
+          enum:
+            [
+              PENDING_PAYMENT,
+              PAID,
+              DISPATCHING,
+              ASSIGNED,
+              EN_ROUTE,
+              ARRIVED,
+              IN_SERVICE,
+              AWAITING_CONFIRMATION,
+              COMPLETED,
+              CANCELLED,
+              REFUNDING,
+              REFUNDED,
+            ]
+        serviceName: { type: string }
+        appointmentStart: { type: string, format: date-time }
+        appointmentEnd: { type: string, format: date-time }
+        serviceAmountFen: { type: integer, minimum: 0 }
+        travelFeeFen: { type: integer, minimum: 0 }
+        discountFen: { type: integer, minimum: 0 }
+        payableFen: { type: integer, minimum: 0 }
+        paymentExpiresAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    PaymentIntent:
+      type: object
+      required:
+        [
+          id,
+          orderId,
+          provider,
+          status,
+          amountFen,
+          expiresAt,
+          mockConfirmationAvailable,
+        ]
+      properties:
+        id: { type: string }
+        orderId: { type: string }
+        provider: { type: string, enum: [MOCK, WECHAT] }
+        status:
+          type: string
+          enum: [PENDING, SUCCEEDED, CLOSED, FAILED, REFUNDING, REFUNDED]
+        amountFen: { type: integer, minimum: 0 }
+        expiresAt: { type: string, format: date-time }
+        mockConfirmationAvailable:
+          type: boolean
+          description: 只有非生产 Mock 模式为 true
+    Membership:
+      type: object
+      required: [organizationId, role]
+      properties:
+        organizationId: { type: string }
+        role:
+          type: string
+          enum:
+            [
+              CUSTOMER,
+              THERAPIST,
+              OPERATOR,
+              DISPATCHER,
+              FINANCE_REQUESTER,
+              FINANCE_APPROVER,
+              SAFETY_DUTY,
+              ADMIN,
+            ]
+    AuthSession:
+      type: object
+      required: [accessToken, expiresAt, user]
+      properties:
+        accessToken: { type: string, description: 只返回一次的高熵不透明令牌 }
+        expiresAt: { type: string, format: date-time }
+        user:
+          type: object
+          required: [id, displayName, memberships]
+          properties:
+            id: { type: string }
+            displayName: { type: string }
+            memberships:
+              type: array
+              items: { $ref: "#/components/schemas/Membership" }

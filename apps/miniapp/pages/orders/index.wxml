@@ -1,0 +1,1 @@
+<view class="empty"><view>单</view><text class="empty-title serif">还没有预约记录</text><text>选一个适合此刻的放松项目吧</text><navigator url="/pages/services/index" open-type="switchTab">去看看服务</navigator><text class="empty-note">开发环境暂未开放真实下单</text></view>

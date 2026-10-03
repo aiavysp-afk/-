@@ -1,0 +1,47 @@
+import type { ServiceItem } from '@zydj/contracts';
+
+export const serviceCatalog: ServiceItem[] = [
+  {
+    id: 'svc-neck-60',
+    slug: 'neck-relax-60',
+    name: '肩颈舒缓',
+    category: 'MASSAGE',
+    subtitle: '久坐之后，让紧绷慢慢松开',
+    description: '以肩、颈、背部为重点的 60 分钟非医疗放松服务，适合日常疲劳与久坐人群。',
+    durationMinutes: 60,
+    priceFen: 19800,
+    badge: '人气之选',
+    featured: true,
+    steps: ['上门前确认', '用品消毒与沟通', '肩颈背部舒缓', '结束反馈'],
+    boundaries: ['不提供医疗诊断或治疗', '不涉及任何私密部位', '身体不适时应及时中止'],
+  },
+  {
+    id: 'svc-body-90',
+    slug: 'body-relax-90',
+    name: '全身释压 SPA',
+    category: 'SPA_RELAXATION',
+    subtitle: '以温和节奏，找回身体的松弛感',
+    description: '90 分钟全身放松护理，包含服务前沟通、规范铺巾和一次性耗材。',
+    durationMinutes: 90,
+    priceFen: 26800,
+    badge: '深度放松',
+    featured: true,
+    steps: ['需求与禁忌沟通', '规范铺巾', '分区放松', '舒缓收尾'],
+    boundaries: ['不宣传治疗效果', '拒绝违法或超出服务范围的要求', '饮酒后不建议接受服务'],
+  },
+  {
+    id: 'svc-foot-60',
+    slug: 'foot-care-60',
+    name: '足部舒缓',
+    category: 'FOOT_CARE',
+    subtitle: '从脚步开始，卸下一天的疲惫',
+    description: '60 分钟正规足部放松服务，使用清洁耗材并执行标准卫生流程。',
+    durationMinutes: 60,
+    priceFen: 19800,
+    badge: '轻松入门',
+    featured: false,
+    steps: ['足部状态确认', '清洁准备', '足部放松', '用品回收'],
+    boundaries: ['皮肤破损或急性不适时不服务', '不替代专业医疗建议', '不提供超出公示内容的项目'],
+  },
+];
+

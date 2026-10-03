@@ -1,0 +1,2 @@
+.empty{height:75vh;display:flex;flex-direction:column;align-items:center;justify-content:center}.empty view{width:120rpx;height:120rpx;border-radius:45rpx;background:#e1ebe6;color:#35695b;display:flex;align-items:center;justify-content:center;font:42rpx "STSong"}.empty b{font-size:32rpx;margin-top:28rpx}.empty text{font-size:20rpx;color:#8e9794;margin-top:10rpx}.empty navigator{background:#225447;color:#fff;border-radius:40rpx;padding:18rpx 55rpx;font-size:22rpx;margin-top:35rpx}.empty small{font-size:17rpx;color:#b08a52;margin-top:25rpx}
+
