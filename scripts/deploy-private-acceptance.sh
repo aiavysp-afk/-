@@ -41,6 +41,12 @@ node "$release/scripts/setup-private-acceptance.mjs"
 set -a; source /etc/zhongyuan-daojia-acceptance/api.env; set +a
 cd "$release"
 pnpm --filter @zydj/api exec prisma generate
+# Back up ONLY the independent acceptance DB before every release migration.
+backup="$base/backups/database-before-$release_id-$(date -u +%Y%m%dT%H%M%S).dump"
+[[ ! -e "$backup" && ! -e "$backup.partial" ]] || { echo 'Own backup target already exists; inspect before retrying'; exit 1; }
+runuser -u postgres -- pg_dump -Fc -d zydj_acceptance > "$backup.partial"
+pg_restore --list "$backup.partial" >/dev/null
+mv "$backup.partial" "$backup"
 pnpm --filter @zydj/api exec prisma migrate deploy
 pnpm --filter @zydj/api exec prisma migrate status
 # This database is a new private acceptance DB, never the existing business DB.

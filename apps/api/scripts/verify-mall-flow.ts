@@ -28,6 +28,8 @@ process.env.DATABASE_URL = databaseUrl;
 process.env.NODE_ENV = "test";
 process.env.AUTH_PROVIDER = "mock";
 process.env.PAYMENT_PROVIDER = "mock";
+// This legacy workflow isolates business tests; MFA enforcement has its own real HTTP verifier.
+process.env.STAFF_MFA_REQUIRED = "false";
 process.env.WECHAT_PAY_REFUND_ENABLED = "false";
 process.env.WECHAT_PAY_PREPAY_ENABLED = "false";
 process.env.WECHAT_PAY_RECOVERY_ENABLED = "false";

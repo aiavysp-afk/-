@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   Bell,
@@ -25,12 +25,13 @@ import type {
 } from "@zydj/contracts";
 import "./styles.css";
 import { RefundWorkspace } from "./refunds";
+import { SecurityWorkspace } from "./security";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 const TOKEN_STORAGE_KEY = "zydj.admin.access-token";
 
-type Section = "dashboard" | "catalog" | "refunds";
+type Section = "dashboard" | "catalog" | "refunds" | "security";
 type CatalogRow = AdminServiceItem | ServiceItem;
 
 const nav: Array<{
@@ -47,6 +48,7 @@ const nav: Array<{
   { icon: MessageCircleWarning, label: "安全值班" },
   { icon: MapPinned, label: "服务区域" },
   { icon: ShieldCheck, label: "权限审计" },
+  { icon: ShieldCheck, label: "账户安全", section: "security" },
 ];
 
 const metrics = [
@@ -436,7 +438,39 @@ function App() {
   const [token, setToken] = useState(
     () => localStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
   );
-  const [displayName, setDisplayName] = useState("平台管理员");
+  const [displayName, setDisplayName] = useState("未登录");
+  const currentToken = useRef(token);
+  currentToken.current = token;
+
+  useEffect(() => {
+    if (!token) return;
+    let current = true;
+    void apiRequest<{ data: { displayName: string } }>("/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => {
+        if (current) setDisplayName(r.data.displayName);
+      })
+      .catch(() => {
+        if (current) setDisplayName("会话待重新验证");
+      });
+    return () => {
+      current = false;
+    };
+  }, [token]);
+
+  async function logout() {
+    const logoutToken = token;
+    await apiRequest("/auth/logout", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
+    });
+    if (currentToken.current !== logoutToken) return;
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    setToken("");
+    setDisplayName("未登录");
+  }
 
   async function developmentLogin(code = "local-catalog-operator") {
     const response = await apiRequest<{ data: AuthSession }>(
@@ -501,9 +535,11 @@ function App() {
             <h1>
               {section === "dashboard"
                 ? "运营中心"
-                : section === "refunds"
-                  ? "退款申请与复核"
-                  : "服务目录管理"}
+                : section === "security"
+                  ? "账户安全"
+                  : section === "refunds"
+                    ? "退款申请与复核"
+                    : "服务目录管理"}
             </h1>
           </div>
           <div className="header-actions">
@@ -527,6 +563,8 @@ function App() {
         </header>
         {section === "dashboard" ? (
           <Dashboard />
+        ) : section === "security" ? (
+          <SecurityWorkspace token={token} onLogout={logout} />
         ) : section === "refunds" ? (
           <RefundWorkspace token={token} login={developmentLogin} />
         ) : (

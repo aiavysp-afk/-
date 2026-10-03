@@ -16,6 +16,8 @@ const EnvSchema = z.object({
   WECHAT_MINIAPP_SECRET: z.string().default(""),
   WECHAT_OFFICIAL_ACCOUNT_ID: z.string().default("gh_a4b5f9d63539"),
   AUTH_PROVIDER: z.enum(["mock", "wechat"]).default("mock"),
+  // Production always requires staff MFA; this flag also exercises it in private tests.
+  STAFF_MFA_REQUIRED: z.enum(["false", "true"]).default("false"),
   AUTH_SESSION_TTL_SECONDS: z.coerce
     .number()
     .int()

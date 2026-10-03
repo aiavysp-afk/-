@@ -5,6 +5,7 @@ import {
   writeFileSync,
   mkdirSync,
   chmodSync,
+  appendFileSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -23,6 +24,7 @@ if (!existsSync(envPath)) {
     API_PORT: "3210",
     DATABASE_URL: `postgresql://zydj_acceptance:${password}@127.0.0.1:5432/zydj_acceptance?schema=public&connection_limit=10`,
     AUTH_PROVIDER: "mock",
+    STAFF_MFA_REQUIRED: "true",
     PAYMENT_PROVIDER: "mock",
     SMS_PROVIDER: "mock",
     MAP_PROVIDER: "mock",
@@ -56,6 +58,7 @@ if (
   env.AUTH_PROVIDER !== "mock" ||
   env.PAYMENT_PROVIDER !== "mock" ||
   env.API_HOST !== "127.0.0.1" ||
+  env.API_PORT !== "3210" ||
   [
     "WECHAT_PAY_PREPAY_ENABLED",
     "WECHAT_PAY_REFUND_ENABLED",
@@ -70,6 +73,16 @@ if (
   target.username !== "zydj_acceptance"
 )
   throw Error("Wrong private database");
+// Existing private env files predate MFA. Add only this non-secret gate, preserving all keys.
+if (env.STAFF_MFA_REQUIRED === undefined) {
+  appendFileSync(
+    envPath,
+    `${readFileSync(envPath, "utf8").endsWith("\n") ? "" : "\n"}STAFF_MFA_REQUIRED='true'\n`,
+  );
+  env.STAFF_MFA_REQUIRED = "true";
+}
+if (env.STAFF_MFA_REQUIRED !== "true")
+  throw Error("Private staff MFA gate must remain enabled");
 const sql = (text) =>
   execFileSync(
     "runuser",

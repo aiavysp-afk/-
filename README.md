@@ -26,6 +26,8 @@
 
 ## 当前阶段
 
+2026-10-04新增[后台MFA基础](docs/STAFF_MFA_IMPLEMENTATION.md)：加密TOTP、跨实例防重放/锁定、五分钟会话提升及生产强制工作人员权限门禁，后台新增账户安全页。微信到浏览器的正式登录交接与设备丢失恢复仍待完成，不表示正式后台登录已全程验收。
+
 已完成工程基线、品牌视觉、公开配置、M1 微信登录/会话/RBAC、M2 实时目录/排班/占位/报价/订单及Mock支付，以及退款持久化、申请/独立复核、累计额度占用、并发幂等、结果回调/原单查询/恢复租约、一次记账与退款管理页面。小程序目录、预约、订单和退款申请已接入API。微信JSAPI预下单已加入持久化单次派发、响应验签、RSA调起参数和小程序SDK入口；原单自动查询/幂等关单/再次核实、恢复租约和人工升级已实现，见[补偿交付](docs/WECHAT_RECOVERY_IMPLEMENTATION.md)。三个开关均默认false。经营看板/技师H5仍是演示，真机资金、正式后台认证/MFA和运维值班未验收，不能直接宣称生产资金闭环验收。
 
 交付入口：[环境变量](docs/ENV_VARIABLES.md)、[数据库角色初始化](infra/database-init.sql)、[数据库迁移脚本](scripts/database-init.ps1)、[完整部署与人工检查项](docs/DEPLOYMENT.md)、[退款设计](docs/REFUND_IMPLEMENTATION.md)、[全流程自测结果](docs/SELF_TEST_REPORT.md)、[改动文件清单](docs/CHANGE_FILES.md)。

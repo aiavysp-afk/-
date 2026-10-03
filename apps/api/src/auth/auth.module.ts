@@ -6,11 +6,14 @@ import { AuthController } from "./auth.controller.js";
 import { AuthService } from "./auth.service.js";
 import { SessionAuthGuard } from "./session-auth.guard.js";
 import { WechatMiniappClient } from "./wechat-miniapp.client.js";
+import { MfaController } from "./mfa.controller.js";
+import { MfaService } from "./mfa.service.js";
 
 @Module({
-  controllers: [AuthController, AuditController],
+  controllers: [AuthController, AuditController, MfaController],
   providers: [
     AuthService,
+    MfaService,
     AuthCryptoService,
     WechatMiniappClient,
     SessionAuthGuard,

@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:mall": "tsx scripts/verify-mall-flow.ts",
+    "test:mfa": "tsx scripts/verify-mfa-flow.ts",
     "test:wechat-db": "tsx scripts/verify-wechat-payments.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

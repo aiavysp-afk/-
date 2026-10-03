@@ -48,3 +48,12 @@
 兼容旧服务器别名：`WECHAT_APPID`、`WECHAT_APP_SECRET`、`WECHAT_MCHID`、`WECHAT_API_V3_KEY`、`WECHAT_MCH_SERIAL_NO`、`WECHAT_PRIVATE_KEY_PATH`、`WECHAT_PLATFORM_SERIAL_NO`、`WECHAT_PLATFORM_CERT_PATH`。新部署只使用规范变量；禁止新旧商户/验签配置组混用。别名的识别不能证明旧服务器数据归属于本商城，须企业管理员核对。
 
 小程序没有Vite环境变量：上传前修改 `apps/miniapp/app.ts` 的 `apiBaseUrl` 为HTTPS API地址，然后运行build生成JS；开发工具启用合法域名校验，核对AppID，上传包不含node_modules、证书或.env。
+
+## MFA增量变量
+
+| 变量 | 用途与约束 |
+| --- | --- |
+| STAFF_MFA_REQUIRED | 默认false，仅非生产开发可不强制；私有验收配置true。production无论该值如何均强制工作人员当前会话MFA，不是生产绕过开关。 |
+| MFA_TEST_DATABASE_URL | 仅独立本机zhongyuan_daojia_test的HTTP/DB自测；私有服务器仅专用zydj_acceptance_smoke且CONFIRM_PRIVATE_ACCEPTANCE_TEST=true；禁止生产目标。 |
+
+MFA密钥沿用DATA_ENCRYPTION_KEY_BASE64加密，禁止更换该主密钥而不做受审迁移。没有默认验证器密钥、通用恢复码、关闭MFA或重置快捷变量；详见[MFA交付](STAFF_MFA_IMPLEMENTATION.md)。

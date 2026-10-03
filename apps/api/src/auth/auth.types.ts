@@ -25,4 +25,5 @@ export interface AuthPrincipal {
   userId: string;
   displayName: string;
   memberships: AuthMembership[];
+  mfaVerifiedUntil?: Date | null;
 }

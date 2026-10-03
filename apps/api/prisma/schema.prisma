@@ -116,6 +116,7 @@ model User {
   identities            ExternalIdentity[]
   sessions              Session[]
   memberships           StaffMembership[]
+  mfaCredential         MfaCredential?
   customerOrders        Order[]                  @relation("CustomerOrders")
   therapistOrders       Order[]                  @relation("TherapistOrders")
   therapistShifts       TherapistShift[]         @relation("TherapistShifts")
@@ -140,16 +141,31 @@ model ExternalIdentity {
 }
 
 model Session {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String    @unique
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  lastSeenAt DateTime  @default(now())
-  createdAt  DateTime  @default(now())
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash        String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  lastSeenAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  mfaVerifiedUntil DateTime?
 
   @@index([userId, expiresAt])
+}
+
+model MfaCredential {
+  userId              String    @id
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretEncrypted     String
+  enabledAt           DateTime?
+  enrollmentSessionId String?
+  enrollmentExpiresAt DateTime?
+  lastAcceptedStep    BigInt?
+  failedAttempts      Int       @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 }
 
 model StaffMembership {

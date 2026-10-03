@@ -77,6 +77,68 @@ paths:
       responses:
         "200": { description: 已注销 }
         "401": { description: 未登录或会话失效 }
+  /v1/auth/mfa:
+    get:
+      summary: 本人MFA绑定及当前会话状态，不返回密钥
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 无缓存的本人状态 }
+        "401": { description: 未登录或会话失效 }
+  /v1/auth/mfa/enrollment:
+    post:
+      summary: 新鲜微信会话下开始工作人员验证器绑定
+      description: 只返回一次随机密钥，十分钟到期；已启用验证器禁止直接替换。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200": { description: 密钥和绑定期限，Cache-Control no-store }
+        "400": { description: 参数错误 }
+        "401": { description: 会话非新鲜、失效或锁定 }
+        "403": { description: 没有有效工作人员资格 }
+        "409": { description: 已绑定或已有待激活绑定 }
+  /v1/auth/mfa/activate:
+    post:
+      summary: 同一会话确认绑定，提升本会话权限最多五分钟
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        "200": { description: 当前会话MFA有效期，不超过原会话期限 }
+        "400": { description: 参数错误 }
+        "401": { description: 会话、动态码、绑定期限或锁定无效 }
+        "403": { description: 无工作人员资格 }
+        "409": { description: 绑定状态冲突 }
+  /v1/auth/mfa/verify:
+    post:
+      summary: 验证已绑定的动态码，跨会话/跨实例不可重放
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        "200": { description: 当前会话MFA有效期 }
+        "400": { description: 参数错误 }
+        "401": { description: 无效/重放动态码、会话或五次失败锁定 }
+        "403": { description: 无工作人员资格 }
+        "409": { description: 尚未完成绑定 }
   /v1/admin/audit-logs:
     get:
       summary: 按当前工作人员 membership 范围读取审计摘要

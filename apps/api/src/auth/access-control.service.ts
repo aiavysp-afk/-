@@ -1,4 +1,5 @@
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { UserRole } from "@prisma/client";
 import type { AuthPrincipal, Permission } from "./auth.types.js";
 
@@ -33,6 +34,8 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly (Permission | "*")[]> = {
 
 @Injectable()
 export class AccessControlService {
+  constructor(@Optional() private readonly config?: ConfigService) {}
+
   hasPermission(
     principal: AuthPrincipal,
     permission: Permission,
@@ -40,6 +43,15 @@ export class AccessControlService {
   ) {
     if (permission === "profile.self" || permission === "orders.self")
       return true;
+    const required =
+      this.config?.get("NODE_ENV") === "production" ||
+      this.config?.get("STAFF_MFA_REQUIRED") === "true";
+    if (
+      required &&
+      (!principal.mfaVerifiedUntil ||
+        principal.mfaVerifiedUntil.getTime() <= Date.now())
+    )
+      return false;
     return principal.memberships.some((membership) => {
       if (organizationId && membership.organizationId !== organizationId)
         return false;

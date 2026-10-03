@@ -128,6 +128,7 @@ export class AuthService {
       sessionId: session.id,
       userId: session.user.id,
       displayName: session.user.displayName,
+      mfaVerifiedUntil: session.mfaVerifiedUntil,
       memberships: session.user.memberships.map((membership) => ({
         organizationId: membership.organizationId,
         role: membership.role,

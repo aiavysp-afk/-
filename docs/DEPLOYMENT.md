@@ -53,6 +53,8 @@ bash scripts/database-init.sh
 
 ## 4. 安全配置、初始组织和双人财务角色
 
+[MFA基础](STAFF_MFA_IMPLEMENTATION.md)已实现。第14批迁移必须先执行；production工作人员权限始终要求当前会话五分钟内的MFA。STAFF_MFA_REQUIRED仅用于非生产显式验收，不能关闭生产门禁。正式浏览器微信登录交接、人员/独立设备核验及丢失设备受审恢复未完成，仍阻止公开经营；不能使用粘贴token或固定code代替。
+
 按 [环境变量清单](ENV_VARIABLES.md) 创建 `/etc/zhongyuan-daojia/api.env`，密钥只读；`NODE_ENV=production`、`API_HOST=127.0.0.1`、`API_PORT=3210`，所有真实provider、加密密钥、验签材料和热线必须经过核验。`WECHAT_PAY_PREPAY_ENABLED=false`、`WECHAT_PAY_REFUND_ENABLED=false`、`WECHAT_PAY_RECOVERY_ENABLED=false`。生产启动门禁不通过时必须修复缺项，不可改成development来规避。独立私有验收环境可明确使用test/Mock，但只能监听回环地址，不能冒充生产经营版。
 
 生产管理端须先接入正式登录和MFA，目前不能用开发固定code登录生产。两位真实微信用户完成登录后，由企业管理员核验身份，再把UserID填入一次性BOOTSTRAP变量，执行：
