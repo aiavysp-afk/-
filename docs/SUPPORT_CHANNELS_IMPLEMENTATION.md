@@ -1,5 +1,7 @@
 # 短信、地图、企业微信客服与紧急值班入口
 
+最新后台核对（2026-10-04）：用户完成企业微信小程序授权后，iPhone 微信仍回传 `SDK_CALLBACK / 6 / UNKNOWN`。通过企业微信管理后台只读核对发现，“中原到家在线客服”当前后台生成链接与此前从旧服务器复用的链接不一致。已在保留权限和其他秘密的前提下备份并只纠正私有验收、生产待发布两份受控配置中的客服链接；私有 API 重启后公开配置为当前链接且 `available=true`，生产待发布文件未启动。仍须重新生成专项包并完成两台真机、正确账号、真人响应和失败回退验收；不解除公网维护、资金、短信、地图或 `SAFETY_DUTY_CONFIRMED` 门禁。
+
 最新手机客服反馈（2026-10-04）：用户回传扫码可开专项页、点击客服仍失败；最新明确为苹果手机微信中的诊断版 v2 截图，返回 `SDK_CALLBACK / 6 / UNKNOWN`，不是仅模拟器失败。已补上被丢弃的SDK失败诊断和同步异常处理，仅显示安全数字码/固定线索，不展示或上传原始错误，不更换已确认链接、不改变绑定/值班门禁。公开官方资料未取得6的精确映射；下一步只读核对具体AppID的后台企业关联/当前客服链接及微信版本，后台自动读取超时尚未核验。12项客服+13项包边界+4项WXML+19项支付共48项回归与专项官方编译通过；真实失败原因及真机打开正确客服仍未验收。见[最新专项记录](MINIAPP_WECHAT_ACCEPTANCE.md)。以下“尚未扫码/打开”等为历史状态。
 
 最新人工反馈（2026-10-04）：联系渠道专项临时预览已生成，用户随后明确回传“电话已经接通”，仅记为商家电话接通子项通过（用户回传，非代理现场观察）。小程序按钮触发、设备/微信版本、号码核验、另一设备和失败回退仍未确认，企业微信正确账号/真人接通也未回传；详见[专项验收记录](MINIAPP_WECHAT_ACCEPTANCE.md)。本轮不修改环境变量或值班确认门禁，单次接通不等于完整安全响应验收。下文“未拨号/未真机验收”为对应历史阶段或代理行为，不覆盖本次用户反馈。
@@ -64,22 +66,22 @@ docs/DEPLOYMENT_ACCEPTANCE_20261004.md
 
 ## 环境变量
 
-| 变量                                                    | 要求                                                                |
-| ------------------------------------------------------- | ------------------------------------------------------------------- |
-| ALIYUN_SMS_ACCESS_KEY_ID / ALIYUN_SMS_ACCESS_KEY_SECRET | 专用RAM最小权限凭据，服务器注入                                     |
-| ALIYUN_SMS_SECURITY_TOKEN                               | 可选STS临时token，需受控刷新                                        |
-| ALIYUN_SMS_SIGN_NAME / ALIYUN_SMS_TEMPLATE_CODE         | 审核通过且用途与业务事件匹配；旧模板用途未核验，不自动沿用          |
-| SMS_SEND_ENABLED                                        | false；持久化派发/额度/送达回执验收后才允许启用                     |
-| TENCENT_MAP_KEY / TENCENT_MAP_SIGNING_SECRET            | WebService专用Key和SN校验SK，服务器注入                             |
-| MAP_GEOCODING_ENABLED                                   | false；服务城市/隐私授权、限流/配额和真实渠道验收后启用             |
-| CUSTOMER_SERVICE_PROVIDER                               | none 或 wecom                                                       |
-| WECOM_CORP_ID                                           | 企业ID公开标识，不是企业secret                                      |
-| WECOM_CUSTOMER_SERVICE_URL                              | 企业微信后台生成的官方客服链接；允许enc_scene，不接受token/跳转参数 |
+| 变量                                                    | 要求                                                                               |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| ALIYUN_SMS_ACCESS_KEY_ID / ALIYUN_SMS_ACCESS_KEY_SECRET | 专用RAM最小权限凭据，服务器注入                                                    |
+| ALIYUN_SMS_SECURITY_TOKEN                               | 可选STS临时token，需受控刷新                                                       |
+| ALIYUN_SMS_SIGN_NAME / ALIYUN_SMS_TEMPLATE_CODE         | 审核通过且用途与业务事件匹配；旧模板用途未核验，不自动沿用                         |
+| SMS_SEND_ENABLED                                        | false；持久化派发/额度/送达回执验收后才允许启用                                    |
+| TENCENT_MAP_KEY / TENCENT_MAP_SIGNING_SECRET            | WebService专用Key和SN校验SK，服务器注入                                            |
+| MAP_GEOCODING_ENABLED                                   | false；服务城市/隐私授权、限流/配额和真实渠道验收后启用                            |
+| CUSTOMER_SERVICE_PROVIDER                               | none 或 wecom                                                                      |
+| WECOM_CORP_ID                                           | 企业ID公开标识，不是企业secret                                                     |
+| WECOM_CUSTOMER_SERVICE_URL                              | 企业微信后台生成的官方客服链接；允许enc_scene，不接受token/跳转参数                |
 | WECOM_CUSTOMER_SERVICE_CONFIRMED                        | 默认false；负责人核验同企业归属、有效账号与小程序绑定后受控确认；不是在线/接通标志 |
-| SAFETY_CONTACT_MODE                                     | phone或wecom；本轮用户选择wecom                                     |
-| SAFETY_EMERGENCY_PHONE                                  | 商家独立紧急值班手机号，只在受控配置填写                            |
-| SAFETY_DUTY_CONFIRMED                                   | 默认false，不替代当前在线/接听状态检测                              |
-| SAFETY_HOTLINE                                          | 旧电话模式兼容变量；wecom模式不需要把客服URL塞进此字段              |
+| SAFETY_CONTACT_MODE                                     | phone或wecom；本轮用户选择wecom                                                    |
+| SAFETY_EMERGENCY_PHONE                                  | 商家独立紧急值班手机号，只在受控配置填写                                           |
+| SAFETY_DUTY_CONFIRMED                                   | 默认false，不替代当前在线/接听状态检测                                             |
+| SAFETY_HOTLINE                                          | 旧电话模式兼容变量；wecom模式不需要把客服URL塞进此字段                             |
 
 ## 当前服务器与待验收项
 
