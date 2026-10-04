@@ -33,11 +33,29 @@
 
 生产 pending 和私有验收配置已分别受控备份，保留原密码、pepper、加密密钥与三个微信资金开关false；只新增客服选择、用户指定紧急号码和关闭的渠道开关。生产 pending 仍不启用公开服务。旧系统签名和模板字段存在，完整访问凭据及腾讯Key/SK未找到。
 
-还需要企业微信后台生成的**实际客服链接和CorpID**（不是示例占位值），及小程序客服绑定/认证核验；短信RAM凭据、模板用途和腾讯地图Key/SK需通过服务器安全配置提供，不发到聊天。值班确认位仍false。公网继续维护503；生产库16批迁移不变、不导入旧数据。
+用户随后提供的企业微信CorpID已写入生产pending和私有验收受控配置，格式门禁通过。还需要后台生成的**实际客服链接**及小程序客服绑定/认证核验；短信RAM凭据、模板用途和腾讯地图Key/SK需通过服务器安全配置提供，不发到聊天。值班确认位仍false。公网继续维护503；生产库16批迁移不变、不导入旧数据。
 
 短信尚未接订单Outbox：必须先建立持久化派发记录、并发租约、手机号/日预算/频率控制、敏感数据保护、回执查验及UNKNOWN人工处置，才能调用内部submit。OutId只是关联字段，不能当作阿里云幂等键。地图尚未接预约页面/服务区校验：需登录与持久化限流、地址确认和隐私授权。客服目前只是用户主动入口，不是自动应急告警/接单/超时升级闭环。这些仍阻止公开经营。
 
 ## 测试与官方协议依据
+
+### 已执行的私有部署回执（2026-10-04）
+
+- 代码提交 `087fbdf7c98edbad382db7232fb53fee2136a52c` 已推送 GitHub main，[CI run 37183031942](https://github.com/aiavysp-afk/-/actions/runs/37183031942) success，包含所有工作区类型检查/测试/构建、编译小程序客服测试以及五套HTTP/PostgreSQL流程。
+- 服务器 current 已切换至同一代码提交；发布归档SHA256为 `1054ef463e454e4e2b27fd7524a0bbf0bdd0fc5bce28daa33ac127376d4a180d`，部署前备份独立验收库，16批迁移无新增待执行项。保留上一版以便回滚，不清理密钥或备份。
+- 三个私有服务active，仅监听127.0.0.1:3210/3212/3213；通过API及两套同源代理核验公开配置中的紧急号码与受控配置一致，客服available=false、值班确认false，未填写的客服标识不下发。
+- 服务器商城/支付数据库/MFA/浏览器登录交接/MFA恢复五套真实HTTP/PostgreSQL隔离流程、6项预览安全测试、5项编译小程序客服/拨号替身测试全部通过。验收、smoke及独立生产库均16批迁移，User/Order/BrowserLoginChallenge/BrowserLoginRateLimit/MfaRecoveryRequest均零行。
+- 首次部署受控验收配置与发布前快照逐字节一致（640 root:zydj-acceptance）；生产pending仍600 root:root。随后先备份两份配置，再仅修改用户提供的CorpID，原秘密和权限全部保持不变，重启私有API并复查三个端点。生产最新拒绝启动的四项为SMS_PROVIDER、MAP_PROVIDER、WECOM_CUSTOMER_SERVICE_URL、SAFETY_DUTY_CONFIRMED；五个真实渠道/资金开关false。已配置CorpID但缺URL时，公开配置仍返回不可用且不下发半成品标识。
+- nginx -t通过，mtsc.top/api.mtsc.top/admin.mtsc.top HTTPS均503，三个旧服务/定时器disabled/inactive，磁盘约35GiB可用。没有解除公网维护。
+- 浏览器实际读取私有技师H5，紧急值班按钮的可访问名称为“拨打商家紧急值班电话”，截图核验显示正常；页面仍明确标记开发演示数据。没有点击真实拨号，客服原生微信操作仍需真机验收。
+
+### 上线前人工核对
+
+1. 提供实际企业微信官方客服链接；CorpID已受控配置。核验企业/小程序主体、认证、绑定及两台微信真机入口，不提供企业secret到聊天。
+2. 负责人确认紧急号码归属及可公开展示，测试营业期间主备值班、无法接通兜底和升级流程。电话只是商家值班，不能替代当地公共应急号码；演练成功后才可设置值班确认。
+3. 短信凭据、签名和模板用途及地图Key/SK只从服务器受控配置注入，先补齐持久化派发/配额/限流/隐私授权，再做真实渠道受控验收。
+4. 两名不同自然人完成管理员MFA和退款申请/异人复核演练；核验商户主体、回调域名及真实支付/退款/对账后，按各自门禁分别启用资金操作。
+5. 确认技师H5真实经营功能、服务区/服务规则、经营资质、隐私与退款条款和安全响应闭环；按DEPLOYMENT中的备份、回滚和发布顺序签字，不能直接重命名pending绕过门禁。
 
 本机5工作区typecheck和build通过；API300项、合约13项、H5拨号3项通过；编译小程序客服/拨号替身5项通过。新增28项渠道签名/门禁/解析/异常测试、12项客服配置与恶意链接测试、3项环境门禁测试。所有外部请求均用替身，未发送短信、查询真实地图、打开真实客服或拨打用户电话。真机扫码/微信原生API与接听演练仍必须人工完成。
 
@@ -62,3 +80,43 @@
 - 本文、README、CHANGE_FILES、DEPLOYMENT、ENV_VARIABLES、IMPLEMENTATION_STATUS、INTEGRATION_GATES、SELF_TEST_REPORT中的最新状态说明
 
 没有新增数据库迁移，没有提交手机号或服务器密钥/备份。
+
+代码提交完整33文件清单（后续仅增加验收文档记录）：
+
+```text
+.env.example
+.github/workflows/ci.yml
+README.md
+apps/api/src/app.module.ts
+apps/api/src/config/env.test.ts
+apps/api/src/config/env.ts
+apps/api/src/integrations/aliyun-signature.ts
+apps/api/src/integrations/aliyun-sms.client.ts
+apps/api/src/integrations/integration-http.ts
+apps/api/src/integrations/integrations.module.ts
+apps/api/src/integrations/integrations.test.ts
+apps/api/src/integrations/tencent-map.client.ts
+apps/api/src/public/customer-service.config.test.ts
+apps/api/src/public/customer-service.config.ts
+apps/api/src/public/public.controller.ts
+apps/miniapp/pages/profile/index.js
+apps/miniapp/pages/profile/index.ts
+apps/miniapp/pages/profile/index.wxml
+apps/miniapp/types/global.d.ts
+apps/miniapp/utils/customer-service.js
+apps/miniapp/utils/customer-service.ts
+apps/workbench-h5/src/main.tsx
+apps/workbench-h5/src/support.test.ts
+apps/workbench-h5/src/support.ts
+docs/CHANGE_FILES.md
+docs/DEPLOYMENT.md
+docs/ENV_VARIABLES.md
+docs/IMPLEMENTATION_STATUS.md
+docs/INTEGRATION_GATES.md
+docs/SELF_TEST_REPORT.md
+docs/SUPPORT_CHANNELS_IMPLEMENTATION.md
+packages/contracts/src/index.ts
+scripts/verify-customer-service.test.mjs
+```
+
+部署回执另更新 `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`，其他回执文档均已在上述清单中。本轮所有代码、文档均直接提交main；服务器只部署上述代码提交，后续文档提交不改变运行代码。

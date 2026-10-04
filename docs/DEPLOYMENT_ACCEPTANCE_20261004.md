@@ -1,5 +1,7 @@
 # 2026-10-04 服务器私有验收记录
 
+最新客服/紧急值班切片：当前运行代码`087fbdf7c98edbad382db7232fb53fee2136a52c`，[CI 37183031942](https://github.com/aiavysp-afk/-/actions/runs/37183031942)成功，服务器五套HTTP/PostgreSQL流程、6项预览测试和5项编译客服/拨号替身测试通过；紧急号码与用户CorpID已受控配置并核验，企微URL仍待配置，值班未确认。三服务仅loopback；公网三域名维护503，旧商城已按授权清理、旧服务停用，生产pending四项门禁未过。约35GiB可用，无新增迁移、真实拨号或交易。完整摘要/文件/人工项见[最新接入记录](SUPPORT_CHANNELS_IMPLEMENTATION.md)。**下文旧站200、旧服务运行、唯一release及低磁盘数据仅是旧阶段历史，不是当前状态。**
+
 最新受审恢复切片：`e898cbf06b2449e4486ba8f4182266d485fec625`已部署到独立私有环境，[GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37179489798)全部success。升级前备份专用验收库并逐字节备份/比对环境文件；部署与验证后删除上一版c270 release、本次上传包和临时恢复库，保留数据库/环境备份、runtime、store及当前配置。current仅指向e898cbf，验收库与smoke库均16批且User/Order/BrowserLogin/MfaRecovery临时表为0；三个服务active，旧站200与PID基线不变，最终可用4160632KiB（约3.97GiB）。商城/支付/MFA/浏览器交接/MFA恢复五个HTTP/DB流程、6项Linux预览测试及备份恢复全部通过。私有Mock环境不是公网经营上线。以下保留此前阶段证据。
 
 本页首次部署数据保留作为历史基线；以下MFA更新为2026-10-04北京时间04:43的服务器实测。不能用源码或本地测试替代服务器验收。
