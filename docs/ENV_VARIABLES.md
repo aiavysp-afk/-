@@ -1,5 +1,7 @@
 # 环境变量清单
 
+最新服务器状态：生产待完成配置为 `/etc/zhongyuan-daojia/api.env.pending`（0600），独立数据库 `zhongyuan_daojia`、API_HOST=127.0.0.1、API_PORT=3220。微信钥证已导入，三个资金开关false；SMS_PROVIDER/MAP_PROVIDER仍mock、SAFETY_HOTLINE为空，门禁拒绝生产启动。不能直接使用 pending 上线；见[清理与生产准备实录](LEGACY_RETIREMENT_20261004.md)。下表3210仅为旧示例，现已用于私有验收。
+
 生产密钥只放 `/etc/zhongyuan-daojia/api.env` 和受控密钥目录，不提交 Git、不复制到小程序、前端、截图或日志。服务账号只读，建议目录750、文件640（root:zydj）；若仅root读取则600。加密主密钥必须单独备份，不能随意轮换，否则地址与身份无法解密。
 
 | 变量                               | 用途 / 本地默认          | 生产要求                                                                                  |
