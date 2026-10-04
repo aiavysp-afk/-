@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新双后台只读核对记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。已确认“静享松弛桌游馆”就是目标 AppID，小程序接入的企业 ID、当前 kfid、客服账号、接待人员和时段均一致；真实 iPhone 入口仍失败。没有业务代码、迁移、服务器配置、消息发送或后台权限变更；重新绑定同一客服账号尚待动作前确认。
+
 最新更正后复测记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。20:05 iPhone 真机仍失败；已排除旧链接残留，并记录企业微信侧当前授权列表名称/客服账号及目标 AppID 尚待微信公众平台本人登录核对。没有业务代码、迁移、服务器配置或后台权限变更。
 
 最新客服配置纠正记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。企业微信后台只读核对确认当前客服链接与旧受控配置不一致；服务器两份配置已先备份后只纠正链接并保持权限，私有 API 公开配置复查通过。没有业务代码、迁移、密钥或数据库变更；仍须重新生成专项包并完成真机/真人验收，其他上线门禁不变。
