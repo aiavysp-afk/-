@@ -1,11 +1,18 @@
 <view class="page">
   <text class="brand">中原到家</text>
   <text class="title">联系渠道专项验收</text>
-  <view class="notice">这不是商城经营版。此包不提供登录、下单、支付、退款或联网请求功能，仅供人工核验联系渠道。</view>
+  <view class="notice">诊断版 v2。这不是商城经营版。此包不提供登录、下单、支付、退款或联网请求功能，仅供人工核验联系渠道。</view>
   <view class="card">
     <text class="heading">企业微信客服</text>
     <text class="detail">打开客服入口不等于客服已接通。请人工核验企业与客服账号是否正确，并记录真人接通情况及失败回退。</text>
     <button class="primary" bindtap="openCustomerService">打开企业微信客服入口</button>
+    <view class="diagnostic" wx:if="{{customerServiceDiagnostic}}">
+      <text class="heading">客服失败诊断（请截图此区）</text>
+      <text class="detail">阶段：{{customerServiceDiagnostic.stage}}</text>
+      <text class="detail">错误码：{{customerServiceDiagnostic.code}}</text>
+      <text class="detail">提示线索：{{customerServiceDiagnostic.signal}}</text>
+      <text class="detail">NOT_PROVIDED 表示微信未返回可展示的数字错误码；UNKNOWN 表示未识别到固定提示线索。线索不等于已查明原因。这里只显示安全诊断，不展示完整原始错误、链接或聊天内容；紧急情况请使用下方电话或公共应急渠道。</text>
+    </view>
   </view>
   <view class="card">
     <text class="heading">商家紧急值班电话</text>

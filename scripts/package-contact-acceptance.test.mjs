@@ -468,6 +468,10 @@ test("template invokes contacts only on a user tap and gives no connection ackno
       },
     },
   );
+  page.data = structuredClone(page.data);
+  page.setData = function (values) {
+    Object.assign(this.data, values);
+  };
   assert.equal(calls.length, 0);
   page.openCustomerService();
   assert.equal(calls[0].kind, "chat");
@@ -479,6 +483,42 @@ test("template invokes contacts only on a user tap and gives no connection ackno
   calls[0].value.fail({ errMsg: "fixture-private-detail" });
   assert.equal(calls[2].kind, "toast");
   assert.match(calls[2].value.title, /未打开/);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(page.data.customerServiceDiagnostic)),
+    {
+      stage: "SDK_CALLBACK",
+      code: "NOT_PROVIDED",
+      signal: "UNKNOWN",
+    },
+  );
+  page.openCustomerService();
+  assert.equal(page.data.customerServiceDiagnostic, null);
+  calls[0].value.fail({ errCode: 111 });
+  assert.equal(
+    calls.length,
+    4,
+    "a superseded failure must not show a stale toast",
+  );
+  assert.equal(
+    page.data.customerServiceDiagnostic,
+    null,
+    "late errors from the previous tap must not replace current state",
+  );
+  calls[3].value.fail({
+    errCode: 222,
+    errMsg: "openCustomerServiceChat:fail permission denied",
+  });
+  assert.equal(page.data.customerServiceDiagnostic.code, "222");
+  assert.equal(
+    page.data.customerServiceDiagnostic.signal,
+    "PERMISSION_WORDING",
+  );
+  assert.doesNotMatch(JSON.stringify(page.data), /fixture-private-detail/);
+  assert.equal(
+    calls.length,
+    5,
+    "the current failure must still show its fallback toast",
+  );
   const markup = await readFile(
     join(root, "assets/contact-acceptance/pages/contact/index.wxml"),
     "utf8",
@@ -487,5 +527,7 @@ test("template invokes contacts only on a user tap and gives no connection ackno
   assert.match(markup, /打开客服入口不等于客服已接通/);
   assert.match(markup, /不是公共应急号码/);
   assert.match(markup, /打开拨号界面不等于电话已接通/);
+  assert.match(markup, /诊断版 v2/);
+  assert.match(markup, /线索不等于已查明原因/);
   assert.doesNotMatch(markup, /&amp;&amp;/);
 });

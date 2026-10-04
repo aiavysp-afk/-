@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新客服诊断切片（2026-10-04），共12文件：`apps/miniapp/utils/customer-service.ts`、生成JS；`assets/contact-acceptance/pages/contact/index.js`、`index.wxml`、`index.wxss`；`scripts/verify-customer-service.test.mjs`、`package-contact-acceptance.test.mjs`；`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。仅修复失败诊断丢失与同步异常回退，真实客服失败待定位；没有环境变量、迁移或服务器变更。上线前仍须新诊断版真机、正确账号/真人响应、另一设备、失败兜底及值班负责人核验，[明细](MINIAPP_WECHAT_ACCEPTANCE.md)。
+
 最新支付确认切片（2026-10-04）：完整证据和上线前资金/真机门禁见[支付确认记录](WECHAT_PREPAY_IMPLEMENTATION.md)。本轮10文件：`.github/workflows/ci.yml`；`apps/api/scripts/verify-mall-flow.ts`（仅修正虚拟订单显示fixture）；`apps/miniapp/pages/orders/index.ts`、`index.js`、`index.wxml`；`scripts/verify-miniapp-payment.test.mjs`；`docs/WECHAT_PREPAY_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。没有环境变量、数据库或服务器变更。
 
 最新小程序切片：订单/服务页WXML表达式修复、4项页面回归、13项专项包边界测试与8模板生成器，文件及人工微信步骤见[小程序专项验收记录](MINIAPP_WECHAT_ACCEPTANCE.md)。没有数据库或服务器生产配置变更，不把编译通过记作成功上传。

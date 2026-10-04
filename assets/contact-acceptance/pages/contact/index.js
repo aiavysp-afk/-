@@ -5,9 +5,22 @@ const {
 const contacts = require("../../contacts.public");
 
 Page({
-  data: { merchantDutyPhone: contacts.emergencyContact.phone },
+  data: {
+    merchantDutyPhone: contacts.emergencyContact.phone,
+    customerServiceDiagnostic: null,
+  },
   openCustomerService() {
-    openWecomCustomerService(contacts.customerService);
+    const attempt = (this.customerServiceAttempt || 0) + 1;
+    this.customerServiceAttempt = attempt;
+    this.setData({ customerServiceDiagnostic: null });
+    openWecomCustomerService(
+      contacts.customerService,
+      undefined,
+      (diagnostic) => {
+        if (this.customerServiceAttempt !== attempt) return false;
+        this.setData({ customerServiceDiagnostic: diagnostic });
+      },
+    );
   },
   callMerchantDuty() {
     callEmergencyDuty(contacts.emergencyContact);
