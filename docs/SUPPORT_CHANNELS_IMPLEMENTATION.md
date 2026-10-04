@@ -8,13 +8,46 @@
 
 用户本轮明确确认该客服链接属于已提供CorpID、客服账号仍有效且已绑定当前小程序。新增 `WECOM_CUSTOMER_SERVICE_CONFIRMED`（默认false）：只有受控记录这一人工核验后，合法链接/CorpID才能作为可打开的客服入口发布；生产选用企业微信时也必须通过此门禁。不能用“继续下一步”、链接HTTP200或值班确认替代归属核验。
 
-后续按此确认将旧WECHAT_KF_URL映射至新版WECOM_CUSTOMER_SERVICE_URL，两套受控配置单独备份、保留其他秘密和权限。客服确认只代表用户核验归属/账号/绑定，**不等于真人真机接通、客服在线或紧急求助受理**；SAFETY_DUTY_CONFIRMED保持false。小程序未开放时显示“未就绪”，配置确认不绕过微信SDK失败提示。
+已按此确认将旧WECHAT_KF_URL映射至新版WECOM_CUSTOMER_SERVICE_URL，两套受控配置单独备份、保留其他秘密和权限，并设置WECOM_CUSTOMER_SERVICE_CONFIRMED=true。客服确认只代表用户核验归属/账号/绑定，**不等于真人真机接通、客服在线或紧急求助受理**；SAFETY_DUTY_CONFIRMED保持false。小程序未开放时显示“未就绪”，配置确认不绕过微信SDK失败提示。
 
 本机5工作区typecheck/build通过，API302+合约13+H5拨号3=318项测试及5项编译小程序客服/拨号替身测试通过。新增两项客服独立确认测试，覆盖未设/false时合法标识不可用、值班确认不能绕过、生产电话安全模式+企微客服同样必须确认；现有确认后入口和恶意URL检查继续通过。
 
 本增量文件：`.env.example`；API `config/env.ts`、`env.test.ts`、`public/customer-service.config.ts`、其测试和`public.controller.ts`；小程序`utils/customer-service.ts/js`、`pages/profile/index.wxml`；`scripts/verify-customer-service.test.mjs`；本记录及ENV_VARIABLES/INTEGRATION_GATES/SELF_TEST_REPORT/IMPLEMENTATION_STATUS/DEPLOYMENT。无新增迁移、密钥或真实交易。
 
 上线前仍须两台微信真机分别打开正确客服账号并验证接通/失败回退、客服主备值班和升级流程；保留紧急电话测试与独立值班确认。短信、地图、资金与真实经营门禁不因本项解除。
+
+### 本增量已执行的部署回执
+
+- 代码`6411b16069169768f0be53a6b669853a8b2be7e0`已推送main，[CI 37187176968](https://github.com/aiavysp-afk/-/actions/runs/37187176968)全部success；服务器current指向同一代码。归档SHA256为`f51c45c2ceed6294e6d00f2efe33128e866124e264585115006ed1e3e1166fa0`，没有密钥、运行.env或node_modules。
+- 先部署新确认门禁并核验验收环境逐字节不变，再备份两份配置并仅新增确认位/修改客服URL；反向还原这两项后与旧快照逐字节一致。验收640 root:zydj-acceptance、生产pending600 root:root保持不变，原数据库密码/pepper/加密密钥没有轮换。
+- 三个回环API/同源代理均返回customerService.available=true及受控公开标识；safetyContact.available=false/dutyConfirmed=false，紧急电话一致。将真实私有配置送入编译小程序JS与wx原生接口替身，验证同步调用参数和失败提示；没有打开真实客服、发送消息或真实拨号。
+- 服务器商城/微信支付数据库/MFA/浏览器交接/MFA恢复五套HTTP/PostgreSQL隔离流程，以及6项代理安全测试、5项编译小程序测试全部通过。三库仍16批迁移，用户、订单、登录挑战/限流和恢复记录均零行，没有迁移/导入旧数据。
+- 私有三服务active，监听127.0.0.1:3210/3212/3213；nginx -t通过，公网三域名仍503。独立生产配置新代码实测仍被SMS_PROVIDER、MAP_PROVIDER、SAFETY_DUTY_CONFIRMED三项阻止启动，五项短信/地图/资金开关均false。可用空间约34GiB，备份及旧私有release保留。
+- 本轮没有微信真机打开/接通验收；配置、替身和HTTP200不替代该验收。客服入口可供私有验收，不是公开经营上线。
+
+本轮完整代码提交文件清单及随后验收文档：
+
+```text
+.env.example
+apps/api/src/config/env.ts
+apps/api/src/config/env.test.ts
+apps/api/src/public/customer-service.config.ts
+apps/api/src/public/customer-service.config.test.ts
+apps/api/src/public/public.controller.ts
+apps/miniapp/pages/profile/index.wxml
+apps/miniapp/utils/customer-service.ts
+apps/miniapp/utils/customer-service.js
+scripts/verify-customer-service.test.mjs
+docs/DEPLOYMENT.md
+docs/ENV_VARIABLES.md
+docs/IMPLEMENTATION_STATUS.md
+docs/INTEGRATION_GATES.md
+docs/SELF_TEST_REPORT.md
+docs/SUPPORT_CHANNELS_IMPLEMENTATION.md
+README.md
+docs/CHANGE_FILES.md
+docs/DEPLOYMENT_ACCEPTANCE_20261004.md
+```
 
 ## 已实现边界
 
@@ -48,7 +81,7 @@
 
 生产 pending 和私有验收配置已分别受控备份，保留原密码、pepper、加密密钥与三个微信资金开关false；只新增客服选择、用户指定紧急号码和关闭的渠道开关。生产 pending 仍不启用公开服务。旧系统签名和模板字段存在，完整访问凭据及腾讯Key/SK未找到。
 
-用户随后提供的企业微信CorpID已写入生产pending和私有验收受控配置，格式门禁通过。还需要后台生成的**实际客服链接**及小程序客服绑定/认证核验；短信RAM凭据、模板用途和腾讯地图Key/SK需通过服务器安全配置提供，不发到聊天。值班确认位仍false。公网继续维护503；生产库16批迁移不变、不导入旧数据。
+用户提供的企业微信CorpID及从旧服务器找回的实际客服链接已写入生产pending和私有验收受控配置，用户明确确认同企业/账号/绑定后设置独立客服确认位；私有入口开放，微信真机/实际接通尚未验收。短信RAM凭据、模板用途和腾讯地图Key/SK需通过服务器安全配置提供，不发到聊天。值班确认位仍false。公网继续维护503；生产库16批迁移不变、不导入旧数据。
 
 短信尚未接订单Outbox：必须先建立持久化派发记录、并发租约、手机号/日预算/频率控制、敏感数据保护、回执查验及UNKNOWN人工处置，才能调用内部submit。OutId只是关联字段，不能当作阿里云幂等键。地图尚未接预约页面/服务区校验：需登录与持久化限流、地址确认和隐私授权。客服目前只是用户主动入口，不是自动应急告警/接单/超时升级闭环。这些仍阻止公开经营。
 
@@ -66,7 +99,7 @@
 
 ### 上线前人工核对
 
-1. 提供实际企业微信官方客服链接；CorpID已受控配置。核验企业/小程序主体、认证、绑定及两台微信真机入口，不提供企业secret到聊天。
+1. 实际链接和CorpID已受控配置，用户已核对企业归属/账号/绑定；仍需企业/小程序主体与认证核验、两台微信真机打开正确账号及真人接通/失败回退，不提供企业secret到聊天。
 2. 负责人确认紧急号码归属及可公开展示，测试营业期间主备值班、无法接通兜底和升级流程。电话只是商家值班，不能替代当地公共应急号码；演练成功后才可设置值班确认。
 3. 短信凭据、签名和模板用途及地图Key/SK只从服务器受控配置注入，先补齐持久化派发/配额/限流/隐私授权，再做真实渠道受控验收。
 4. 两名不同自然人完成管理员MFA和退款申请/异人复核演练；核验商户主体、回调域名及真实支付/退款/对账后，按各自门禁分别启用资金操作。
