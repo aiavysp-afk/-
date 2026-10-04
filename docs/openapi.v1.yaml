@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 中原到家 API
-  version: 0.9.0
+  version: 0.10.0
   description: M2 开发接口；金额单位固定为人民币分。
 servers:
   - url: http://localhost:3100
@@ -952,6 +952,123 @@ paths:
         "409": { description: 状态/规则/额度已变化 }
         "503":
           { description: 真实门禁关闭或渠道不确定；不确定已占用额度并转UNKNOWN }
+  /v1/admin/organizations/{organizationId}/safety-duty-rosters:
+    post:
+      summary: 配置新的安全值班主岗和备岗
+      description: 仅组织ADMIN；主备必须是不同且有效的SAFETY_DUTY成员。新配置原子停用旧配置并写审计。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SafetyDutyRosterUpsert" }
+      responses:
+        "201": { description: 新的唯一活动值班表 }
+        "400": { description: 主备相同、成员无效或超时时间越界 }
+        "403": { description: 无组织身份管理权限 }
+  /v1/admin/organizations/{organizationId}/safety-duty-rosters/current:
+    get:
+      summary: 读取本组织当前安全值班主备岗
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 当前活动值班表或null }
+        "403": { description: 无本组织安全响应权限 }
+  /v1/orders/{orderId}/safety-incidents:
+    parameters:
+      - { in: path, name: orderId, required: true, schema: { type: string } }
+    post:
+      summary: 客户为自己的履约中订单发起安全事件
+      description: 事件只持久化并写Outbox；接口成功不代表已联系主岗、备岗、电话或公共应急服务。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: header,
+            name: Idempotency-Key,
+            required: true,
+            schema: { type: string, minLength: 16, maxLength: 128 },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SafetyIncidentCreate" }
+      responses:
+        "201": { description: 事件已记录或同键同请求重放 }
+        "403": { description: 非订单本人 }
+        "409": { description: 订单阶段或幂等指纹冲突 }
+        "503": { description: 未配置活动值班主备岗 }
+    get:
+      summary: 客户读取本人订单的安全事件
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 最多50条本人事件 }
+        "403": { description: 非订单本人 }
+  /v1/admin/organizations/{organizationId}/safety-incidents:
+    get:
+      summary: 安全值班人员读取本组织最近安全事件
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 最多100条组织内安全事件 }
+        "403": { description: 无本组织安全响应权限 }
+  /v1/admin/organizations/{organizationId}/safety-incidents/{id}/acknowledge:
+    post:
+      summary: 值班人员确认安全事件
+      description: 截止前仅主岗；超时后原子升级且仅备岗。重复确认只对原确认人幂等。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "201": { description: 已确认事件 }
+        "403": { description: 当前人员不是该阶段允许的响应人 }
+        "409": { description: 已关闭或已由其他人员确认 }
+  /v1/admin/organizations/{organizationId}/safety-incidents/{id}/close:
+    post:
+      summary: 原确认人使用固定结论码关闭安全事件
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SafetyIncidentClose" }
+      responses:
+        "201": { description: 已关闭或原关闭结果幂等返回 }
+        "403": { description: 非该事件原确认人 }
+        "409": { description: 事件尚未确认 }
   /v1/payments/wechat/refund-notify:
     post:
       summary: 微信退款原始字节验签及解密通知
@@ -1025,6 +1142,75 @@ components:
       scheme: bearer
       bearerFormat: opaque
   schemas:
+    SafetyDutyRosterUpsert:
+      type: object
+      additionalProperties: false
+      required: [primaryUserId, backupUserId, acknowledgementTimeoutSeconds]
+      properties:
+        primaryUserId: { type: string, minLength: 1, maxLength: 128 }
+        backupUserId: { type: string, minLength: 1, maxLength: 128 }
+        acknowledgementTimeoutSeconds:
+          { type: integer, minimum: 60, maximum: 900 }
+    SafetyIncidentCategory:
+      type: string
+      enum: [PERSONAL_SAFETY, MEDICAL_CONCERN, SERVICE_DISPUTE, OTHER_URGENT]
+    SafetyIncidentStatus:
+      type: string
+      enum: [OPEN, ESCALATED, ACKNOWLEDGED, CLOSED]
+    SafetyIncidentCreate:
+      type: object
+      additionalProperties: false
+      required: [category]
+      properties:
+        category: { $ref: "#/components/schemas/SafetyIncidentCategory" }
+    SafetyIncidentClose:
+      type: object
+      additionalProperties: false
+      required: [resolutionCode]
+      properties:
+        resolutionCode:
+          type: string
+          enum:
+            [
+              RESOLVED,
+              REFERRED_PUBLIC_EMERGENCY,
+              FALSE_ALARM,
+              FOLLOW_UP_REQUIRED,
+            ]
+    SafetyIncidentView:
+      type: object
+      required:
+        [
+          id,
+          organizationId,
+          orderId,
+          category,
+          status,
+          primaryUserId,
+          backupUserId,
+          acknowledgementDueAt,
+          acknowledgedById,
+          acknowledgedAt,
+          escalatedAt,
+          resolutionCode,
+          closedAt,
+          createdAt,
+        ]
+      properties:
+        id: { type: string }
+        organizationId: { type: string }
+        orderId: { type: string }
+        category: { $ref: "#/components/schemas/SafetyIncidentCategory" }
+        status: { $ref: "#/components/schemas/SafetyIncidentStatus" }
+        primaryUserId: { type: string }
+        backupUserId: { type: string }
+        acknowledgementDueAt: { type: string, format: date-time }
+        acknowledgedById: { type: [string, "null"] }
+        acknowledgedAt: { type: [string, "null"], format: date-time }
+        escalatedAt: { type: [string, "null"], format: date-time }
+        resolutionCode: { type: [string, "null"] }
+        closedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
     ServiceCategory:
       type: string
       enum: [MASSAGE, SPA_RELAXATION, FOOT_CARE]

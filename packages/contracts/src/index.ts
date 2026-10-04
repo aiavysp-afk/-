@@ -276,6 +276,63 @@ export const RefundViewSchema = z.object({
   succeededAt: IsoDateTimeSchema.nullable(),
 });
 
+export const SafetyDutyRosterUpsertSchema = z
+  .object({
+    primaryUserId: z.string().min(1).max(128),
+    backupUserId: z.string().min(1).max(128),
+    acknowledgementTimeoutSeconds: z.number().int().min(60).max(900),
+  })
+  .strict()
+  .refine((value) => value.primaryUserId !== value.backupUserId, {
+    message: "主备值班人员必须分离",
+  });
+
+export const SafetyIncidentCategorySchema = z.enum([
+  "PERSONAL_SAFETY",
+  "MEDICAL_CONCERN",
+  "SERVICE_DISPUTE",
+  "OTHER_URGENT",
+]);
+export const SafetyIncidentStatusSchema = z.enum([
+  "OPEN",
+  "ESCALATED",
+  "ACKNOWLEDGED",
+  "CLOSED",
+]);
+export const SafetyIncidentCreateSchema = z
+  .object({ category: SafetyIncidentCategorySchema })
+  .strict();
+export const SafetyIncidentCloseSchema = z
+  .object({
+    resolutionCode: z.enum([
+      "RESOLVED",
+      "REFERRED_PUBLIC_EMERGENCY",
+      "FALSE_ALARM",
+      "FOLLOW_UP_REQUIRED",
+    ]),
+  })
+  .strict();
+export const SafetyIncidentViewSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  orderId: z.string(),
+  category: SafetyIncidentCategorySchema,
+  status: SafetyIncidentStatusSchema,
+  primaryUserId: z.string(),
+  backupUserId: z.string(),
+  acknowledgementDueAt: IsoDateTimeSchema,
+  acknowledgedById: z.string().nullable(),
+  acknowledgedAt: IsoDateTimeSchema.nullable(),
+  escalatedAt: IsoDateTimeSchema.nullable(),
+  resolutionCode: z.string().nullable(),
+  closedAt: IsoDateTimeSchema.nullable(),
+  createdAt: IsoDateTimeSchema,
+});
+export const SafetyIncidentCustomerViewSchema = SafetyIncidentViewSchema.omit({
+  primaryUserId: true,
+  backupUserId: true,
+});
+
 export const WechatMiniappLoginRequestSchema = z.object({
   code: z.string().trim().min(1).max(128),
 });
@@ -362,6 +419,15 @@ export type WechatPayParameters = z.infer<typeof WechatPayParametersSchema>;
 export type RefundRequest = z.infer<typeof RefundRequestSchema>;
 export type RefundReview = z.infer<typeof RefundReviewSchema>;
 export type RefundView = z.infer<typeof RefundViewSchema>;
+export type SafetyDutyRosterUpsert = z.infer<
+  typeof SafetyDutyRosterUpsertSchema
+>;
+export type SafetyIncidentCreate = z.infer<typeof SafetyIncidentCreateSchema>;
+export type SafetyIncidentClose = z.infer<typeof SafetyIncidentCloseSchema>;
+export type SafetyIncidentView = z.infer<typeof SafetyIncidentViewSchema>;
+export type SafetyIncidentCustomerView = z.infer<
+  typeof SafetyIncidentCustomerViewSchema
+>;
 export type PublicConfig = z.infer<typeof PublicConfigSchema>;
 export type WechatMiniappLoginRequest = z.infer<
   typeof WechatMiniappLoginRequestSchema

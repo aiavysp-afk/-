@@ -1,5 +1,7 @@
 # 环境变量清单
 
+安全值班代码本轮没有新增生产秘密或绕过变量。`SAFETY_DUTY_CONFIRMED` 继续由真人主备与通知运维验收控制；数据库中存在值班表不能自动把它设为 true。专项验证仅使用 `SAFETY_TEST_DATABASE_URL`，脚本只接受本机 `zhongyuan_safety_test`，CI 只接受 Actions 的隔离测试库，禁止指向生产。
+
 新增 `WECOM_CUSTOMER_SERVICE_CONFIRMED=false` 独立门禁：合法CorpID+客服URL不会自动开放；负责人核验同一企业、账号有效与小程序绑定后才可受控设true。用户已明确确认原服务器客服链接归属，本项不替代微信真机打开/接通验收，也不能把SAFETY_DUTY_CONFIRMED自动设true。
 
 最新客服/渠道变量与校验见[本轮接入记录](SUPPORT_CHANNELS_IMPLEMENTATION.md)。用户选择企业微信日常客服和独立紧急值班手机；SAFETY_CONTACT_MODE=wecom需官方链接/CorpID、SAFETY_EMERGENCY_PHONE及人工值班确认，不再要求把客服URL放进SAFETY_HOTLINE。SMS/地图只改provider标签不能通过凭据门禁，真实调用开关默认关闭。
@@ -44,6 +46,7 @@
 | SEED_DEVELOPMENT_IDENTITIES        | false                    | 必须false；开发seed脚本禁止production及远程身份播种                                       |
 | MALL_TEST_DATABASE_URL             | 无                       | 自测专用：仅本地zhongyuan_daojia_test，不使用生产库                                       |
 | PAYMENT_DB_TEST_URL                | 无                       | 支付/预下单/退款数据库验证仅本地zhongyuan_daojia或zhongyuan_daojia_test；合成数据自动清理 |
+| SAFETY_TEST_DATABASE_URL           | 无                       | 安全值班并发验证仅本机zhongyuan_safety_test；CI仅隔离测试库；禁止生产目标                 |
 | CONFIRM_PRODUCTION_BOOTSTRAP       | 无                       | 手工一次性初始化时true，完成后移除                                                        |
 | BOOTSTRAP_ORGANIZATION_ID          | 无                       | 初始化独立组织ID                                                                          |
 | BOOTSTRAP_REFUND_REQUESTER_USER_ID | 无                       | 已经真实微信登录且人工核验的申请人UserID                                                  |

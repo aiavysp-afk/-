@@ -1,5 +1,34 @@
 # 本次改动文件清单
 
+最新安全值班闭环（2026-10-05）新增第17批迁移、`apps/api/src/safety/` 模块、真实 PostgreSQL 并发验证脚本及 CI 步骤；更新 Prisma、共享合约、AppModule、OpenAPI、权限/部署/环境/自测/状态文档与 README。实现组织唯一主备岗、客户订单事件、幂等、防重复升级、阶段责任人确认、仅确认人关闭、状态事件/审计/Outbox。没有连接真实短信、电话或企业微信通知，没有修改服务器生产配置或 `SAFETY_DUTY_CONFIRMED`，不解除公网经营/资金门禁。完整设计见 `docs/SAFETY_DUTY_IMPLEMENTATION.md`。
+
+本轮主要文件：
+
+- `.github/workflows/ci.yml`
+- `README.md`
+- `apps/api/package.json`
+- `apps/api/prisma/schema.prisma`
+- `apps/api/prisma/migrations/20261005034000_safety_duty_incidents/migration.sql`
+- `apps/api/scripts/verify-safety-duty.ts`
+- `apps/api/src/app.module.ts`
+- `apps/api/src/safety/safety.controller.ts`
+- `apps/api/src/safety/safety.controller.test.ts`
+- `apps/api/src/safety/safety-escalation.worker.ts`
+- `apps/api/src/safety/safety.module.ts`
+- `apps/api/src/safety/safety.service.ts`
+- `apps/api/src/safety/safety.service.test.ts`
+- `packages/contracts/src/index.ts`
+- `packages/contracts/src/index.test.ts`
+- `docs/SAFETY_DUTY_IMPLEMENTATION.md`
+- `docs/openapi.v1.yaml`
+- `docs/AUTHORIZATION_MATRIX.md`
+- `docs/DEPLOYMENT.md`
+- `docs/ENV_VARIABLES.md`
+- `docs/INTEGRATION_GATES.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+- `docs/SELF_TEST_REPORT.md`
+- `docs/CHANGE_FILES.md`
+
 最新客服真人闭环回执（2026-10-05）仅更新 5 个文档：`MINIAPP_WECHAT_ACCEPTANCE.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md` 和本清单。用户明确确认新预览客服已打开，并在发送测试消息后收到真人回复；企业绑定、真机入口、消息送达和真人接待闭环通过。没有代码、服务器、数据库、密钥或上线开关变更，未解除失败兜底、另一设备、完整值班或经营/资金门禁。
 
 同日失败回退自检只更新 `MINIAPP_WECHAT_ACCEPTANCE.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md` 和本清单：真实 profile 页验证客服不可用/电话未配置均只显示安全求助提示，临时 mock 与数据已恢复，34 项相关回归通过。没有真实外呼、拨号、服务器或代码变更；另一设备和现场无法接通/值班演练仍待人工完成。

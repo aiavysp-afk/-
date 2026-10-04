@@ -35,6 +35,20 @@ enum MfaRecoveryStatus {
   EXPIRED
 }
 
+enum SafetyIncidentStatus {
+  OPEN
+  ESCALATED
+  ACKNOWLEDGED
+  CLOSED
+}
+
+enum SafetyIncidentCategory {
+  PERSONAL_SAFETY
+  MEDICAL_CONCERN
+  SERVICE_DISPUTE
+  OTHER_URGENT
+}
+
 enum ServiceCategory {
   MASSAGE
   SPA_RELAXATION
@@ -110,29 +124,39 @@ model Organization {
   shifts              TherapistShift[]
   reservations        AppointmentReservation[]
   mfaRecoveryRequests MfaRecoveryRequest[]
+  safetyDutyRosters   SafetyDutyRoster[]
+  safetyIncidents     SafetyIncident[]
 }
 
 model User {
-  id                     String                   @id @default(cuid())
-  organizationId         String?
-  organization           Organization?            @relation(fields: [organizationId], references: [id])
-  role                   UserRole
-  displayName            String
-  phoneEncrypted         String?
-  status                 String                   @default("ACTIVE")
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
-  identities             ExternalIdentity[]
-  sessions               Session[]
-  memberships            StaffMembership[]
-  mfaCredential          MfaCredential?
-  customerOrders         Order[]                  @relation("CustomerOrders")
-  therapistOrders        Order[]                  @relation("TherapistOrders")
-  therapistShifts        TherapistShift[]         @relation("TherapistShifts")
-  customerReservations   AppointmentReservation[] @relation("CustomerReservations")
-  therapistReservations  AppointmentReservation[] @relation("TherapistReservations")
-  requestedMfaRecoveries MfaRecoveryRequest[]     @relation("MfaRecoveryTarget")
-  reviewedMfaRecoveries  MfaRecoveryRequest[]     @relation("MfaRecoveryReviewer")
+  id                      String                   @id @default(cuid())
+  organizationId          String?
+  organization            Organization?            @relation(fields: [organizationId], references: [id])
+  role                    UserRole
+  displayName             String
+  phoneEncrypted          String?
+  status                  String                   @default("ACTIVE")
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  identities              ExternalIdentity[]
+  sessions                Session[]
+  memberships             StaffMembership[]
+  mfaCredential           MfaCredential?
+  customerOrders          Order[]                  @relation("CustomerOrders")
+  therapistOrders         Order[]                  @relation("TherapistOrders")
+  therapistShifts         TherapistShift[]         @relation("TherapistShifts")
+  customerReservations    AppointmentReservation[] @relation("CustomerReservations")
+  therapistReservations   AppointmentReservation[] @relation("TherapistReservations")
+  requestedMfaRecoveries  MfaRecoveryRequest[]     @relation("MfaRecoveryTarget")
+  reviewedMfaRecoveries   MfaRecoveryRequest[]     @relation("MfaRecoveryReviewer")
+  createdSafetyRosters    SafetyDutyRoster[]       @relation("SafetyRosterCreator")
+  primarySafetyRosters    SafetyDutyRoster[]       @relation("SafetyRosterPrimary")
+  backupSafetyRosters     SafetyDutyRoster[]       @relation("SafetyRosterBackup")
+  reportedSafetyIncidents SafetyIncident[]         @relation("SafetyIncidentReporter")
+  primarySafetyIncidents  SafetyIncident[]         @relation("SafetyIncidentPrimary")
+  backupSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentBackup")
+  acknowledgedIncidents   SafetyIncident[]         @relation("SafetyIncidentAcknowledger")
+  closedSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentCloser")
 }
 
 model ExternalIdentity {
@@ -334,9 +358,80 @@ model Order {
   payment            Payment?
   idempotencyKey     String
   requestFingerprint String
+  safetyIncidents    SafetyIncident[]
 
   @@unique([customerId, idempotencyKey])
   @@index([organizationId, status, appointmentStart])
+}
+
+model SafetyDutyRoster {
+  id                            String           @id @default(cuid())
+  organizationId                String
+  organization                  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  primaryUserId                 String
+  primaryUser                   User             @relation("SafetyRosterPrimary", fields: [primaryUserId], references: [id], onDelete: Restrict)
+  backupUserId                  String
+  backupUser                    User             @relation("SafetyRosterBackup", fields: [backupUserId], references: [id], onDelete: Restrict)
+  acknowledgementTimeoutSeconds Int
+  active                        Boolean          @default(true)
+  createdById                   String
+  createdBy                     User             @relation("SafetyRosterCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt                     DateTime         @default(now())
+  deactivatedAt                 DateTime?
+  incidents                     SafetyIncident[]
+
+  @@index([organizationId, active])
+  @@index([primaryUserId, active])
+  @@index([backupUserId, active])
+}
+
+model SafetyIncident {
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  orderId              String
+  order                Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  reporterUserId       String
+  reporter             User                   @relation("SafetyIncidentReporter", fields: [reporterUserId], references: [id], onDelete: Restrict)
+  rosterId             String
+  roster               SafetyDutyRoster       @relation(fields: [rosterId], references: [id], onDelete: Restrict)
+  primaryUserId        String
+  primaryUser          User                   @relation("SafetyIncidentPrimary", fields: [primaryUserId], references: [id], onDelete: Restrict)
+  backupUserId         String
+  backupUser           User                   @relation("SafetyIncidentBackup", fields: [backupUserId], references: [id], onDelete: Restrict)
+  category             SafetyIncidentCategory
+  status               SafetyIncidentStatus   @default(OPEN)
+  idempotencyKey       String
+  requestFingerprint   String
+  acknowledgementDueAt DateTime
+  acknowledgedById     String?
+  acknowledgedBy       User?                  @relation("SafetyIncidentAcknowledger", fields: [acknowledgedById], references: [id], onDelete: Restrict)
+  acknowledgedAt       DateTime?
+  escalatedAt          DateTime?
+  closedById           String?
+  closedBy             User?                  @relation("SafetyIncidentCloser", fields: [closedById], references: [id], onDelete: Restrict)
+  resolutionCode       String?
+  closedAt             DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  events               SafetyIncidentEvent[]
+
+  @@unique([reporterUserId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([status, acknowledgementDueAt])
+  @@index([orderId, createdAt])
+}
+
+model SafetyIncidentEvent {
+  id         String         @id @default(cuid())
+  incidentId String
+  incident   SafetyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  type       String
+  actorId    String?
+  payload    Json
+  createdAt  DateTime       @default(now())
+
+  @@index([incidentId, createdAt])
 }
 
 enum WechatPrepayState {

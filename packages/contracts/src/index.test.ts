@@ -9,11 +9,79 @@ import {
   WechatPayParametersSchema,
   RefundRequestSchema,
   RefundReviewSchema,
+  SafetyDutyRosterUpsertSchema,
+  SafetyIncidentCloseSchema,
+  SafetyIncidentCreateSchema,
+  SafetyIncidentCustomerViewSchema,
   ServiceAdminUpdateSchema,
   ShiftCreateSchema,
   WechatMiniappLoginRequestSchema,
   formatMoney,
 } from "./index.js";
+
+describe("safety duty contracts", () => {
+  it("requires two distinct responders and a bounded acknowledgement timeout", () => {
+    expect(
+      SafetyDutyRosterUpsertSchema.parse({
+        primaryUserId: "primary-1",
+        backupUserId: "backup-1",
+        acknowledgementTimeoutSeconds: 120,
+      }).acknowledgementTimeoutSeconds,
+    ).toBe(120);
+    expect(() =>
+      SafetyDutyRosterUpsertSchema.parse({
+        primaryUserId: "same-user",
+        backupUserId: "same-user",
+        acknowledgementTimeoutSeconds: 120,
+      }),
+    ).toThrow();
+    expect(() =>
+      SafetyDutyRosterUpsertSchema.parse({
+        primaryUserId: "primary-1",
+        backupUserId: "backup-1",
+        acknowledgementTimeoutSeconds: 59,
+      }),
+    ).toThrow();
+  });
+
+  it("accepts only fixed incident categories and close outcomes", () => {
+    expect(
+      SafetyIncidentCreateSchema.parse({ category: "PERSONAL_SAFETY" }),
+    ).toEqual({ category: "PERSONAL_SAFETY" });
+    expect(() =>
+      SafetyIncidentCreateSchema.parse({ category: "FREE_TEXT" }),
+    ).toThrow();
+    expect(
+      SafetyIncidentCloseSchema.parse({
+        resolutionCode: "REFERRED_PUBLIC_EMERGENCY",
+      }),
+    ).toEqual({ resolutionCode: "REFERRED_PUBLIC_EMERGENCY" });
+    expect(() =>
+      SafetyIncidentCloseSchema.parse({ resolutionCode: "CUSTOM_NOTE" }),
+    ).toThrow();
+  });
+
+  it("keeps internal responder ids out of the customer view", () => {
+    const parsed = SafetyIncidentCustomerViewSchema.parse({
+      id: "incident-1",
+      organizationId: "org-1",
+      orderId: "order-1",
+      category: "PERSONAL_SAFETY",
+      status: "OPEN",
+      primaryUserId: "must-be-stripped",
+      backupUserId: "must-be-stripped",
+      acknowledgementDueAt: "2026-10-05T03:00:00.000Z",
+      acknowledgedById: null,
+      acknowledgedAt: null,
+      escalatedAt: null,
+      resolutionCode: null,
+      closedAt: null,
+      createdAt: "2026-10-05T02:58:00.000Z",
+    });
+    expect(parsed).not.toHaveProperty("primaryUserId");
+    expect(parsed).not.toHaveProperty("backupUserId");
+  });
+});
 
 describe("money contract", () => {
   it("accepts RSA SDK parameters and refuses V2/invalid prepay packages", () => {
