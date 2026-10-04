@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新客服真人闭环回执（2026-10-05）仅更新 5 个文档：`MINIAPP_WECHAT_ACCEPTANCE.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md` 和本清单。用户明确确认新预览客服已打开，并在发送测试消息后收到真人回复；企业绑定、真机入口、消息送达和真人接待闭环通过。没有代码、服务器、数据库、密钥或上线开关变更，未解除失败兜底、另一设备、完整值班或经营/资金门禁。
+
 最新完整商城真机联系渠道修复（2026-10-05），共12个仓库文件：`apps/miniapp/app.ts`及生成JS、`pages/profile/index.ts`及生成JS、profile WXML、`scripts/verify-miniapp-wxml.test.mjs`，以及 `docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`ENV_VARIABLES.md`、本清单。移除真机不可用的 localhost API，改为正式 HTTPS API；API 维护/断网时保留已确认的公开客服与电话，成功响应仍覆盖兜底。新增失败保持/成功覆盖/HTTPS基址测试及稳定 UI 选择器。53 项测试、6 项 typecheck/依赖任务、8 页官方 WXML 编译和开发者工具页面/真实点击自检通过。没有服务器、数据库、密钥、支付/SMS/地图开关变更，未上传、发消息或拨号。
 
 同日预览回执仅更新本清单、`MINIAPP_WECHAT_ACCEPTANCE.md` 和 `SELF_TEST_REPORT.md`：用户确认开发者工具授权后，官方 `auto_preview` 成功推送 `pages/profile/index` 新预览，总包 63779 字节；没有正式上传、发送客服消息或拨号。
