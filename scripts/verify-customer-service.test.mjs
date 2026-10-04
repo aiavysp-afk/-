@@ -206,6 +206,88 @@ test("wording clues are fixed enums, not official error mappings or raw-text dia
   }
 });
 
+test("DevTools unsupported wording gives a real-device hint without exposing the native error", () => {
+  for (const apiWord of ["", "API", "api", "aPi"]) {
+    const error = {
+      errMsg: `openCustomerServiceChat:fail 开发者工具暂时不支持调试微信客服${apiWord}，请使用真机调试。`,
+      privateDetail: "fixture-secret",
+    };
+    for (const stage of ["SDK_CALLBACK", "SDK_THROW"]) {
+      const f = fixture(),
+        diagnostics = [];
+      if (stage === "SDK_THROW")
+        f.host.openCustomerServiceChat = () => {
+          throw error;
+        };
+      openWecomCustomerService(contact, f.host, (value) =>
+        diagnostics.push(value),
+      );
+      if (stage === "SDK_CALLBACK") f.calls[0].fail(error);
+      assert.deepEqual(diagnostics, [
+        {
+          stage,
+          code: "NOT_PROVIDED",
+          signal: "DEVTOOLS_UNSUPPORTED_WORDING",
+        },
+      ]);
+      assert.equal(f.toasts.length, 1);
+      assert.match(f.toasts[0].title, /模拟器不支持客服.*微信真机/);
+      assert.doesNotMatch(
+        JSON.stringify([diagnostics, f.toasts]),
+        /fixture-secret|暂时|请使用真机调试|已接通|已修复|请重试/,
+      );
+    }
+  }
+});
+
+test("DevTools clues require native failure wording and all three fixed terms; code 6 alone is unmapped", () => {
+  for (const error of [
+    { errMsg: "开发者工具不支持客服，请使用真机调试。" },
+    { errMsg: "openCustomerServiceChat:fail 暂时不支持，请使用真机调试。" },
+    { errMsg: "openCustomerServiceChat:fail 开发者工具，请使用真机调试。" },
+    { errMsg: "openCustomerServiceChat:fail 开发者工具暂时不支持调试。" },
+    {
+      errMsg:
+        "openCustomerServiceChat:fail https://fixture.test/开发者工具不支持真机?token=fixture-secret",
+    },
+    {
+      errMsg:
+        "openCustomerServiceChat:fail 开发者工具不支持，请使用真机调试 token=fixture-secret",
+    },
+    ...["APIs", "API_private", "API123", "Error", "token=fixture-secret"].map(
+      (extra) => ({
+        errMsg: `openCustomerServiceChat:fail 开发者工具不支持调试API，请使用真机调试 ${extra}`,
+      }),
+    ),
+    {
+      errMsg:
+        "openCustomerServiceChat:fail " +
+        "文".repeat(513) +
+        "开发者工具不支持，请使用真机调试。",
+    },
+    { errCode: 6, errMsg: "openCustomerServiceChat:fail unknown" },
+  ]) {
+    const f = fixture(),
+      diagnostics = [];
+    openWecomCustomerService(contact, f.host, (value) =>
+      diagnostics.push(value),
+    );
+    f.calls[0].fail(error);
+    assert.deepEqual(diagnostics, [
+      {
+        stage: "SDK_CALLBACK",
+        code: error.errCode === 6 ? "6" : "NOT_PROVIDED",
+        signal: "UNKNOWN",
+      },
+    ]);
+    assert.match(f.toasts[0].title, /未打开/);
+    assert.doesNotMatch(
+      JSON.stringify([diagnostics, f.toasts]),
+      /fixture-secret|fixture\.test|开发者工具/,
+    );
+  }
+});
+
 test("unknown, huge and sensitive native errors never leave the local boundary", () => {
   for (const error of [
     undefined,
@@ -263,9 +345,17 @@ test("a broken diagnostic consumer cannot suppress fallback or retry a native ca
 });
 
 test("only explicit superseded-attempt rejection discards a stale failure toast", () => {
-  const f = fixture();
-  openWecomCustomerService(contact, f.host, () => false);
-  f.calls[0].fail({ errCode: 12 });
-  assert.equal(f.calls.length, 1);
-  assert.equal(f.toasts.length, 0);
+  for (const error of [
+    { errCode: 12 },
+    {
+      errMsg:
+        "openCustomerServiceChat:fail 开发者工具暂时不支持调试，请使用真机调试。",
+    },
+  ]) {
+    const f = fixture();
+    openWecomCustomerService(contact, f.host, () => false);
+    f.calls[0].fail(error);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.toasts.length, 0);
+  }
 });

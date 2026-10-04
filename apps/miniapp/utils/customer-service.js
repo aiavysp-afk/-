@@ -32,7 +32,14 @@ function failureDiagnostic(error, stage) {
     // No number extraction from arbitrary text: a URL/token may look like an error code.
     // These are wording clues, NOT an official mapping or a confirmed root cause.
     let signal = "UNKNOWN";
-    if (/^(?:not support(?:ed)?|unsupported)\.?$/.test(message))
+    if (
+    // The native DevTools wording may include the fixed API word, never arbitrary ASCII.
+    /^[\u3400-\u9fff\s，。；：、（）！？,.!?:;()]+$/.test(message.replace(/\bapi\b/g, "")) &&
+        message.includes("开发者工具") &&
+        message.includes("不支持") &&
+        message.includes("真机"))
+        signal = "DEVTOOLS_UNSUPPORTED_WORDING";
+    else if (/^(?:not support(?:ed)?|unsupported)\.?$/.test(message))
         signal = "UNSUPPORTED_WORDING";
     else if (/^(?:permission denied|permission deny|no permission|not authorized|unauthorized)\.?$/.test(message))
         signal = "PERMISSION_WORDING";
@@ -83,10 +90,13 @@ function openWecomCustomerService(contact, host = wx, onFailure) {
         return;
     }
     const showFailure = (error, stage) => {
-        if (!report(failureDiagnostic(error, stage)))
+        const diagnostic = failureDiagnostic(error, stage);
+        if (!report(diagnostic))
             return;
         host.showToast({
-            title: "客服入口未打开，请重试；紧急情况请立即求助",
+            title: diagnostic.signal === "DEVTOOLS_UNSUPPORTED_WORDING"
+                ? "开发者工具模拟器不支持客服，请使用微信真机"
+                : "客服入口未打开，请重试；紧急情况请立即求助",
             icon: "none",
         });
     };
