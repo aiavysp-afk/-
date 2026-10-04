@@ -1,6 +1,6 @@
 # 本次改动文件清单
 
-日期：2026-10-04。本轮在c270262e私有验收基线上新增验证器丢失受审恢复、第16批迁移、本人小程序申请、管理员后台复核和隔离HTTP/PostgreSQL专项测试。不提交密钥、运行配置、归档、node_modules或截图；真人微信和独立设备双人演练仍待完成。
+日期：2026-10-04。本轮在c270262e私有验收基线上新增验证器丢失受审恢复、第16批迁移、本人小程序申请、管理员后台复核和隔离HTTP/PostgreSQL专项测试；代码`e898cbf`已通过CI并部署到私有验收服务器。不提交密钥、运行配置、归档、node_modules或截图；真人微信和独立设备双人演练仍待完成。
 
 ## 本轮文件
 
@@ -27,9 +27,11 @@
 - `apps/miniapp/pages/profile/index.wxml`
 - `docs/CHANGE_FILES.md`
 - `docs/DEPLOYMENT.md`
+- `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`
 - `docs/ENV_VARIABLES.md`
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/MFA_RECOVERY_IMPLEMENTATION.md`
+- `docs/PRIVATE_ACCEPTANCE_DEPLOYMENT.md`
 - `docs/SELF_TEST_REPORT.md`
 - `docs/openapi.v1.yaml`
 - `packages/contracts/src/index.ts`

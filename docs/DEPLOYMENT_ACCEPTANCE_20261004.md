@@ -1,12 +1,23 @@
 # 2026-10-04 服务器私有验收记录
 
-最新登录交接切片：`c270262e54c3fb85648efb2b6bd24927c5f15ce3`已部署到独立私有环境，[GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37157220065)全部success。部署前删除两个未运行旧release、旧上传包和APT可再生成缓存；部署与验证后删除上一版release、本次上传包和临时恢复库，保留数据库/环境备份、runtime、store及当前配置。current仅指向c270262e，验收库与smoke库均15批且User/Order/BrowserLogin临时表为0；三个服务active，旧站200与PID基线不变，最终可用4163164KiB（约3.97GiB）。商城/支付/MFA/浏览器交接四个HTTP/DB流程、6项Linux预览测试及备份恢复全部通过。私有Mock环境不是公网经营上线。以下保留此前阶段证据。
+最新受审恢复切片：`e898cbf06b2449e4486ba8f4182266d485fec625`已部署到独立私有环境，[GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37179489798)全部success。升级前备份专用验收库并逐字节备份/比对环境文件；部署与验证后删除上一版c270 release、本次上传包和临时恢复库，保留数据库/环境备份、runtime、store及当前配置。current仅指向e898cbf，验收库与smoke库均16批且User/Order/BrowserLogin/MfaRecovery临时表为0；三个服务active，旧站200与PID基线不变，最终可用4160632KiB（约3.97GiB）。商城/支付/MFA/浏览器交接/MFA恢复五个HTTP/DB流程、6项Linux预览测试及备份恢复全部通过。私有Mock环境不是公网经营上线。以下保留此前阶段证据。
 
 本页首次部署数据保留作为历史基线；以下MFA更新为2026-10-04北京时间04:43的服务器实测。不能用源码或本地测试替代服务器验收。
 
 结论：独立私有验收环境已部署并验证。**不是公网经营上线；真实微信支付、退款及自动关单恢复仍关闭。**原 mtsc.top 商城保持运行，没有旧业务数据迁移或真实资金操作。
 
-## 当前MFA更新：已部署并验收
+## 当前受审恢复更新：已部署并验收
+
+- 当前代码及唯一release：`e898cbf06b2449e4486ba8f4182266d485fec625`；[CI run 37179489798](https://github.com/aiavysp-afk/-/actions/runs/37179489798)成功。归档SHA256为`0af2fc677d21bc16235c7b288e5f31a3fcaeaae1c3f81c11f1971487b216c43b`，包中无.env、node_modules、证书或私钥。
+- 迁移前自动生成本项目验收库备份并验证可读，再应用`20261004070000_mfa_recovery`。验收库和smoke库均为16批；恢复专项验证后User、Order、BrowserLoginChallenge、BrowserLoginRateLimit、MfaRecoveryRequest全部为0。
+- 服务端真实HTTP/PostgreSQL验证覆盖本人新微信会话申请、异人同组织MFA管理员复核、自审/跨组织拒绝、并发申请唯一、并发批准只成功一次、旧因子与全部目标会话撤销、新因子重绑、拒绝/取消/过期/限流、来源与membership复核、终态防回滚和无秘密审计。
+- 商城、微信支付数据库、MFA、浏览器交接、MFA恢复五套流程以及6项Linux预览安全测试全部通过。升级后备份`acceptance-recovery-e898cbf-after-tests.dump`实际恢复到新临时数据库，确认16批迁移、3个服务目录和零业务/恢复记录后删除临时库；该备份SHA256为`3a4b68b2a2e3ce7c6516e359bbe32fb9a51f38fa94b0908c1f2d2ff35b0ec47b`。
+- `/etc/zhongyuan-daojia-acceptance/api.env`与升级前备份逐字节一致，仍为640 root:zydj-acceptance；NODE_ENV=test、身份与支付均Mock、三个真实微信资金开关仍false。没有读取、改写或复制旧商城微信钥证。
+- 三个私有服务active，只监听127.0.0.1:3210/3212/3213；未登录恢复接口401。原jingxiang服务PID/活动状态/目录与既有基线一致，`https://mtsc.top/`为200。删除验证通过后的c270旧release和上传包后，只保留e898cbf，磁盘可用4160632KiB。
+
+仍须由两个不同自然人用真实微信与不同验证器完成申请/批准/旧会话失效/新因子重绑演练；隔离Mock验收不能替代这项人工签字。
+
+## 上一登录交接更新：历史证据
 
 - 当前代码及release：`c270262e54c3fb85648efb2b6bd24927c5f15ce3`，current指向同名release；[该提交GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37157220065)全部success，包含API257项+contracts13项、6项预览安全测试、构建、15批迁移及四个HTTP/DB流程。
 - 新归档SHA256：`e521cfa6eaeed4655f29d410eacc4d3a2c6161d9499e8e22563b9778d985379e`。相同源码及已构建dist打包，无运行密钥/.env/node_modules；脚本LF、服务范围和归档摘要均核验。
@@ -20,14 +31,14 @@
 
 本次专用备份（仅root可读，不上传仓库）：
 
-| 用途 | `/opt/zhongyuan-daojia-acceptance/backups/`下文件 | SHA256 |
-| --- | --- | --- |
-| 第14批迁移前 | `database-before-2cda5189484425c1a04a7a397ff06c97d1f97949-20261003T204035.dump` | `2c33006e77f5138899185f2b87c81138769e32f9ffc3363523a90f9e6997e84b` |
-| 新版完整备份/恢复验证 | `acceptance-mfa-2cda5189-after-tests.dump` | `99eb28dbb654081a4f083085687c968dbda114b71779230f88a4f6f3b1172621` |
+| 用途                  | `/opt/zhongyuan-daojia-acceptance/backups/`下文件                               | SHA256                                                             |
+| --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 第14批迁移前          | `database-before-2cda5189484425c1a04a7a397ff06c97d1f97949-20261003T204035.dump` | `2c33006e77f5138899185f2b87c81138769e32f9ffc3363523a90f9e6997e84b` |
+| 新版完整备份/恢复验证 | `acceptance-mfa-2cda5189-after-tests.dump`                                      | `99eb28dbb654081a4f083085687c968dbda114b71779230f88a4f6f3b1172621` |
 
 本次配置升级前备份为`api-env-before-browser-c270262e`；除新增非秘密`STAFF_BROWSER_LOGIN_ENABLED=true`外，原密码、pepper和加密钥逐项一致。四个流程的日志也在同一专用backups目录。新完整备份`acceptance-browser-c270262e-after-tests.dump`的SHA256为`165604721194835ab6f307ab75f18779b98f322ed32873b31e745d3959045e00`。最终剩余4163164KiB，下一次部署仍执行3GiB运行余量+512MiB发布门禁。不得把当前私有验证等同正式经营上线。
 
-**下一切片：正式微信到后台浏览器的安全登录/会话交接；之后真人独立设备验收及丢失设备的双人受审恢复。**MFA基础完成，但这些阻断未解除，不能用Mock登录或共享密钥代替。
+**下一步：两个不同自然人的正式微信、独立验证器和丢失设备双人恢复演练，并继续完成短信/地图/热线/outbox与真实资金门禁。**不能用Mock登录或共享密钥代替。
 
 ## 首次部署历史基线与环境
 

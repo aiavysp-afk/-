@@ -4,7 +4,7 @@
 
 已实现本地Mock商城链路及退款核心、微信支付验签/查单、JSAPI持久化签名预下单/RSA调起参数、原单查单/幂等关单/再次核实及有限恢复、退款签名POST、退款通知/原单查询/恢复租约/对账差异，以及后台MFA、微信到浏览器登录交接和丢失验证器受审恢复。三个资金开关显式默认关闭。**不能直接作为真实经营版上线**：真实资金验收和人工异常修正未完成，真人微信/MFA设备仍未验收，技师H5/经营概览仍是演示，短信、地图、热线处置链路未完成，服务开始后的部分退款/争议规则未定义。修改provider标签或开关不会补齐这些能力。
 
-2026-10-04已在120.55.187.102完成独立私有验收部署，当前基线c270262e、专用库15批迁移、STAFF_MFA_REQUIRED=true、浏览器交接门禁true，备份恢复和四套HTTP/DB流程通过；见[验收记录](DEPLOYMENT_ACCEPTANCE_20261004.md)。第16批受审恢复先在本地两库验证，须在本提交CI成功、远程备份和私有smoke验证后才能更新此服务器。沿用服务器PostgreSQL16.15，不更换原数据库服务；本地/CI使用17。未操作原生产商城服务，不能覆盖现有商城或直接复用其数据库。以下公开生产步骤仍须先消除门禁并经人工签字。
+2026-10-04已在120.55.187.102完成独立私有验收部署，当前代码`e898cbf`、验收库与smoke库16批迁移、STAFF_MFA_REQUIRED=true、浏览器交接门禁true，备份恢复和商城/支付/MFA/浏览器交接/MFA恢复五套HTTP/DB流程通过；[GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37179489798)成功，详见[验收记录](DEPLOYMENT_ACCEPTANCE_20261004.md)。沿用服务器PostgreSQL16.15，不更换原数据库服务；本地/CI使用17。未操作原生产商城服务，不能覆盖现有商城或直接复用其数据库。以下公开生产步骤仍须先消除门禁并经人工签字。
 
 ## 1. 发布前盘点与备份
 
@@ -91,7 +91,7 @@ pnpm --filter @zydj/api exec tsx scripts/bootstrap-production.ts
 
 ## 上线前人工核对检查项
 
-最新[微信后台安全交接](BROWSER_LOGIN_IMPLEMENTATION.md)已部署私有基线；[受审恢复](MFA_RECOVERY_IMPLEMENTATION.md)完成代码与本地隔离验证。正式启用必须先完成第16批专用库备份迁移，再做双人微信真机及独立MFA设备演练。默认STAFF_BROWSER_LOGIN_ENABLED=false，不与任何支付开关联动。
+最新[微信后台安全交接](BROWSER_LOGIN_IMPLEMENTATION.md)和[受审恢复](MFA_RECOVERY_IMPLEMENTATION.md)均已部署到私有验收环境；正式启用仍必须做双人微信真机及独立MFA设备演练。默认STAFF_BROWSER_LOGIN_ENABLED=false，不与任何支付开关联动。
 
 - [ ] 主体、备案/域名、服务资质与非医疗服务边界、隐私/地址使用授权、价格/差旅费及退款策略由负责人审核。
 - [ ] 当前仓库列出的生产阻断项全部解决；管理端正式登录/MFA、客服/值班、技师履约、安全处置能真正完成，非演示。
