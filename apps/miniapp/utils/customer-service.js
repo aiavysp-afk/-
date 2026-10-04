@@ -9,7 +9,7 @@ function openWecomCustomerService(contact, host = wx) {
         !/^ww[A-Za-z0-9]{16}$/.test(contact.corpId) ||
         !/^https:\/\/work\.weixin\.qq\.com\/(?:kfid|kf)\/[A-Za-z0-9_-]{5,128}(?:\?enc_scene=[A-Za-z0-9%_=-]{1,256})?$/.test(contact.url)) {
         host.showToast({
-            title: "企业微信客服尚未配置，紧急情况请立即求助",
+            title: "企业微信客服未就绪，紧急情况请立即求助",
             icon: "none",
         });
         return;

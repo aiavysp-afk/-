@@ -10,6 +10,7 @@ export function customerServiceConfig(
     | "CUSTOMER_SERVICE_PROVIDER"
     | "WECOM_CORP_ID"
     | "WECOM_CUSTOMER_SERVICE_URL"
+    | "WECOM_CUSTOMER_SERVICE_CONFIRMED"
     | "SAFETY_CONTACT_MODE"
     | "SAFETY_DUTY_CONFIRMED"
     | "SAFETY_HOTLINE"
@@ -18,6 +19,7 @@ export function customerServiceConfig(
 ) {
   const ready =
     env.CUSTOMER_SERVICE_PROVIDER === "wecom" &&
+    env.WECOM_CUSTOMER_SERVICE_CONFIRMED === "true" &&
     WecomCorpIdSchema.safeParse(env.WECOM_CORP_ID).success &&
     WecomCustomerServiceUrlSchema.safeParse(env.WECOM_CUSTOMER_SERVICE_URL)
       .success;

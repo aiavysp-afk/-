@@ -12,7 +12,7 @@ export function openWecomCustomerService(contact: Contact, host = wx) {
     )
   ) {
     host.showToast({
-      title: "企业微信客服尚未配置，紧急情况请立即求助",
+      title: "企业微信客服未就绪，紧急情况请立即求助",
       icon: "none",
     });
     return;

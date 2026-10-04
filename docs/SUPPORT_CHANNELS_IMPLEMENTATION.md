@@ -2,6 +2,20 @@
 
 2026-10-04：本轮实现渠道基础适配器、生产凭据门禁、小程序企业微信客服与商家紧急拨号、H5紧急拨号。用户已确认短信签名/模板审核通过和腾讯地图企业账号，并选择企业微信客服及单独的紧急值班手机号。账号存在不代表已配置完整凭据或已完成真人验收。
 
+## 最新客服归属确认增量（优先于下文历史回执）
+
+原服务器两份环境文件的WECHAT_KF_URL及20260910企业微信部署脚本保存了同一官方客服链接；旧CorpID为空，两份旧源码归档107个文本项也没有企业ID记录。官方链接HTTP200但页面不公开企业ID，因此这些检查只能证明旧配置存在、格式正确和网页可访问，不能独立证明归属/绑定/真人接通。
+
+用户本轮明确确认该客服链接属于已提供CorpID、客服账号仍有效且已绑定当前小程序。新增 `WECOM_CUSTOMER_SERVICE_CONFIRMED`（默认false）：只有受控记录这一人工核验后，合法链接/CorpID才能作为可打开的客服入口发布；生产选用企业微信时也必须通过此门禁。不能用“继续下一步”、链接HTTP200或值班确认替代归属核验。
+
+后续按此确认将旧WECHAT_KF_URL映射至新版WECOM_CUSTOMER_SERVICE_URL，两套受控配置单独备份、保留其他秘密和权限。客服确认只代表用户核验归属/账号/绑定，**不等于真人真机接通、客服在线或紧急求助受理**；SAFETY_DUTY_CONFIRMED保持false。小程序未开放时显示“未就绪”，配置确认不绕过微信SDK失败提示。
+
+本机5工作区typecheck/build通过，API302+合约13+H5拨号3=318项测试及5项编译小程序客服/拨号替身测试通过。新增两项客服独立确认测试，覆盖未设/false时合法标识不可用、值班确认不能绕过、生产电话安全模式+企微客服同样必须确认；现有确认后入口和恶意URL检查继续通过。
+
+本增量文件：`.env.example`；API `config/env.ts`、`env.test.ts`、`public/customer-service.config.ts`、其测试和`public.controller.ts`；小程序`utils/customer-service.ts/js`、`pages/profile/index.wxml`；`scripts/verify-customer-service.test.mjs`；本记录及ENV_VARIABLES/INTEGRATION_GATES/SELF_TEST_REPORT/IMPLEMENTATION_STATUS/DEPLOYMENT。无新增迁移、密钥或真实交易。
+
+上线前仍须两台微信真机分别打开正确客服账号并验证接通/失败回退、客服主备值班和升级流程；保留紧急电话测试与独立值班确认。短信、地图、资金与真实经营门禁不因本项解除。
+
 ## 已实现边界
 
 - 阿里云 SMS：固定 HTTPS 中国站 SendSms，ACS3-HMAC-SHA256、随机 nonce、可选 STS；单收件人、固定配置模板/签名、模板变量校验。8秒超时、禁止跳转、64KiB流式响应上限、失败诊断不带手机号/密钥。返回 ACCEPTED/REJECTED/UNKNOWN，ACCEPTED只表示渠道受理，不表示送达。超时/异常不自动重发。
@@ -24,6 +38,7 @@
 | CUSTOMER_SERVICE_PROVIDER                               | none 或 wecom                                                       |
 | WECOM_CORP_ID                                           | 企业ID公开标识，不是企业secret                                      |
 | WECOM_CUSTOMER_SERVICE_URL                              | 企业微信后台生成的官方客服链接；允许enc_scene，不接受token/跳转参数 |
+| WECOM_CUSTOMER_SERVICE_CONFIRMED                        | 默认false；负责人核验同企业归属、有效账号与小程序绑定后受控确认；不是在线/接通标志 |
 | SAFETY_CONTACT_MODE                                     | phone或wecom；本轮用户选择wecom                                     |
 | SAFETY_EMERGENCY_PHONE                                  | 商家独立紧急值班手机号，只在受控配置填写                            |
 | SAFETY_DUTY_CONFIRMED                                   | 默认false，不替代当前在线/接听状态检测                              |

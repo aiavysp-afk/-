@@ -40,6 +40,7 @@ test("unconfigured contacts and malicious URLs never invoke the native API", () 
     openWecomCustomerService(value, f.host);
     assert.equal(f.calls.length, 0);
     assert.equal(f.toasts.length, 1);
+    assert.match(f.toasts[0].title, /未就绪/);
   }
 });
 test("old clients and native invocation failure show an honest fallback, never acknowledgement", () => {

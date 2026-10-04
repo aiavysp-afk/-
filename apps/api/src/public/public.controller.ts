@@ -41,6 +41,10 @@ export class PublicController {
             "WECOM_CUSTOMER_SERVICE_URL",
             { infer: true },
           ),
+          WECOM_CUSTOMER_SERVICE_CONFIRMED: this.config.get(
+            "WECOM_CUSTOMER_SERVICE_CONFIRMED",
+            { infer: true },
+          ),
           SAFETY_CONTACT_MODE: this.config.get("SAFETY_CONTACT_MODE", {
             infer: true,
           }),

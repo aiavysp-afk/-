@@ -1,5 +1,7 @@
 # 商城全流程自测报告
 
+最新客服归属门禁代码：API302+contracts13+H5拨号3=318项、本机工作区typecheck/build、5项编译小程序测试通过。新增默认不可用、独立确认与电话安全模式生产门禁回归；用户明确确认找回旧URL与企业ID归属/账号/绑定，尚未真机打开或实际接通。服务器升级与配置回执见最新接入记录，不把HTTP200当作真实微信验收。
+
 最新服务器回执：代码`087fbdf7`已推送main，[CI 37183031942](https://github.com/aiavysp-afk/-/actions/runs/37183031942)全部success并部署至独立私有验收。服务器五套HTTP/PostgreSQL流程、6项代理安全测试及5项编译小程序客服/拨号测试通过；三端公开配置紧急号码正确、企微缺URL诚实不可用，H5按钮显示实测正常。三库仍16批迁移，合成用户/订单/恢复记录均清理。公网三域名503、nginx有效、资金/SMS/地图开关false；用户CorpID随后仅写入两份受控配置、保留其他秘密及权限并重启私有API，三端复查通过；最新生产配置缺SMS_PROVIDER、MAP_PROVIDER、WECOM_CUSTOMER_SERVICE_URL、SAFETY_DUTY_CONFIRMED四项，取代下文“三项”历史快照。未真实拨号或发起渠道交易。
 
 最新渠道/客服增量：本机typecheck/build通过，API300+合约13+H5拨号3项以及编译小程序客服/拨号5项通过。覆盖官方ACS3测试向量、SK原文签名、默认关闭、受理≠送达、超时UNKNOWN不重发、64KiB上限、恶意客服链接和失败诚实提示。没有真实短信/地图/客服/拨号验收；详细边界见[接入记录](SUPPORT_CHANNELS_IMPLEMENTATION.md)。

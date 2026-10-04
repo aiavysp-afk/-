@@ -7,9 +7,51 @@ const settings = {
   CUSTOMER_SERVICE_PROVIDER: "wecom",
   WECOM_CORP_ID: "ww1234567890abcdef",
   WECOM_CUSTOMER_SERVICE_URL: "https://work.weixin.qq.com/kfid/kfc_test_12345",
+  WECOM_CUSTOMER_SERVICE_CONFIRMED: "true",
   SAFETY_CONTACT_MODE: "wecom",
 };
 describe("WeCom customer service is not an emergency acknowledgement", () => {
+  it("does not publish a recovered link until ownership/account/binding are explicitly confirmed", () => {
+    for (const value of [undefined, "false"]) {
+      const result = customerServiceConfig(
+        validateEnv({
+          ...settings,
+          WECOM_CUSTOMER_SERVICE_CONFIRMED: value,
+          SAFETY_DUTY_CONFIRMED: "true",
+        }),
+      );
+      expect(result.customerService).toEqual({
+        provider: "wecom",
+        available: false,
+        url: "",
+        corpId: "",
+      });
+      expect(result.safetyContact.available).toBe(false);
+    }
+    expect(validateEnv({}).WECOM_CUSTOMER_SERVICE_CONFIRMED).toBe("false");
+    expect(() =>
+      validateEnv({ WECOM_CUSTOMER_SERVICE_CONFIRMED: "yes" }),
+    ).toThrow();
+  });
+  it("requires ownership confirmation in production independently of duty confirmation", () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: "production",
+        ...settings,
+        WECOM_CUSTOMER_SERVICE_CONFIRMED: "false",
+        SAFETY_DUTY_CONFIRMED: "true",
+      }),
+    ).toThrow("WECOM_CUSTOMER_SERVICE_CONFIRMED");
+    expect(() =>
+      validateEnv({
+        NODE_ENV: "production",
+        ...settings,
+        SAFETY_CONTACT_MODE: "phone",
+        SAFETY_HOTLINE: "13800138000",
+        WECOM_CUSTOMER_SERVICE_CONFIRMED: "false",
+      }),
+    ).toThrow("WECOM_CUSTOMER_SERVICE_CONFIRMED");
+  });
   it("defaults to unavailable and does not publish incomplete identifiers", () => {
     expect(customerServiceConfig(validateEnv({})).customerService).toEqual({
       provider: "none",

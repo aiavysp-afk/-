@@ -34,10 +34,14 @@ describe("production safety gate", () => {
       WECOM_CORP_ID: "ww1234567890abcdef",
       WECOM_CUSTOMER_SERVICE_URL:
         "https://work.weixin.qq.com/kfid/kfc_test_12345",
+      WECOM_CUSTOMER_SERVICE_CONFIRMED: "true",
       SAFETY_DUTY_CONFIRMED: "true",
       SAFETY_EMERGENCY_PHONE: "13800138000",
     };
     expect(validateEnv(raw).SAFETY_HOTLINE).toBe("");
+    expect(() =>
+      validateEnv({ ...raw, WECOM_CUSTOMER_SERVICE_CONFIRMED: "false" }),
+    ).toThrow("WECOM_CUSTOMER_SERVICE_CONFIRMED");
     expect(() =>
       validateEnv({ ...raw, SAFETY_DUTY_CONFIRMED: "false" }),
     ).toThrow("SAFETY_DUTY_CONFIRMED");

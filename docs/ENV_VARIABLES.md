@@ -1,5 +1,7 @@
 # 环境变量清单
 
+新增 `WECOM_CUSTOMER_SERVICE_CONFIRMED=false` 独立门禁：合法CorpID+客服URL不会自动开放；负责人核验同一企业、账号有效与小程序绑定后才可受控设true。用户已明确确认原服务器客服链接归属，本项不替代微信真机打开/接通验收，也不能把SAFETY_DUTY_CONFIRMED自动设true。
+
 最新客服/渠道变量与校验见[本轮接入记录](SUPPORT_CHANNELS_IMPLEMENTATION.md)。用户选择企业微信日常客服和独立紧急值班手机；SAFETY_CONTACT_MODE=wecom需官方链接/CorpID、SAFETY_EMERGENCY_PHONE及人工值班确认，不再要求把客服URL放进SAFETY_HOTLINE。SMS/地图只改provider标签不能通过凭据门禁，真实调用开关默认关闭。
 
 最新服务器状态：生产待完成配置为 `/etc/zhongyuan-daojia/api.env.pending`（0600），独立数据库 `zhongyuan_daojia`、API_HOST=127.0.0.1、API_PORT=3220。微信钥证已导入，三个资金开关false；SMS_PROVIDER/MAP_PROVIDER仍mock、SAFETY_HOTLINE为空，门禁拒绝生产启动。不能直接使用 pending 上线；见[清理与生产准备实录](LEGACY_RETIREMENT_20261004.md)。下表3210仅为旧示例，现已用于私有验收。

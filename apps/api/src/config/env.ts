@@ -68,6 +68,8 @@ const EnvSchema = z.object({
   CUSTOMER_SERVICE_PROVIDER: z.enum(["none", "wecom"]).default("none"),
   WECOM_CORP_ID: z.string().default(""),
   WECOM_CUSTOMER_SERVICE_URL: z.string().default(""),
+  // Manual ownership/account/miniapp-binding verification, not an online status or emergency acknowledgement.
+  WECOM_CUSTOMER_SERVICE_CONFIRMED: z.enum(["false", "true"]).default("false"),
   SAFETY_CONTACT_MODE: z.enum(["phone", "wecom"]).default("phone"),
   SAFETY_DUTY_CONFIRMED: z.enum(["false", "true"]).default("false"),
   // Existing server aliases. They are normalized to the canonical names above.
@@ -204,6 +206,8 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
           .success
       )
         invalid.push("WECOM_CUSTOMER_SERVICE_URL");
+      if (env.WECOM_CUSTOMER_SERVICE_CONFIRMED !== "true")
+        invalid.push("WECOM_CUSTOMER_SERVICE_CONFIRMED");
       if (
         env.SAFETY_CONTACT_MODE === "wecom" &&
         env.SAFETY_DUTY_CONFIRMED !== "true"

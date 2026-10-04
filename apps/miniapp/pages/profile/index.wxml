@@ -24,7 +24,7 @@
       ><text>{{item}}</text><text class="chevron">›</text></view
     ><view bindtap="openCustomerService"
       ><text>企业微信客服</text
-      ><text>{{customerService.available ? '联系' : '待配置'}} ›</text></view
+      ><text>{{customerService.available ? '联系' : '未就绪'}} ›</text></view
     ><view bindtap="callEmergency"
       ><text>商家紧急值班电话</text
       ><text>{{emergencyContact.configured ? '拨号' : '待配置'}} ›</text></view
