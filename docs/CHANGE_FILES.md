@@ -11,6 +11,7 @@
 - `apps/admin-web/src/styles.css`
 - `apps/api/prisma/migrations/20261005050000_safety_single_active_incident/migration.sql`
 - `apps/api/prisma/seed.ts`
+- `apps/api/scripts/verify-mall-flow.ts`
 - `apps/api/scripts/verify-safety-duty.ts`
 - `apps/api/src/safety/safety.controller.ts`
 - `apps/api/src/safety/safety.service.ts`

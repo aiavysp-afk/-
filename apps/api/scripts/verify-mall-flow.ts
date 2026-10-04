@@ -769,6 +769,7 @@ try {
         data = { status: "PENDING", providerState: "NOTPAY" };
       } else if (path === "/orders") data = [virtualOrder];
       else if (path === "/orders/page-wechat/refunds") data = [];
+      else if (path === "/orders/page-wechat/safety-incidents") data = [];
       else {
         liveRequest(options);
         return;
