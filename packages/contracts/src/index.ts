@@ -284,6 +284,39 @@ export const AuthSessionSchema = z.object({
   user: AuthUserSchema,
 });
 
+export const MfaRecoveryStatusSchema = z.enum([
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "CANCELLED",
+  "EXPIRED",
+]);
+export const MfaRecoveryRejectionCodeSchema = z.enum([
+  "IDENTITY_NOT_CONFIRMED",
+  "REQUEST_NOT_EXPECTED",
+  "POLICY_REVIEW_REQUIRED",
+]);
+export const MfaRecoveryRequestSchema = z
+  .object({ organizationId: z.string().min(1).max(128) })
+  .strict();
+export const MfaRecoveryRejectSchema = z
+  .object({ reasonCode: MfaRecoveryRejectionCodeSchema })
+  .strict();
+export const MfaRecoveryViewSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  organizationName: z.string().nullable(),
+  targetUserId: z.string(),
+  targetDisplayName: z.string().nullable(),
+  status: MfaRecoveryStatusSchema,
+  reasonCode: z.string().nullable(),
+  createdAt: IsoDateTimeSchema,
+  expiresAt: IsoDateTimeSchema,
+  reviewedAt: IsoDateTimeSchema.nullable(),
+  executedAt: IsoDateTimeSchema.nullable(),
+  revokedSessions: z.number().int().nonnegative().optional(),
+});
+
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 export type AdminServiceItem = z.infer<typeof AdminServiceItemSchema>;
 export type ServiceAdminUpdate = z.infer<typeof ServiceAdminUpdateSchema>;
@@ -309,6 +342,11 @@ export type PublicConfig = z.infer<typeof PublicConfigSchema>;
 export type WechatMiniappLoginRequest = z.infer<
   typeof WechatMiniappLoginRequestSchema
 >;
+export type MfaRecoveryStatus = z.infer<typeof MfaRecoveryStatusSchema>;
+export type MfaRecoveryRejectionCode = z.infer<
+  typeof MfaRecoveryRejectionCodeSchema
+>;
+export type MfaRecoveryView = z.infer<typeof MfaRecoveryViewSchema>;
 export type AuthMembership = z.infer<typeof AuthMembershipSchema>;
 export type AuthUser = z.infer<typeof AuthUserSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;

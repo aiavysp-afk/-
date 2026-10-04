@@ -1,0 +1,42 @@
+<view class="page"
+  ><text class="title">验证器丢失恢复</text
+  ><text class="notice"
+    >恢复不能绕过MFA：必须由本人重新微信登录发起，再由另一名已完成MFA的同组织管理员复核。批准后旧验证器和本人全部会话立即失效。</text
+  ><button loading="{{busy}}" disabled="{{busy}}" bindtap="refresh">
+    刷新状态</button
+  ><view wx:if="{{memberships.length}}" class="card"
+    ><text class="subtitle">选择所属组织</text
+    ><view wx:for="{{memberships}}" wx:key="organizationId" class="row"
+      ><view
+        ><text>{{item.organizationId}}</text
+        ><text class="muted">身份：{{item.role}}</text></view
+      ><button
+        size="mini"
+        disabled="{{busy}}"
+        data-organization-id="{{item.organizationId}}"
+        bindtap="requestRecovery"
+      >
+        本人重新登录并申请
+      </button></view
+    ></view
+  ><text wx:else class="muted">当前微信身份没有授权工作人员资格。</text
+  ><view wx:if="{{requests.length}}" class="card"
+    ><text class="subtitle">最近申请</text
+    ><view wx:for="{{requests}}" wx:key="id" class="request"
+      ><text
+        >{{item.organizationName || item.organizationId}} ·
+        {{item.status}}</text
+      ><text class="muted">申请：{{item.createdAt}}</text
+      ><text class="muted">到期：{{item.expiresAt}}</text
+      ><button
+        wx:if="{{item.status === 'PENDING'}}"
+        size="mini"
+        disabled="{{busy}}"
+        data-request-id="{{item.id}}"
+        bindtap="cancelRecovery"
+      >
+        取消本人申请
+      </button></view
+    ></view
+  ><text wx:if="{{error}}" class="error">{{error}}</text></view
+>

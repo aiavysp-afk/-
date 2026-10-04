@@ -17,6 +17,17 @@ type Enrollment = {
   issuer: string;
   accountName: string;
 };
+type Membership = { organizationId: string; role: string };
+type RecoveryRequest = {
+  id: string;
+  organizationId: string;
+  targetUserId: string;
+  targetDisplayName: string | null;
+  status: string;
+  reasonCode: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
 export function SecurityWorkspace({
   token,
   onLogout,
@@ -29,12 +40,14 @@ export function SecurityWorkspace({
   const currentToken = useRef(token);
   currentToken.current = token;
   const [status, setStatus] = useState<MfaStatus | null>(null),
-    [enrollment, setEnrollment] = useState<Enrollment | null>(null);
+    [enrollment, setEnrollment] = useState<Enrollment | null>(null),
+    [reviewOrganizations, setReviewOrganizations] = useState<string[]>([]),
+    [recoveries, setRecoveries] = useState<RecoveryRequest[]>([]);
   const [code, setCode] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  async function request<T>(path: string, body?: unknown) {
-    const response = await fetch(`${API_BASE_URL}/auth/mfa${path}`, {
+  async function requestAt<T>(path: string, body?: unknown) {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -49,12 +62,41 @@ export function SecurityWorkspace({
       );
     return json.data as T;
   }
+  async function request<T>(path: string, body?: unknown) {
+    return requestAt<T>(`/auth/mfa${path}`, body);
+  }
   async function refresh() {
     const identity = token;
     setError("");
     try {
-      const data = await request<MfaStatus>("");
-      if (currentToken.current === identity) setStatus(data);
+      const [data, me] = await Promise.all([
+        request<MfaStatus>(""),
+        requestAt<{ memberships: Membership[] }>("/auth/me"),
+      ]);
+      const organizations = me.memberships
+        .filter((membership) => membership.role === "ADMIN")
+        .map((membership) => membership.organizationId);
+      let queue: RecoveryRequest[] = [];
+      if (
+        data.verifiedUntil &&
+        new Date(data.verifiedUntil).getTime() > Date.now() &&
+        organizations.length
+      ) {
+        queue = (
+          await Promise.all(
+            organizations.map((organizationId) =>
+              requestAt<RecoveryRequest[]>(
+                `/admin/organizations/${encodeURIComponent(organizationId)}/mfa-recovery-requests`,
+              ),
+            ),
+          )
+        ).flat();
+      }
+      if (currentToken.current === identity) {
+        setStatus(data);
+        setReviewOrganizations(organizations);
+        setRecoveries(queue);
+      }
     } catch (e) {
       if (currentToken.current === identity)
         setError(e instanceof Error ? e.message : "读取失败");
@@ -63,6 +105,8 @@ export function SecurityWorkspace({
   useEffect(() => {
     setStatus(null);
     setEnrollment(null);
+    setReviewOrganizations([]);
+    setRecoveries([]);
     setCode("");
     setError("");
     setBusy(false);
@@ -101,6 +145,36 @@ export function SecurityWorkspace({
         setCode("");
         setError(e instanceof Error ? e.message : "验证失败");
       }
+    } finally {
+      if (currentToken.current === identity) setBusy(false);
+    }
+  }
+  async function reviewRecovery(
+    request: RecoveryRequest,
+    decision: "approve" | "reject",
+  ) {
+    if (busy || request.status !== "PENDING") return;
+    const label = request.targetDisplayName || request.targetUserId;
+    if (
+      !window.confirm(
+        decision === "approve"
+          ? `确认已线下核验${label}本人身份？批准后其旧验证器及全部会话立即失效。`
+          : `确认拒绝${label}的验证器恢复申请？`,
+      )
+    )
+      return;
+    const identity = token;
+    setBusy(true);
+    setError("");
+    try {
+      await requestAt(
+        `/admin/organizations/${encodeURIComponent(request.organizationId)}/mfa-recovery-requests/${encodeURIComponent(request.id)}/${decision}`,
+        decision === "approve" ? {} : { reasonCode: "IDENTITY_NOT_CONFIRMED" },
+      );
+      if (currentToken.current === identity) await refresh();
+    } catch (e) {
+      if (currentToken.current === identity)
+        setError(e instanceof Error ? e.message : "恢复复核失败");
     } finally {
       if (currentToken.current === identity) setBusy(false);
     }
@@ -213,13 +287,55 @@ export function SecurityWorkspace({
                   })}
                 </p>
               )}
+              <div className="recovery-review">
+                <h3>验证器丢失恢复复核</h3>
+                {!reviewOrganizations.length ? (
+                  <p>只有同组织管理员可以复核恢复申请。</p>
+                ) : !status.verifiedUntil ||
+                  new Date(status.verifiedUntil).getTime() <= Date.now() ? (
+                  <p>请先用自己的验证器完成当前会话MFA，再读取待复核申请。</p>
+                ) : recoveries.filter((item) => item.status === "PENDING")
+                    .length ? (
+                  recoveries
+                    .filter((item) => item.status === "PENDING")
+                    .map((item) => (
+                      <article className="recovery-card" key={item.id}>
+                        <strong>
+                          {item.targetDisplayName || item.targetUserId}
+                        </strong>
+                        <p>
+                          组织：{item.organizationId} · 到期：
+                          {new Date(item.expiresAt).toLocaleString("zh-CN", {
+                            timeZone: "Asia/Shanghai",
+                          })}
+                        </p>
+                        <div className="toolbar">
+                          <button
+                            disabled={busy}
+                            onClick={() => void reviewRecovery(item, "approve")}
+                          >
+                            身份核验通过并撤销旧因子
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => void reviewRecovery(item, "reject")}
+                          >
+                            身份未核验，拒绝
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                ) : (
+                  <p>当前没有待复核的恢复申请。</p>
+                )}
+              </div>
             </>
           )}
         </>
       )}
       {error && <p role="alert">{error}</p>}
       <p>
-        同一个动态码只可使用一次；连续五次失败会暂时锁定。已绑定验证器不能在此直接替换或关闭，丢失设备的受审恢复流程尚未实现，不能绕过门禁。
+        同一个动态码只可使用一次；连续五次失败会暂时锁定。已绑定验证器不能直接替换或关闭；丢失设备必须由本人在小程序重新微信登录申请，并由另一名已完成MFA的同组织管理员复核。
       </p>
     </section>
   );

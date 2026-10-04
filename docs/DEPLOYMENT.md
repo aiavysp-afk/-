@@ -2,9 +2,9 @@
 
 ## 当前可发布范围
 
-已实现本地Mock商城链路及退款核心、微信支付验签/查单、JSAPI持久化签名预下单/RSA调起参数、原单查单/幂等关单/再次核实及有限恢复、退款签名POST、退款通知/原单查询/恢复租约/对账差异，以及后台MFA基础和强制权限门禁。三个资金开关显式默认关闭。**不能直接作为真实经营版上线**：真实资金验收和人工异常修正未完成，管理端正式微信浏览器登录交接、真人MFA设备及受审恢复未完成，技师H5/经营概览仍是演示，短信、地图、热线处置链路未完成，服务开始后的部分退款/争议规则未定义。修改provider标签或开关不会补齐这些能力。
+已实现本地Mock商城链路及退款核心、微信支付验签/查单、JSAPI持久化签名预下单/RSA调起参数、原单查单/幂等关单/再次核实及有限恢复、退款签名POST、退款通知/原单查询/恢复租约/对账差异，以及后台MFA、微信到浏览器登录交接和丢失验证器受审恢复。三个资金开关显式默认关闭。**不能直接作为真实经营版上线**：真实资金验收和人工异常修正未完成，真人微信/MFA设备仍未验收，技师H5/经营概览仍是演示，短信、地图、热线处置链路未完成，服务开始后的部分退款/争议规则未定义。修改provider标签或开关不会补齐这些能力。
 
-2026-10-04已在120.55.187.102完成独立私有验收部署并更新MFA版本2cda5189，三个回环服务、专用库14批迁移、STAFF_MFA_REQUIRED=true、完整备份恢复和商城/支付/MFA三个HTTP/DB流程通过；见[验收记录](DEPLOYMENT_ACCEPTANCE_20261004.md)。沿用服务器PostgreSQL16.15并在其上验证，不更换原数据库服务；本地/CI使用17。未操作原生产商城服务，不能覆盖现有商城或直接复用其数据库。以下公开生产步骤仍须先消除门禁并经人工签字。
+2026-10-04已在120.55.187.102完成独立私有验收部署，当前基线c270262e、专用库15批迁移、STAFF_MFA_REQUIRED=true、浏览器交接门禁true，备份恢复和四套HTTP/DB流程通过；见[验收记录](DEPLOYMENT_ACCEPTANCE_20261004.md)。第16批受审恢复先在本地两库验证，须在本提交CI成功、远程备份和私有smoke验证后才能更新此服务器。沿用服务器PostgreSQL16.15，不更换原数据库服务；本地/CI使用17。未操作原生产商城服务，不能覆盖现有商城或直接复用其数据库。以下公开生产步骤仍须先消除门禁并经人工签字。
 
 ## 1. 发布前盘点与备份
 
@@ -53,7 +53,7 @@ bash scripts/database-init.sh
 
 ## 4. 安全配置、初始组织和双人财务角色
 
-[MFA基础](STAFF_MFA_IMPLEMENTATION.md)已实现。第14批迁移必须先执行；production工作人员权限始终要求当前会话五分钟内的MFA。STAFF_MFA_REQUIRED仅用于非生产显式验收，不能关闭生产门禁。正式浏览器微信登录交接、人员/独立设备核验及丢失设备受审恢复未完成，仍阻止公开经营；不能使用粘贴token或固定code代替。
+[MFA基础](STAFF_MFA_IMPLEMENTATION.md)、第15批[浏览器交接](BROWSER_LOGIN_IMPLEMENTATION.md)与第16批[丢失恢复](MFA_RECOVERY_IMPLEMENTATION.md)均已实现。production工作人员权限始终要求当前会话五分钟内的MFA。STAFF_MFA_REQUIRED仅用于非生产显式验收，不能关闭生产门禁。真人微信、独立设备与双人恢复演练仍阻止公开经营；不能使用粘贴token或固定code代替。
 
 按 [环境变量清单](ENV_VARIABLES.md) 创建 `/etc/zhongyuan-daojia/api.env`，密钥只读；`NODE_ENV=production`、`API_HOST=127.0.0.1`、`API_PORT=3210`，所有真实provider、加密密钥、验签材料和热线必须经过核验。`WECHAT_PAY_PREPAY_ENABLED=false`、`WECHAT_PAY_REFUND_ENABLED=false`、`WECHAT_PAY_RECOVERY_ENABLED=false`。生产启动门禁不通过时必须修复缺项，不可改成development来规避。独立私有验收环境可明确使用test/Mock，但只能监听回环地址，不能冒充生产经营版。
 
@@ -91,7 +91,7 @@ pnpm --filter @zydj/api exec tsx scripts/bootstrap-production.ts
 
 ## 上线前人工核对检查项
 
-最新[微信后台安全交接](BROWSER_LOGIN_IMPLEMENTATION.md)已完成代码与隔离验证；正式启用必须先做容量治理/第15批专用库备份迁移，再做双人微信真机及独立MFA设备验收。默认STAFF_BROWSER_LOGIN_ENABLED=false，不与任何支付开关联动。当前服务器仍第14批MFA版，不能据第15批本地成功标记远程升级完成。
+最新[微信后台安全交接](BROWSER_LOGIN_IMPLEMENTATION.md)已部署私有基线；[受审恢复](MFA_RECOVERY_IMPLEMENTATION.md)完成代码与本地隔离验证。正式启用必须先完成第16批专用库备份迁移，再做双人微信真机及独立MFA设备演练。默认STAFF_BROWSER_LOGIN_ENABLED=false，不与任何支付开关联动。
 
 - [ ] 主体、备案/域名、服务资质与非医疗服务边界、隐私/地址使用授权、价格/差旅费及退款策略由负责人审核。
 - [ ] 当前仓库列出的生产阻断项全部解决；管理端正式登录/MFA、客服/值班、技师履约、安全处置能真正完成，非演示。

@@ -10,13 +10,22 @@ import { MfaController } from "./mfa.controller.js";
 import { MfaService } from "./mfa.service.js";
 import { BrowserLoginService } from "./browser-login.service.js";
 import { BrowserLoginController } from "./browser-login.controller.js";
+import { MfaRecoveryController } from "./mfa-recovery.controller.js";
+import { MfaRecoveryService } from "./mfa-recovery.service.js";
 
 @Module({
-  controllers: [AuthController, AuditController, MfaController, BrowserLoginController],
+  controllers: [
+    AuthController,
+    AuditController,
+    MfaController,
+    BrowserLoginController,
+    MfaRecoveryController,
+  ],
   providers: [
     AuthService,
     MfaService,
     BrowserLoginService,
+    MfaRecoveryService,
     AuthCryptoService,
     WechatMiniappClient,
     SessionAuthGuard,

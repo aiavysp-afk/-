@@ -737,3 +737,19 @@ h1 {
 .refund-card p {
   line-height: 1.7;
 }
+.recovery-review {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #dde5e0;
+}
+.recovery-card {
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid #d7ded9;
+  border-radius: 12px;
+  background: #fff;
+}
+.recovery-card p {
+  overflow-wrap: anywhere;
+  color: #68776f;
+}

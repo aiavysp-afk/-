@@ -246,6 +246,138 @@ paths:
         "401": { description: 无效/重放动态码、会话或五次失败锁定 }
         "403": { description: 无工作人员资格 }
         "409": { description: 尚未完成绑定 }
+  /v1/auth/mfa/recovery-requests:
+    post:
+      summary: 本人用五分钟内的新微信小程序会话申请恢复丢失的验证器
+      description: 必须有有效工作人员membership和已启用旧因子；每人一笔待复核、30分钟到期、24小时最多三次。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [organizationId]
+              properties:
+                organizationId: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200": { description: 待复核申请，Cache-Control no-store }
+        "400": { description: 严格参数错误 }
+        "401": { description: 会话失效、非新鲜或不是当前微信provider }
+        "403": { description: 不属于该组织的有效工作人员 }
+        "409": { description: 无已启用因子或已有待复核申请 }
+        "429": { description: 24小时申请次数已达三次 }
+    get:
+      summary: 获取本人最近十笔验证器恢复申请
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 恢复申请列表，Cache-Control no-store }
+        "401": { description: 会话失效 }
+  /v1/auth/mfa/recovery-requests/{requestId}/cancel:
+    post:
+      summary: 由发起申请的原会话取消待复核申请
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: requestId,
+            required: true,
+            schema: { type: string },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200": { description: CANCELLED或EXPIRED终态，Cache-Control no-store }
+        "401": { description: 不是原申请会话或会话失效 }
+        "404": { description: 申请不存在或不属于本人 }
+        "409": { description: 申请已处理 }
+  /v1/admin/organizations/{organizationId}/mfa-recovery-requests:
+    get:
+      summary: 同组织ADMIN读取恢复复核队列
+      description: 当前管理员会话必须已完成MFA；返回最近50笔，不返回会话令牌或验证器秘密。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 恢复申请列表，Cache-Control no-store }
+        "401": { description: 会话失效 }
+        "403": { description: 非同组织ADMIN或当前会话未完成MFA }
+  /v1/admin/organizations/{organizationId}/mfa-recovery-requests/{requestId}/approve:
+    post:
+      summary: 异人复核通过并原子撤销申请人的旧因子和全部会话
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: path,
+            name: requestId,
+            required: true,
+            schema: { type: string },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200": { description: APPROVED终态和撤销会话数，Cache-Control no-store }
+        "403": { description: 自审、非同组织ADMIN、未MFA或申请人资格失效 }
+        "404": { description: 申请不存在或组织不匹配 }
+        "409": { description: 已处理、已过期、来源会话或旧因子已变化 }
+  /v1/admin/organizations/{organizationId}/mfa-recovery-requests/{requestId}/reject:
+    post:
+      summary: 异人复核拒绝并保留申请人的旧因子和会话
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            in: path,
+            name: requestId,
+            required: true,
+            schema: { type: string },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reasonCode]
+              properties:
+                reasonCode:
+                  type: string
+                  enum:
+                    [
+                      IDENTITY_NOT_CONFIRMED,
+                      REQUEST_NOT_EXPECTED,
+                      POLICY_REVIEW_REQUIRED,
+                    ]
+      responses:
+        "200": { description: REJECTED终态，Cache-Control no-store }
+        "400": { description: 严格参数或原因码错误 }
+        "403": { description: 自审、非同组织ADMIN、未MFA或申请人资格失效 }
+        "404": { description: 申请不存在或组织不匹配 }
+        "409": { description: 已处理、已过期、来源会话或旧因子已变化 }
   /v1/admin/audit-logs:
     get:
       summary: 按当前工作人员 membership 范围读取审计摘要

@@ -53,9 +53,10 @@
 
 后台交接增量：`STAFF_BROWSER_LOGIN_ENABLED`默认false；仅受控验收显式true，production仅接受wechat第一因子且电脑接口要求受信HTTPS Origin。`BROWSER_LOGIN_TEST_DATABASE_URL`仅用于专用隔离HTTP/DB测试，目标限制与MFA测试相同。浏览器新会话最多一小时且不超过手机期限，没有可配置的角色、回调、设备秘钥或绕过MFA变量。见[交接交付](BROWSER_LOGIN_IMPLEMENTATION.md)。
 
-| 变量 | 用途与约束 |
-| --- | --- |
-| STAFF_MFA_REQUIRED | 默认false，仅非生产开发可不强制；私有验收配置true。production无论该值如何均强制工作人员当前会话MFA，不是生产绕过开关。 |
-| MFA_TEST_DATABASE_URL | 仅独立本机zhongyuan_daojia_test的HTTP/DB自测；私有服务器仅专用zydj_acceptance_smoke且CONFIRM_PRIVATE_ACCEPTANCE_TEST=true；禁止生产目标。 |
+| 变量                           | 用途与约束                                                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| STAFF_MFA_REQUIRED             | 默认false，仅非生产开发可不强制；私有验收配置true。production无论该值如何均强制工作人员当前会话MFA，不是生产绕过开关。                    |
+| MFA_TEST_DATABASE_URL          | 仅独立本机zhongyuan_daojia_test的HTTP/DB自测；私有服务器仅专用zydj_acceptance_smoke且CONFIRM_PRIVATE_ACCEPTANCE_TEST=true；禁止生产目标。 |
+| MFA_RECOVERY_TEST_DATABASE_URL | 受审恢复专项HTTP/DB自测；允许目标与MFA_TEST_DATABASE_URL相同，脚本拒绝普通远程库和生产库。                                                |
 
-MFA密钥沿用DATA_ENCRYPTION_KEY_BASE64加密，禁止更换该主密钥而不做受审迁移。没有默认验证器密钥、通用恢复码、关闭MFA或重置快捷变量；详见[MFA交付](STAFF_MFA_IMPLEMENTATION.md)。
+MFA密钥沿用DATA_ENCRYPTION_KEY_BASE64加密，禁止更换该主密钥而不做受审迁移。没有默认验证器密钥、通用恢复码、关闭MFA或重置快捷变量；受审恢复也没有生产开关或复核绕过变量。详见[MFA交付](STAFF_MFA_IMPLEMENTATION.md)和[恢复交付](MFA_RECOVERY_IMPLEMENTATION.md)。

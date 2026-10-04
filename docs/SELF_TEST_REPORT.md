@@ -4,6 +4,8 @@
 
 ## 已实际执行
 
+最新受审恢复增量：本机开发库与独立测试库均完成第16批迁移；`test:mfa-recovery`以真实Nest/Fastify和PostgreSQL验证并发申请唯一、异人同组织MFA复核、并发批准仅一次、旧因子及全部目标会话撤销、重新绑定、拒绝/取消/过期/限流、来源会话与membership复核、终态数据库保护和无秘密审计，合成数据已清理。公网生产、真人微信和真实验证器未参与此项测试。
+
 最新后台交接增量：本机两库15批迁移，新8项交接单测和6项微信交换替身测试，API257+contracts13=270项代码测试；独立HTTP/DB与编译小程序JS交接流程、原商城/支付/MFA流程回归通过。服务器已部署c270262e/15批；商城/支付/MFA/浏览器交接四套HTTP/DB流程、6项Linux预览测试和新备份恢复均通过。详见[交接报告](BROWSER_LOGIN_IMPLEMENTATION.md)。
 
 本轮MFA增量：本地两库14批迁移，API243+contracts13=256项代码测试；6项预览边界测试；test:mfa真实HTTP/PostgreSQL通过并清理临时人员；原商城/支付DB流程回归通过。[代码提交2cda5189的GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37152238533)全部通过；独立服务器新版14批迁移、强制MFA、三个HTTP/DB流程、6项Linux预览测试及备份恢复均实测通过。见[MFA基础交付](STAFF_MFA_IMPLEMENTATION.md)。下表保留上一阶段230项/13批的历史证据，不混作当前增量统计。
