@@ -196,6 +196,12 @@ export const PaymentIntentSchema = z.object({
   wechatPayParameters: WechatPayParametersSchema.optional(),
 });
 
+export const WecomCustomerServiceUrlSchema = z
+  .string()
+  .regex(
+    /^https:\/\/work\.weixin\.qq\.com\/(?:kfid|kf)\/[A-Za-z0-9_-]{5,128}(?:\?enc_scene=[A-Za-z0-9%_=-]{1,256})?$/,
+  );
+export const WecomCorpIdSchema = z.string().regex(/^ww[A-Za-z0-9]{16}$/);
 export const PublicConfigSchema = z.object({
   brandName: z.string(),
   miniappAppId: z.string(),
@@ -203,6 +209,24 @@ export const PublicConfigSchema = z.object({
   operatingMode: z.enum(["DEVELOPMENT", "PILOT", "PRODUCTION"]),
   serviceCity: z.string(),
   safetyHotlineAvailable: z.boolean(),
+  emergencyContact: z
+    .object({ phone: z.string(), configured: z.boolean() })
+    .optional(),
+  customerService: z
+    .object({
+      provider: z.enum(["none", "wecom"]),
+      available: z.boolean(),
+      url: z.union([z.literal(""), WecomCustomerServiceUrlSchema]),
+      corpId: z.union([z.literal(""), WecomCorpIdSchema]),
+    })
+    .optional(),
+  safetyContact: z
+    .object({
+      mode: z.enum(["phone", "wecom"]),
+      available: z.boolean(),
+      dutyConfirmed: z.boolean(),
+    })
+    .optional(),
   integrations: z.object({
     payment: z.enum(["mock", "wechat"]),
     sms: z.enum(["mock", "aliyun"]),

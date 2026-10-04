@@ -4,6 +4,15 @@ declare function Page<T extends object>(
 ): void;
 declare function getApp<T extends object>(): T;
 declare const wx: {
+  openCustomerServiceChat?(options: {
+    corpId: string;
+    extInfo: { url: string };
+    fail(error: { errMsg: string }): void;
+  }): void;
+  makePhoneCall(options: {
+    phoneNumber: string;
+    fail(error: { errMsg: string }): void;
+  }): void;
   requestPayment(options: {
     timeStamp: string;
     nonceStr: string;

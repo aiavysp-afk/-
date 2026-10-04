@@ -7,9 +7,76 @@ const productionAuth = {
   AUTH_SESSION_PEPPER: "production-session-pepper-placeholder-32",
   DATA_ENCRYPTION_KEY_BASE64: "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=",
   WECHAT_PAY_NOTIFY_URL: "https://api.example.com/v1/payments/wechat/notify",
+  ALIYUN_SMS_ACCESS_KEY_ID: "test-sms-access-key-id",
+  ALIYUN_SMS_ACCESS_KEY_SECRET: "test-sms-access-key-secret",
+  ALIYUN_SMS_SIGN_NAME: "测试签名",
+  ALIYUN_SMS_TEMPLATE_CODE: "SMS_testtemplate",
+  TENCENT_MAP_KEY: "test-map-key",
+  TENCENT_MAP_SIGNING_SECRET: "test-map-signing-secret",
 } as const;
 
 describe("production safety gate", () => {
+  it("allows approved WeCom duty contact with a separate emergency phone instead of a legacy hotline", () => {
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "test-merchant",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "test-serial",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
+      SMS_PROVIDER: "aliyun",
+      MAP_PROVIDER: "tencent",
+      SAFETY_CONTACT_MODE: "wecom",
+      CUSTOMER_SERVICE_PROVIDER: "wecom",
+      WECOM_CORP_ID: "ww1234567890abcdef",
+      WECOM_CUSTOMER_SERVICE_URL:
+        "https://work.weixin.qq.com/kfid/kfc_test_12345",
+      SAFETY_DUTY_CONFIRMED: "true",
+      SAFETY_EMERGENCY_PHONE: "13800138000",
+    };
+    expect(validateEnv(raw).SAFETY_HOTLINE).toBe("");
+    expect(() =>
+      validateEnv({ ...raw, SAFETY_DUTY_CONFIRMED: "false" }),
+    ).toThrow("SAFETY_DUTY_CONFIRMED");
+    expect(() => validateEnv({ ...raw, SAFETY_EMERGENCY_PHONE: "" })).toThrow(
+      "SAFETY_EMERGENCY_PHONE",
+    );
+    expect(() =>
+      validateEnv({
+        ...raw,
+        WECOM_CUSTOMER_SERVICE_URL: "https://evil.test/kfid/test123",
+      }),
+    ).toThrow("WECOM_CUSTOMER_SERVICE_URL");
+  });
+  it("keeps chargeable integration calls independently disabled", () => {
+    const env = validateEnv({
+      SMS_PROVIDER: "aliyun",
+      MAP_PROVIDER: "tencent",
+    });
+    expect(env.SMS_SEND_ENABLED).toBe("false");
+    expect(env.MAP_GEOCODING_ENABLED).toBe("false");
+    expect(() => validateEnv({ SMS_SEND_ENABLED: "yes" })).toThrow();
+    expect(() => validateEnv({ MAP_GEOCODING_ENABLED: "yes" })).toThrow();
+  });
+  it("rejects provider label substitution without SMS/map credentials in production", () => {
+    const raw = {
+      NODE_ENV: "production",
+      SMS_PROVIDER: "aliyun",
+      MAP_PROVIDER: "tencent",
+    };
+    for (const field of [
+      "ALIYUN_SMS_ACCESS_KEY_ID",
+      "ALIYUN_SMS_ACCESS_KEY_SECRET",
+      "ALIYUN_SMS_SIGN_NAME",
+      "ALIYUN_SMS_TEMPLATE_CODE",
+      "TENCENT_MAP_KEY",
+      "TENCENT_MAP_SIGNING_SECRET",
+    ])
+      expect(() => validateEnv(raw)).toThrow(field);
+  });
   it("keeps original-order recovery independently opt-in", () => {
     expect(
       validateEnv({

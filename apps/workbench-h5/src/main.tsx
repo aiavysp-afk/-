@@ -2,8 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Bell, CalendarDays, ChevronRight, CircleDollarSign, Clock3, Home, MapPin, Navigation, Phone, ShieldAlert, UserRound } from 'lucide-react';
 import './styles.css';
+import { dialEmergencyDuty, emergencyPhoneFromConfig } from './support';
 
-function App(){return <div className="phone-app">
+function App(){
+  const [emergencyPhone, setEmergencyPhone] = React.useState('');
+  React.useEffect(() => {
+    const abort = new AbortController();
+    fetch(`${import.meta.env.VITE_API_BASE_URL ?? '/v1'}/config/public`, { signal: abort.signal, redirect: 'error' })
+      .then(response => { if (!response.ok) throw Error('Configuration unavailable'); return response.json(); })
+      .then(value => setEmergencyPhone(emergencyPhoneFromConfig(value)))
+      .catch(() => { if (!abort.signal.aborted) setEmergencyPhone(''); });
+    return () => abort.abort();
+  }, []);
+  return <div className="phone-app">
   <header><div><p>下午好，安然</p><h1>愿你今天服务顺利</h1></div><button><Bell size={19}/><i/></button></header>
   <main>
     <section className="status-card"><div className="status-top"><div><span className="dot"/>今日接单中</div><label><input type="checkbox" defaultChecked/><i/></label></div><div className="numbers"><div><strong>3</strong><span>今日订单</span></div><div><strong>¥428</strong><span>预计收入</span></div><div><strong>4.9</strong><span>服务评分</span></div></div><small>开发预览 · 数据并非真实经营记录</small></section>
@@ -13,8 +24,7 @@ function App(){return <div className="phone-app">
     <section className="section-head"><div><h2>今日安排</h2><p>2 单待服务 · 1 单已完成</p></div><button>全部订单</button></section>
     <div className="timeline"><article><time>14:30</time><i className="active"/><div><span>即将开始</span><h4>肩颈舒缓 · 60 分钟</h4><p><MapPin size={13}/>金水区 · 约 4.2 km</p></div></article><article><time>16:30</time><i/><div><span>已确认</span><h4>全身释压 SPA · 90 分钟</h4><p><MapPin size={13}/>郑东新区 · 约 6.8 km</p></div></article><article className="muted"><time>11:00</time><i/><div><span>已完成</span><h4>足部舒缓 · 60 分钟</h4><p><Clock3 size={13}/>服务记录已提交</p></div></article></div>
   </main>
-  <button className="sos"><ShieldAlert size={17}/><span>SOS</span></button>
+  <button className="sos" aria-label="拨打商家紧急值班电话" onClick={() => dialEmergencyDuty(emergencyPhone, target => window.location.assign(target), message => window.alert(message))}><ShieldAlert size={17}/><span>紧急值班</span></button>
   <nav><button className="active"><Home/><span>今日</span></button><button><Clock3/><span>订单</span></button><button><CalendarDays/><span>排班</span></button><button><CircleDollarSign/><span>收入</span></button><button><UserRound/><span>我的</span></button></nav>
 </div>}
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
-

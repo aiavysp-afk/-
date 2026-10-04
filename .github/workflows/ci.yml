@@ -45,6 +45,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: node --test scripts/verify-customer-service.test.mjs
       - run: pnpm --filter @zydj/api test:mall
       - run: pnpm --filter @zydj/api test:wechat-db
       - run: pnpm --filter @zydj/api test:mfa

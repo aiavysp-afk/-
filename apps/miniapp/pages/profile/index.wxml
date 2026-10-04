@@ -22,6 +22,12 @@
   ><view class="menus"
     ><view wx:for="{{menus}}" wx:key="*this"
       ><text>{{item}}</text><text class="chevron">›</text></view
+    ><view bindtap="openCustomerService"
+      ><text>企业微信客服</text
+      ><text>{{customerService.available ? '联系' : '待配置'}} ›</text></view
+    ><view bindtap="callEmergency"
+      ><text>商家紧急值班电话</text
+      ><text>{{emergencyContact.configured ? '拨号' : '待配置'}} ›</text></view
     ><view bindtap="openAdminLogin"
       ><text>后台登录确认（授权工作人员）</text><text>›</text></view
     ><view bindtap="openMfaRecovery"

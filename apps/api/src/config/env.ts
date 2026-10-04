@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  WecomCorpIdSchema,
+  WecomCustomerServiceUrlSchema,
+} from "@zydj/contracts";
 
 const EnvSchema = z.object({
   NODE_ENV: z
@@ -50,7 +54,22 @@ const EnvSchema = z.object({
   WECHAT_PAY_REFUND_NOTIFY_URL: z.string().default(""),
   SMS_PROVIDER: z.enum(["mock", "aliyun"]).default("mock"),
   MAP_PROVIDER: z.enum(["mock", "tencent"]).default("mock"),
+  SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
+  ALIYUN_SMS_ACCESS_KEY_ID: z.string().default(""),
+  ALIYUN_SMS_ACCESS_KEY_SECRET: z.string().default(""),
+  ALIYUN_SMS_SECURITY_TOKEN: z.string().default(""),
+  ALIYUN_SMS_SIGN_NAME: z.string().default(""),
+  ALIYUN_SMS_TEMPLATE_CODE: z.string().default(""),
+  MAP_GEOCODING_ENABLED: z.enum(["false", "true"]).default("false"),
+  TENCENT_MAP_KEY: z.string().default(""),
+  TENCENT_MAP_SIGNING_SECRET: z.string().default(""),
   SAFETY_HOTLINE: z.string().default(""),
+  SAFETY_EMERGENCY_PHONE: z.string().default(""),
+  CUSTOMER_SERVICE_PROVIDER: z.enum(["none", "wecom"]).default("none"),
+  WECOM_CORP_ID: z.string().default(""),
+  WECOM_CUSTOMER_SERVICE_URL: z.string().default(""),
+  SAFETY_CONTACT_MODE: z.enum(["phone", "wecom"]).default("phone"),
+  SAFETY_DUTY_CONFIRMED: z.enum(["false", "true"]).default("false"),
   // Existing server aliases. They are normalized to the canonical names above.
   WECHAT_APPID: z.string().default(""),
   WECHAT_APP_SECRET: z.string().default(""),
@@ -170,7 +189,51 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     if (env.PAYMENT_PROVIDER === "mock") invalid.push("PAYMENT_PROVIDER");
     if (env.SMS_PROVIDER === "mock") invalid.push("SMS_PROVIDER");
     if (env.MAP_PROVIDER === "mock") invalid.push("MAP_PROVIDER");
-    if (!env.SAFETY_HOTLINE) invalid.push("SAFETY_HOTLINE");
+    if (env.SAFETY_CONTACT_MODE === "phone" && !env.SAFETY_HOTLINE)
+      invalid.push("SAFETY_HOTLINE");
+    if (
+      env.CUSTOMER_SERVICE_PROVIDER === "wecom" ||
+      env.SAFETY_CONTACT_MODE === "wecom"
+    ) {
+      if (env.CUSTOMER_SERVICE_PROVIDER !== "wecom")
+        invalid.push("CUSTOMER_SERVICE_PROVIDER");
+      if (!WecomCorpIdSchema.safeParse(env.WECOM_CORP_ID).success)
+        invalid.push("WECOM_CORP_ID");
+      if (
+        !WecomCustomerServiceUrlSchema.safeParse(env.WECOM_CUSTOMER_SERVICE_URL)
+          .success
+      )
+        invalid.push("WECOM_CUSTOMER_SERVICE_URL");
+      if (
+        env.SAFETY_CONTACT_MODE === "wecom" &&
+        env.SAFETY_DUTY_CONFIRMED !== "true"
+      )
+        invalid.push("SAFETY_DUTY_CONFIRMED");
+      if (
+        env.SAFETY_CONTACT_MODE === "wecom" &&
+        !/^1[3-9]\d{9}$/.test(env.SAFETY_EMERGENCY_PHONE)
+      )
+        invalid.push("SAFETY_EMERGENCY_PHONE");
+    }
+    if (env.SMS_PROVIDER === "aliyun") {
+      for (const key of [
+        "ALIYUN_SMS_ACCESS_KEY_ID",
+        "ALIYUN_SMS_ACCESS_KEY_SECRET",
+        "ALIYUN_SMS_SIGN_NAME",
+      ] as const) {
+        if (!env[key].trim() || /[\r\n]/.test(env[key])) invalid.push(key);
+      }
+      if (!/^SMS_[A-Za-z0-9]+$/.test(env.ALIYUN_SMS_TEMPLATE_CODE))
+        invalid.push("ALIYUN_SMS_TEMPLATE_CODE");
+    }
+    if (env.MAP_PROVIDER === "tencent") {
+      for (const key of [
+        "TENCENT_MAP_KEY",
+        "TENCENT_MAP_SIGNING_SECRET",
+      ] as const) {
+        if (!env[key].trim() || /[\r\n]/.test(env[key])) invalid.push(key);
+      }
+    }
 
     if (env.PAYMENT_PROVIDER === "wechat") {
       if (
