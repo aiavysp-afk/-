@@ -1,0 +1,4 @@
+{
+  "desc": "专项验收包，不提供商城经营服务",
+  "rules": [{ "action": "disallow", "page": "*" }]
+}

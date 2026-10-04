@@ -1,0 +1,8 @@
+page {
+  background: #f7f5ef;
+  color: #243c32;
+  font-family: sans-serif;
+}
+button {
+  border-radius: 16rpx;
+}

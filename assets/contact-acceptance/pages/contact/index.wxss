@@ -1,0 +1,63 @@
+.page {
+  padding: 44rpx 32rpx 64rpx;
+}
+.brand,
+.title,
+.heading,
+.detail,
+.phone,
+.footer {
+  display: block;
+}
+.brand {
+  font-size: 26rpx;
+  color: #61756b;
+  margin-bottom: 12rpx;
+}
+.title {
+  font-size: 42rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.notice {
+  margin: 28rpx 0;
+  padding: 24rpx;
+  background: #f1e5ca;
+  border-radius: 16rpx;
+  line-height: 1.7;
+  font-size: 28rpx;
+}
+.card {
+  padding: 28rpx;
+  margin: 28rpx 0;
+  background: #ffffff;
+  border-radius: 20rpx;
+}
+.heading {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+.detail {
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #53665c;
+  margin: 22rpx 0;
+}
+.phone {
+  font-size: 36rpx;
+  margin-top: 20rpx;
+  letter-spacing: 2rpx;
+}
+.primary {
+  color: white;
+  background: #245b4d;
+}
+.secondary {
+  color: #245b4d;
+  background: #e6eee8;
+}
+.footer {
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #61756b;
+}

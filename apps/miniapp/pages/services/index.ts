@@ -9,12 +9,13 @@ Page({
     services: [] as Card[],
     loading: false,
     error: "",
+    showEmptyServices: false,
   },
   async onShow() {
     await this.load();
   },
   async load() {
-    this.setData({ loading: true, error: "" });
+    this.setData({ loading: true, error: "", showEmptyServices: false });
     try {
       const all = (await api<ServiceItem[]>("/catalog/services")).map(
         (item) => ({ ...item, price: money(item.priceFen) }),
@@ -26,7 +27,10 @@ Page({
         error: error instanceof Error ? error.message : "目录加载失败",
       });
     } finally {
-      this.setData({ loading: false });
+      this.setData({
+        loading: false,
+        showEmptyServices: !this.data.error && this.data.services.length === 0,
+      });
     }
   },
   select(e: { currentTarget: { dataset: { index: number } } }) {
@@ -37,10 +41,13 @@ Page({
     const category = ["", "MASSAGE", "SPA_RELAXATION", "FOOT_CARE"][
       this.data.active
     ];
+    const services = this.data.all.filter(
+      (item) => !category || item.category === category,
+    );
     this.setData({
-      services: this.data.all.filter(
-        (item) => !category || item.category === category,
-      ),
+      services,
+      showEmptyServices:
+        !this.data.loading && !this.data.error && services.length === 0,
     });
   },
   book(e: { currentTarget: { dataset: { slug: string } } }) {

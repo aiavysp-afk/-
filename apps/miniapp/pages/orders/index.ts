@@ -14,6 +14,7 @@ Page({
     busy: "",
     error: "",
     loggedIn: false,
+    showEmptyOrders: false,
   },
   async onShow() {
     await this.load();
@@ -33,7 +34,13 @@ Page({
   },
   async load() {
     const loggedIn = !!getStoredSession();
-    this.setData({ loggedIn, loading: loggedIn, error: "", orders: [] });
+    this.setData({
+      loggedIn,
+      loading: loggedIn,
+      error: "",
+      orders: [],
+      showEmptyOrders: false,
+    });
     if (!loggedIn) return;
     try {
       const orders = await api<OrderView[]>("/orders");
@@ -63,7 +70,11 @@ Page({
     } catch (error) {
       this.fail(error);
     } finally {
-      this.setData({ loading: false });
+      this.setData({
+        loading: false,
+        showEmptyOrders:
+          loggedIn && !this.data.error && this.data.orders.length === 0,
+      });
     }
   },
   async action(e: {

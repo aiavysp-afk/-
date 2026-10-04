@@ -3,5 +3,5 @@
   <view class="intro"><text class="eyebrow">正规、透明、可追溯</text><text class="intro-title serif">为你挑选适合此刻的放松</text><text class="intro-desc">所有项目均为非医疗养生放松服务</text></view>
   <text wx:if="{{loading}}">正在读取服务目录…</text><view wx:if="{{error}}"><text>{{error}}</text><button bindtap="load">重试</button></view>
   <view class="list"><view wx:for="{{services}}" wx:key="id" class="card" data-slug="{{item.slug}}" bindtap="book"><view class="art a{{index}}"><text>0{{index+1}}</text></view><view><text class="card-name serif">{{item.name}}</text><text class="card-desc">{{item.subtitle}}</text><text>{{item.durationMinutes}} 分钟</text><view class="price"><text>¥</text>{{item.price}}</view><text>查看详情与预约 →</text></view></view></view>
-  <text wx:if="{{!loading &amp;&amp; !error &amp;&amp; !services.length}}">暂无已上架项目</text>
+  <text wx:if="{{showEmptyServices}}">暂无已上架项目</text>
 </view>

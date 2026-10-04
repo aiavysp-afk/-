@@ -1,0 +1,11 @@
+{
+  "pages": ["pages/contact/index"],
+  "window": {
+    "navigationBarTitleText": "联系渠道专项验收",
+    "navigationBarBackgroundColor": "#245B4D",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F7F5EF"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

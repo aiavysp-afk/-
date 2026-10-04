@@ -1,0 +1,17 @@
+<view class="page">
+  <text class="brand">中原到家</text>
+  <text class="title">联系渠道专项验收</text>
+  <view class="notice">这不是商城经营版。此包不提供登录、下单、支付、退款或联网请求功能，仅供人工核验联系渠道。</view>
+  <view class="card">
+    <text class="heading">企业微信客服</text>
+    <text class="detail">打开客服入口不等于客服已接通。请人工核验企业与客服账号是否正确，并记录真人接通情况及失败回退。</text>
+    <button class="primary" bindtap="openCustomerService">打开企业微信客服入口</button>
+  </view>
+  <view class="card">
+    <text class="heading">商家紧急值班电话</text>
+    <text class="phone">{{merchantDutyPhone}}</text>
+    <text class="detail">这是商家值班电话，不是公共应急号码。打开拨号界面不等于电话已接通；遇到人身危险或医疗急症请立即寻求相应公共应急帮助。</text>
+    <button class="secondary" bindtap="callMerchantDuty">打开商家值班电话拨号</button>
+  </view>
+  <text class="footer">请只在有值班人员配合时进行验收。此包不会自动拨号或自动发送客服消息，不能证明已完成商城上线。</text>
+</view>

@@ -9,12 +9,13 @@ Page({
         services: [],
         loading: false,
         error: "",
+        showEmptyServices: false,
     },
     async onShow() {
         await this.load();
     },
     async load() {
-        this.setData({ loading: true, error: "" });
+        this.setData({ loading: true, error: "", showEmptyServices: false });
         try {
             const all = (await (0, api_1.api)("/catalog/services")).map((item) => ({ ...item, price: (0, api_1.money)(item.priceFen) }));
             this.setData({ all });
@@ -26,7 +27,10 @@ Page({
             });
         }
         finally {
-            this.setData({ loading: false });
+            this.setData({
+                loading: false,
+                showEmptyServices: !this.data.error && this.data.services.length === 0,
+            });
         }
     },
     select(e) {
@@ -35,8 +39,10 @@ Page({
     },
     filter() {
         const category = ["", "MASSAGE", "SPA_RELAXATION", "FOOT_CARE"][this.data.active];
+        const services = this.data.all.filter((item) => !category || item.category === category);
         this.setData({
-            services: this.data.all.filter((item) => !category || item.category === category),
+            services,
+            showEmptyServices: !this.data.loading && !this.data.error && services.length === 0,
         });
     },
     book(e) {
