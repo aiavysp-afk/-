@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新小程序侧微信客服绑定记录（2026-10-05），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。实时确认目标 AppID 后，记录微信公众平台原先无企业绑定、用户当场确认后企业 ID `ww715e0d876d9f3cb4` 与企业名称已显示，以及企业微信侧小程序/客服账号/当前代码链接的交叉核验。企业内存在两个同名账号，代码仍使用实时核验有效的第二个账号 `kfid/kfca6852bf5e57656af`，没有因第一个账号的不同链接误改代码。此次没有代码、数据库、环境变量、服务器、其他权限或资金配置变更，未上传小程序、通知手机、发消息或拨号；最近一次 iPhone 错误码 6 仍需真机验收关闭。
+
 最新真实客服自检与模拟器提示修正（2026-10-04），共8个仓库文件：`apps/miniapp/utils/customer-service.ts`、生成 `customer-service.js`、`scripts/verify-customer-service.test.mjs`，以及 `docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。新增严格固定措辞 `DEVTOOLS_UNSUPPORTED_WORDING`，不映射 iPhone 错误码 6、不输出原文或重试；记录真实 SDK 自检、模拟器不支持的实证与小程序侧企业 ID 绑定未核验的缺口。本机另备份纠正了开发者工具纯端口索引以连接用户已允许的服务，此临时索引和备份不入仓库；无数据库、环境变量、服务器、密钥、资金或云端绑定修改，未发手机预览通知。上线前仍须先核验小程序侧绑定，再验证真实客服打开/真人响应与失败兜底，不能用模拟器通过替代。
 
 最新同账号重新绑定记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`docs/SUPPORT_CHANNELS_IMPLEMENTATION.md`、`docs/SELF_TEST_REPORT.md`、`docs/IMPLEMENTATION_STATUS.md`、本清单。用户动作前明确确认后，企业微信后台已为“静享松弛桌游馆”重新选择并提交原账号“中原到家在线客服”，页面返回已接入列表；没有停止接入、取消授权、修改代码/服务器配置或解除任何上线门禁。操作后的 iPhone 微信实测仍待完成，不能据此把客服验收记为通过。
