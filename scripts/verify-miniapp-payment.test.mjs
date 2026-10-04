@@ -84,6 +84,7 @@ async function fixture({
       return structuredClone(serverOrders);
     }
     if (path === `/orders/${order.id}/refunds`) return [];
+    if (path === `/orders/${order.id}/safety-incidents`) return [];
     if (path === `/dev/payments/${mockIntent.id}/succeed`) {
       assert.equal(method, "POST");
       return { status: "SUCCEEDED" };

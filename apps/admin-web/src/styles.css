@@ -753,3 +753,80 @@ h1 {
   overflow-wrap: anywhere;
   color: #68776f;
 }
+.safety-workspace > label,
+.safety-roster-form label {
+  display: block;
+  margin: 16px 0;
+}
+.safety-workspace select {
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 8px;
+  margin: 0 10px;
+  max-width: 100%;
+}
+.safety-notice {
+  margin-bottom: 18px;
+}
+.safety-roster-card,
+.safety-roster-summary,
+.safety-incident {
+  padding: 22px;
+  margin-top: 18px;
+}
+.safety-roster-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  align-items: end;
+  gap: 12px;
+}
+.safety-roster-form button,
+.safety-incident-actions button {
+  padding: 10px 16px;
+  background: #245b4d;
+  color: #fff;
+  border-radius: 8px;
+}
+.safety-roster-form button:disabled,
+.safety-incident-actions button:disabled {
+  opacity: 0.45;
+}
+.safety-incident {
+  border-left: 5px solid #d6b878;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.safety-incident.escalated {
+  border-left-color: #aa4d43;
+  background: #fff9f7;
+}
+.safety-incident.acknowledged {
+  border-left-color: #2d7461;
+}
+.safety-incident.closed {
+  opacity: 0.72;
+}
+.safety-incident p {
+  color: #68776f;
+  overflow-wrap: anywhere;
+}
+.safety-incident-actions {
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
+}
+@media (max-width: 980px) {
+  .safety-roster-form {
+    grid-template-columns: 1fr;
+  }
+  .safety-incident {
+    flex-direction: column;
+  }
+  .safety-incident-actions {
+    min-width: 0;
+  }
+}

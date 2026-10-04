@@ -49,6 +49,7 @@ jobs:
       - run: node --test scripts/verify-customer-service.test.mjs
       - run: node --test scripts/verify-miniapp-wxml.test.mjs
       - run: node --test scripts/verify-miniapp-payment.test.mjs
+      - run: node --test scripts/verify-miniapp-safety.test.mjs
       - run: node --test scripts/package-contact-acceptance.test.mjs
       - run: pnpm --filter @zydj/api test:mall
       - run: pnpm --filter @zydj/api test:wechat-db

@@ -26,12 +26,13 @@ import type {
 import "./styles.css";
 import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
+import { SafetyWorkspace } from "./safety";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 const TOKEN_STORAGE_KEY = "zydj.admin.access-token";
 
-type Section = "dashboard" | "catalog" | "refunds" | "security";
+type Section = "dashboard" | "catalog" | "refunds" | "safety" | "security";
 type CatalogRow = AdminServiceItem | ServiceItem;
 
 const nav: Array<{
@@ -45,7 +46,7 @@ const nav: Array<{
   { icon: Sparkles, label: "服务项目", section: "catalog" },
   { icon: CalendarDays, label: "排班中心" },
   { icon: CircleDollarSign, label: "退款复核", section: "refunds" },
-  { icon: MessageCircleWarning, label: "安全值班" },
+  { icon: MessageCircleWarning, label: "安全值班", section: "safety" },
   { icon: MapPinned, label: "服务区域" },
   { icon: ShieldCheck, label: "权限审计" },
   { icon: ShieldCheck, label: "账户安全", section: "security" },
@@ -568,9 +569,11 @@ function App() {
                 ? "运营中心"
                 : section === "security"
                   ? "账户安全"
-                  : section === "refunds"
-                    ? "退款申请与复核"
-                    : "服务目录管理"}
+                  : section === "safety"
+                    ? "安全值班与升级"
+                    : section === "refunds"
+                      ? "退款申请与复核"
+                      : "服务目录管理"}
             </h1>
           </div>
           <div className="header-actions">
@@ -602,6 +605,8 @@ function App() {
           />
         ) : section === "refunds" ? (
           <RefundWorkspace token={token} login={developmentLogin} />
+        ) : section === "safety" ? (
+          <SafetyWorkspace token={token} login={developmentLogin} />
         ) : (
           <CatalogWorkspace
             token={token}

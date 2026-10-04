@@ -1,6 +1,6 @@
 # 中原到家
 
-最新安全开发：[安全事件主备值班闭环](docs/SAFETY_DUTY_IMPLEMENTATION.md)已完成值班表、订单本人事件、主岗确认、超时单次升级、备岗接手、确认人关闭、审计与 Outbox，并通过真实 PostgreSQL 并发验收。自动通知消费者和真人主备演练仍未完成，`SAFETY_DUTY_CONFIRMED` 保持 `false`，不能据此公开经营。
+最新安全开发：[安全事件主备值班闭环](docs/SAFETY_DUTY_IMPLEMENTATION.md)已完成值班表、订单本人唯一未关闭事件、主岗确认、超时单次升级、备岗接手、确认人关闭、审计与 Outbox，并接入小程序固定分类求助入口和后台处置队列；真实 PostgreSQL 并发验收及本地三角色页面验收通过。自动通知消费者和真人主备演练仍未完成，`SAFETY_DUTY_CONFIRMED` 保持 `false`，不能据此公开经营。
 
 最新小程序验收准备：[修复订单/服务页WXML编译错误并生成独立联系渠道验收包](docs/MINIAPP_WECHAT_ACCEPTANCE.md)。官方本机编译器8页通过，开发者工具首页恢复渲染；专项包不含联网/登录/交易，不等于商城正式版或真机接通验收。
 

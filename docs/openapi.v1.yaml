@@ -987,6 +987,21 @@ paths:
       responses:
         "200": { description: 当前活动值班表或null }
         "403": { description: 无本组织安全响应权限 }
+  /v1/admin/organizations/{organizationId}/safety-duty-staff:
+    get:
+      summary: 管理员读取本组织有效安全值班候选人
+      description: 只返回有效SAFETY_DUTY成员的内部ID和显示名，用于主备岗选择；普通值班人员无权读取。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 有效候选人列表 }
+        "403": { description: 无组织身份管理权限 }
   /v1/orders/{orderId}/safety-incidents:
     parameters:
       - { in: path, name: orderId, required: true, schema: { type: string } }
@@ -1151,6 +1166,33 @@ components:
         backupUserId: { type: string, minLength: 1, maxLength: 128 }
         acknowledgementTimeoutSeconds:
           { type: integer, minimum: 60, maximum: 900 }
+    SafetyDutyRosterView:
+      type: object
+      required:
+        [
+          id,
+          organizationId,
+          primaryUserId,
+          backupUserId,
+          acknowledgementTimeoutSeconds,
+          active,
+          createdAt,
+        ]
+      properties:
+        id: { type: string }
+        organizationId: { type: string }
+        primaryUserId: { type: string }
+        backupUserId: { type: string }
+        acknowledgementTimeoutSeconds:
+          { type: integer, minimum: 60, maximum: 900 }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    SafetyDutyStaffView:
+      type: object
+      required: [userId, displayName]
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
     SafetyIncidentCategory:
       type: string
       enum: [PERSONAL_SAFETY, MEDICAL_CONCERN, SERVICE_DISPUTE, OTHER_URGENT]

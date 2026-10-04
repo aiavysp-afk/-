@@ -217,6 +217,18 @@ try {
     simultaneous[0].data.id,
   );
   assert.equal(acknowledgedByPrimary.status, SafetyIncidentStatus.ACKNOWLEDGED);
+  await assert.rejects(
+    safety.createIncident(
+      customer,
+      order.id,
+      { category: "MEDICAL_CONCERN" },
+      `${prefix}-parallel-active-incident`,
+    ),
+    ConflictException,
+  );
+  await safety.close(primary, organizationId, simultaneous[0].data.id, {
+    resolutionCode: "RESOLVED",
+  });
 
   const second = await safety.createIncident(
     customer,
@@ -316,6 +328,7 @@ try {
         "roster database constraints",
         "incident database state constraints",
         "concurrent incident idempotency",
+        "one unresolved incident per order",
         "primary-only acknowledgement window",
         "concurrent one-time escalation",
         "backup-only escalated acknowledgement",

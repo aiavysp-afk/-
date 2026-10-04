@@ -1,6 +1,6 @@
 # 完整部署步骤与发布门禁
 
-最新安全迁移（2026-10-05）：发布包含 `20261005034000_safety_duty_incidents` 的版本前先备份，并在副本执行全部 17 批 migration。部署后先由管理员配置两个不同且有效的 `SAFETY_DUTY` 成员，再在隔离环境完成创建、主岗确认、超时升级、备岗确认和关闭演练。Outbox 消费、积压告警与真人主备响应未完成前，`SAFETY_DUTY_CONFIRMED=false`，不得仅凭接口或数据库测试解除公网经营门禁。详见[安全值班闭环](SAFETY_DUTY_IMPLEMENTATION.md)。
+最新安全迁移（2026-10-05）：发布包含 `20261005034000_safety_duty_incidents` 与 `20261005050000_safety_single_active_incident` 的版本前先备份，并在副本执行全部 18 批 migration。部署后先由管理员配置两个不同且有效的 `SAFETY_DUTY` 成员，再在隔离环境完成创建、主岗确认、超时升级、备岗确认和关闭演练。Outbox 消费、积压告警与真人主备响应未完成前，`SAFETY_DUTY_CONFIRMED=false`，不得仅凭接口或数据库测试解除公网经营门禁。详见[安全值班闭环](SAFETY_DUTY_IMPLEMENTATION.md)。
 
 当前私有运行代码`6411b16`，CI及服务器五流程/6+5脚本测试通过。用户明确核验归属/账号/绑定后复用旧客服URL，三端私有入口可用，安全值班仍未确认；新生产配置实测缺SMS_PROVIDER、MAP_PROVIDER、SAFETY_DUTY_CONFIRMED三项。公网维护503、资金/SMS/地图开关关闭，真机和接通仍待验收；下文缺URL/四项门禁及087代码均为此前历史。
 

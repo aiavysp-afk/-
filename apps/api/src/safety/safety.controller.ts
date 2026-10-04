@@ -52,6 +52,18 @@ export class SafetyController {
     };
   }
 
+  @Get("admin/organizations/:organizationId/safety-duty-staff")
+  async listEligibleResponders(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+  ) {
+    const data = await this.safety.listEligibleResponders(
+      principal,
+      organizationId,
+    );
+    return { data, meta: { total: data.length } };
+  }
+
   @Post("orders/:orderId/safety-incidents")
   async createIncident(
     @CurrentPrincipal() principal: AuthPrincipal,

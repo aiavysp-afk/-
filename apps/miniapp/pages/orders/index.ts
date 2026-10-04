@@ -1,4 +1,10 @@
-import type { OrderView, PaymentIntent, RefundView } from "@zydj/contracts";
+import type {
+  OrderView,
+  PaymentIntent,
+  RefundView,
+  SafetyIncidentCreate,
+  SafetyIncidentCustomerView,
+} from "@zydj/contracts";
 import { api, money, newKey, shanghaiTime } from "../../utils/api";
 import { getStoredSession, loginWithWechat } from "../../utils/auth";
 type Row = OrderView & {
@@ -6,6 +12,23 @@ type Row = OrderView & {
   time: string;
   refunds: RefundView[];
   refundAvailable: boolean;
+  safetyIncidents: Array<SafetyIncidentCustomerView & { statusLabel: string }>;
+  safetyAvailable: boolean;
+};
+const safetyCategories: Array<{
+  label: string;
+  value: SafetyIncidentCreate["category"];
+}> = [
+  { label: "人身安全风险", value: "PERSONAL_SAFETY" },
+  { label: "身体不适或医疗顾虑", value: "MEDICAL_CONCERN" },
+  { label: "服务争议需立即介入", value: "SERVICE_DISPUTE" },
+  { label: "其他紧急情况", value: "OTHER_URGENT" },
+];
+const safetyStatuses: Record<string, string> = {
+  OPEN: "等待主岗确认",
+  ESCALATED: "主岗超时，已转备岗",
+  ACKNOWLEDGED: "值班人员已确认",
+  CLOSED: "已关闭并留痕",
 };
 Page({
   data: {
@@ -46,14 +69,21 @@ Page({
       const orders = await api<OrderView[]>("/orders");
       const rows = await Promise.all(
         orders.map(async (order) => {
-          const refunds = await api<RefundView[]>(
-            `/orders/${order.id}/refunds`,
-          );
+          const [refunds, safetyIncidents] = await Promise.all([
+            api<RefundView[]>(`/orders/${order.id}/refunds`),
+            api<SafetyIncidentCustomerView[]>(
+              `/orders/${order.id}/safety-incidents`,
+            ),
+          ]);
           return {
             ...order,
             price: money(order.payableFen),
             time: shanghaiTime(order.appointmentStart),
             refunds,
+            safetyIncidents: safetyIncidents.map((incident) => ({
+              ...incident,
+              statusLabel: safetyStatuses[incident.status] ?? "状态待确认",
+            })),
             refundAvailable:
               [
                 "PAID",
@@ -63,6 +93,17 @@ Page({
                 "ARRIVED",
               ].includes(order.status) &&
               !refunds.some((row) => row.status !== "REJECTED"),
+            safetyAvailable:
+              [
+                "PAID",
+                "DISPATCHING",
+                "ASSIGNED",
+                "EN_ROUTE",
+                "ARRIVED",
+                "IN_SERVICE",
+                "AWAITING_CONFIRMATION",
+              ].includes(order.status) &&
+              !safetyIncidents.some((incident) => incident.status !== "CLOSED"),
           };
         }),
       );
@@ -203,6 +244,49 @@ Page({
         wx.setStorageSync(storageKey, key);
         await api(`/orders/${id}/refunds`, "POST", {}, String(key));
         wx.removeStorageSync(storageKey);
+      } else if (action === "safety") {
+        const order = this.data.orders.find((row: Row) => row.id === id);
+        if (!order?.safetyAvailable)
+          throw new Error("该订单已有待处理安全事件，请刷新查看状态");
+        const selected = await new Promise<number | null>((resolve) =>
+          wx.showActionSheet({
+            itemList: safetyCategories.map((category) => category.label),
+            success: (result) => resolve(result.tapIndex),
+            fail: () => resolve(null),
+          }),
+        );
+        if (selected === null || !safetyCategories[selected]) return;
+        const category = safetyCategories[selected];
+        const confirmed = await new Promise<boolean>((resolve) =>
+          wx.showModal({
+            title: "确认记录安全事件",
+            content:
+              "提交只会记录事件并进入值班队列，不代表人工已经接通。若有人身危险或医疗急症，请立即报警或呼叫急救。",
+            confirmText: "确认记录",
+            success: (result) => resolve(result.confirm === true),
+            fail: () => resolve(false),
+          }),
+        );
+        if (!confirmed) return;
+        const storageKey = `zydj.safety.key.${id}.${category.value}`;
+        const key = wx.getStorageSync(storageKey) || newKey();
+        wx.setStorageSync(storageKey, key);
+        await api(
+          `/orders/${id}/safety-incidents`,
+          "POST",
+          { category: category.value },
+          String(key),
+        );
+        wx.removeStorageSync(storageKey);
+        await new Promise<void>((resolve) =>
+          wx.showModal({
+            title: "事件已记录",
+            content:
+              "请留在安全位置并同时联系人工值班；系统记录不等于通知送达。紧急危险请立即报警或呼叫急救。",
+            showCancel: false,
+            complete: () => resolve(),
+          }),
+        );
       }
       await this.load();
     } catch (error) {

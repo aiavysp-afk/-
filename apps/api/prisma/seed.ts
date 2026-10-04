@@ -22,7 +22,11 @@ async function main() {
     const target = new URL(process.env.DATABASE_URL ?? "");
     if (
       !["localhost", "127.0.0.1"].includes(target.hostname) ||
-      !["/zhongyuan_daojia", "/zhongyuan_daojia_test"].includes(target.pathname)
+      ![
+        "/zhongyuan_daojia",
+        "/zhongyuan_daojia_test",
+        "/zhongyuan_safety_test",
+      ].includes(target.pathname)
     )
       throw new Error(
         "Development identities require an explicitly local development database",
@@ -127,6 +131,66 @@ async function main() {
         },
       });
     }
+    for (const actor of [
+      {
+        code: "local-safety-admin",
+        role: UserRole.ADMIN,
+        displayName: "本地安全管理员",
+      },
+      {
+        code: "local-safety-primary",
+        role: UserRole.SAFETY_DUTY,
+        displayName: "本地安全主岗",
+      },
+      {
+        code: "local-safety-backup",
+        role: UserRole.SAFETY_DUTY,
+        displayName: "本地安全备岗",
+      },
+    ]) {
+      const openId = `mock-${createHash("sha256").update(actor.code).digest("hex").slice(0, 32)}`;
+      const user = await prisma.user.upsert({
+        where: { id: `user-${actor.code}` },
+        update: { displayName: actor.displayName, status: "ACTIVE" },
+        create: {
+          id: `user-${actor.code}`,
+          role: actor.role,
+          displayName: actor.displayName,
+        },
+      });
+      await prisma.staffMembership.upsert({
+        where: {
+          userId_organizationId_role: {
+            userId: user.id,
+            organizationId: organization.id,
+            role: actor.role,
+          },
+        },
+        update: { status: MembershipStatus.ACTIVE },
+        create: {
+          userId: user.id,
+          organizationId: organization.id,
+          role: actor.role,
+          status: MembershipStatus.ACTIVE,
+        },
+      });
+      await prisma.externalIdentity.upsert({
+        where: {
+          provider_subjectHash: {
+            provider: IdentityProvider.WECHAT_MINIAPP,
+            subjectHash: crypto.hashIdentity(appId, openId),
+          },
+        },
+        update: { userId: user.id },
+        create: {
+          userId: user.id,
+          provider: IdentityProvider.WECHAT_MINIAPP,
+          subjectHash: crypto.hashIdentity(appId, openId),
+          subjectEncrypted: crypto.encrypt(openId),
+        },
+      });
+    }
+    console.log("Seeded explicit local-only safety duty identities");
     const developmentCode = "local-catalog-operator";
     const openId = `mock-${createHash("sha256").update(developmentCode).digest("hex").slice(0, 32)}`;
     const subjectHash = crypto.hashIdentity(appId, openId);

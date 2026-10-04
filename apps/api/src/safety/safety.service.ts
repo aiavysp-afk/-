@@ -117,6 +117,30 @@ export class SafetyService {
     return roster ? this.toRosterView(roster) : null;
   }
 
+  async listEligibleResponders(
+    principal: AuthPrincipal,
+    organizationId: string,
+  ) {
+    this.access.assertPermission(principal, "iam.manage", organizationId);
+    const memberships = await this.prisma.staffMembership.findMany({
+      where: {
+        organizationId,
+        role: UserRole.SAFETY_DUTY,
+        status: MembershipStatus.ACTIVE,
+        user: { status: "ACTIVE" },
+      },
+      select: {
+        userId: true,
+        user: { select: { displayName: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    return memberships.map((membership) => ({
+      userId: membership.userId,
+      displayName: membership.user.displayName,
+    }));
+  }
+
   async createIncident(
     principal: AuthPrincipal,
     orderId: string,
@@ -171,6 +195,21 @@ export class SafetyService {
           throw new ForbiddenException("不能为其他用户的订单发起安全事件");
         if (!INCIDENT_ORDER_STATUSES.has(lockedOrder.status))
           throw new ConflictException("当前订单阶段不能发起服务安全事件");
+        const unresolved = await tx.safetyIncident.findFirst({
+          where: {
+            orderId,
+            status: {
+              in: [
+                SafetyIncidentStatus.OPEN,
+                SafetyIncidentStatus.ESCALATED,
+                SafetyIncidentStatus.ACKNOWLEDGED,
+              ],
+            },
+          },
+          select: { id: true },
+        });
+        if (unresolved)
+          throw new ConflictException("该订单已有待处理的安全事件");
         const activeRoster = await tx.safetyDutyRoster.findFirst({
           where: {
             id: roster.id,

@@ -286,6 +286,19 @@ export const SafetyDutyRosterUpsertSchema = z
   .refine((value) => value.primaryUserId !== value.backupUserId, {
     message: "主备值班人员必须分离",
   });
+export const SafetyDutyRosterViewSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  primaryUserId: z.string(),
+  backupUserId: z.string(),
+  acknowledgementTimeoutSeconds: z.number().int().min(60).max(900),
+  active: z.boolean(),
+  createdAt: IsoDateTimeSchema,
+});
+export const SafetyDutyStaffViewSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+});
 
 export const SafetyIncidentCategorySchema = z.enum([
   "PERSONAL_SAFETY",
@@ -422,6 +435,8 @@ export type RefundView = z.infer<typeof RefundViewSchema>;
 export type SafetyDutyRosterUpsert = z.infer<
   typeof SafetyDutyRosterUpsertSchema
 >;
+export type SafetyDutyRosterView = z.infer<typeof SafetyDutyRosterViewSchema>;
+export type SafetyDutyStaffView = z.infer<typeof SafetyDutyStaffViewSchema>;
 export type SafetyIncidentCreate = z.infer<typeof SafetyIncidentCreateSchema>;
 export type SafetyIncidentClose = z.infer<typeof SafetyIncidentCloseSchema>;
 export type SafetyIncidentView = z.infer<typeof SafetyIncidentViewSchema>;

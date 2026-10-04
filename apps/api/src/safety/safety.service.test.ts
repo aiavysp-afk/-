@@ -73,6 +73,11 @@ function fixture(options?: { dueAt?: Date; status?: SafetyIncidentStatus }) {
     : null;
 
   const safetyIncident = {
+    findFirst: vi.fn(async () =>
+      incident && incident.status !== SafetyIncidentStatus.CLOSED
+        ? { id: incident.id }
+        : null,
+    ),
     findUnique: vi.fn(async (query: any) => {
       if (!incident) return null;
       if (query.where?.id)
@@ -147,8 +152,8 @@ function fixture(options?: { dueAt?: Date; status?: SafetyIncidentStatus }) {
     },
     staffMembership: {
       findMany: vi.fn(async () => [
-        { userId: primary.userId },
-        { userId: backup.userId },
+        { userId: primary.userId, user: { displayName: "Primary" } },
+        { userId: backup.userId, user: { displayName: "Backup" } },
       ]),
     },
     safetyDutyRoster: {
@@ -228,6 +233,24 @@ describe("SafetyService", () => {
       organizationId,
     );
     expect(f.audits[0]?.action).toBe("SAFETY_DUTY_ROSTER_CONFIGURED");
+  });
+
+  it("lists only server-selected eligible responders for organization admins", async () => {
+    const f = fixture();
+    await expect(
+      f.service.listEligibleResponders(
+        { ...primary, userId: "admin-1" },
+        organizationId,
+      ),
+    ).resolves.toEqual([
+      { userId: primary.userId, displayName: "Primary" },
+      { userId: backup.userId, displayName: "Backup" },
+    ]);
+    expect(f.access.assertPermission).toHaveBeenCalledWith(
+      expect.anything(),
+      "iam.manage",
+      organizationId,
+    );
   });
 
   it("creates one idempotent incident with event, audit and primary outbox", async () => {

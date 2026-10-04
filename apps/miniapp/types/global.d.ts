@@ -27,8 +27,16 @@ declare const wx: {
   showModal(options: {
     title: string;
     content: string;
-    success(result: { confirm: boolean; cancel: boolean }): void;
-    fail(): void;
+    confirmText?: string;
+    showCancel?: boolean;
+    success?(result: { confirm: boolean; cancel: boolean }): void;
+    fail?(): void;
+    complete?(): void;
+  }): void;
+  showActionSheet(options: {
+    itemList: string[];
+    success?(result: { tapIndex: number }): void;
+    fail?(): void;
   }): void;
   showToast(options: {
     title: string;
