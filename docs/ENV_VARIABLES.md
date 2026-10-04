@@ -53,7 +53,7 @@
 
 兼容旧服务器别名：`WECHAT_APPID`、`WECHAT_APP_SECRET`、`WECHAT_MCHID`、`WECHAT_API_V3_KEY`、`WECHAT_MCH_SERIAL_NO`、`WECHAT_PRIVATE_KEY_PATH`、`WECHAT_PLATFORM_SERIAL_NO`、`WECHAT_PLATFORM_CERT_PATH`。新部署只使用规范变量；禁止新旧商户/验签配置组混用。别名的识别不能证明旧服务器数据归属于本商城，须企业管理员核对。
 
-小程序没有Vite环境变量：上传前修改 `apps/miniapp/app.ts` 的 `apiBaseUrl` 为HTTPS API地址，然后运行build生成JS；开发工具启用合法域名校验，核对AppID，上传包不含node_modules、证书或.env。
+小程序没有 Vite 环境变量：`apps/miniapp/app.ts` 当前已使用 `https://api.mtsc.top/v1`，运行 build 生成 JS；不要再切回手机无法访问的 localhost。开发工具启用合法域名校验，核对 AppID，上传包不含 node_modules、证书或 `.env`。profile 页另有仅含公开客服与值班电话的维护/断网兜底，成功服务器公开配置仍覆盖本地值。
 
 ## MFA增量变量
 

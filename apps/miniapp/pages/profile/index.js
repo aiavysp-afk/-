@@ -3,14 +3,29 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
 const api_1 = require("../../utils/api");
 const customer_service_1 = require("../../utils/customer-service");
+// These are public merchant contact channels, not credentials. Keeping a
+// compile-time fallback makes emergency/contact access survive API maintenance.
+// A successful public-config response remains authoritative and replaces them.
+const PUBLIC_CONTACT_FALLBACK = {
+    customerService: {
+        provider: "wecom",
+        available: true,
+        corpId: "ww715e0d876d9f3cb4",
+        url: "https://work.weixin.qq.com/kfid/kfca6852bf5e57656af",
+    },
+    emergencyContact: {
+        configured: true,
+        phone: "18018181799",
+    },
+};
 Page({
     data: {
         menus: ["我的地址", "优惠券", "发票申请", "协议与隐私", "账户与安全"],
         loggedIn: false,
         loggingIn: false,
         displayName: "微信用户",
-        customerService: undefined,
-        emergencyContact: undefined,
+        customerService: PUBLIC_CONTACT_FALLBACK.customerService,
+        emergencyContact: PUBLIC_CONTACT_FALLBACK.emergencyContact,
     },
     onLoad() {
         const session = (0, auth_1.getStoredSession)();
@@ -18,8 +33,12 @@ Page({
             this.setData({ loggedIn: true, displayName: session.user.displayName });
     },
     async onShow() {
-        // Clear stale links first; a failed refresh must not advertise an available contact.
-        this.setData({ customerService: undefined, emergencyContact: undefined });
+        // Public, compile-time safety channels remain available during API maintenance.
+        // Any successful server response is authoritative and replaces this fallback.
+        this.setData({
+            customerService: PUBLIC_CONTACT_FALLBACK.customerService,
+            emergencyContact: PUBLIC_CONTACT_FALLBACK.emergencyContact,
+        });
         try {
             const config = await (0, api_1.api)("/config/public");
             this.setData({
