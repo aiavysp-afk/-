@@ -775,6 +775,9 @@ try {
       }
       options.success({ statusCode: 200, data: { data } });
     };
+    // The pay action must refer to a currently displayed pending order.
+    await orderPage.load();
+    assert.equal(orderPage.data.error, "");
     for (const mode of ["success", "cancel", "failure"]) {
       sdkMode = mode;
       await orderPage.action({

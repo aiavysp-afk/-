@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新支付确认切片（2026-10-04）：完整证据和上线前资金/真机门禁见[支付确认记录](WECHAT_PREPAY_IMPLEMENTATION.md)。本轮10文件：`.github/workflows/ci.yml`；`apps/api/scripts/verify-mall-flow.ts`（仅修正虚拟订单显示fixture）；`apps/miniapp/pages/orders/index.ts`、`index.js`、`index.wxml`；`scripts/verify-miniapp-payment.test.mjs`；`docs/WECHAT_PREPAY_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。没有环境变量、数据库或服务器变更。
+
 最新小程序切片：订单/服务页WXML表达式修复、4项页面回归、13项专项包边界测试与8模板生成器，文件及人工微信步骤见[小程序专项验收记录](MINIAPP_WECHAT_ACCEPTANCE.md)。没有数据库或服务器生产配置变更，不把编译通过记作成功上传。
 
 最新客服确认门禁切片代码`6411b16`：API、环境模板、小程序提示与测试共16个代码/文档文件；随后只更新验收记录、README及本清单。完整19文件列表和人工核对见[最新接入记录](SUPPORT_CHANNELS_IMPLEMENTATION.md)。已按用户明确确认复用旧URL，仅开放私有客服入口，未做真机或公开经营验收。
