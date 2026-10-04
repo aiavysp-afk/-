@@ -1,6 +1,6 @@
 # 2026-10-04 服务器私有验收记录
 
-最新登录交接切片：源码与本机两库已进入第15批；本轮服务器只有只读容量/旧站/迁移核验，current仍2cda5189/14批/User0/Order0，旧站200与PID基线不变。可用3430204KiB，当前release399940KiB；新源码脚本保留3GiB运行余量加512MiB发布空间，容量不满足，所以没有上传/解压新release、改环境、执行远程第15批迁移或重启服务。没有清理旧数据。详见[当前交接交付](BROWSER_LOGIN_IMPLEMENTATION.md)。以下为上轮成功MFA部署记录，不是本轮交接部署成功。
+最新登录交接切片：`c270262e54c3fb85648efb2b6bd24927c5f15ce3`已部署到独立私有环境，[GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37157220065)全部success。部署前删除两个未运行旧release、旧上传包和APT可再生成缓存；部署与验证后删除上一版release、本次上传包和临时恢复库，保留数据库/环境备份、runtime、store及当前配置。current仅指向c270262e，验收库与smoke库均15批且User/Order/BrowserLogin临时表为0；三个服务active，旧站200与PID基线不变，最终可用4163164KiB（约3.97GiB）。商城/支付/MFA/浏览器交接四个HTTP/DB流程、6项Linux预览测试及备份恢复全部通过。私有Mock环境不是公网经营上线。以下保留此前阶段证据。
 
 本页首次部署数据保留作为历史基线；以下MFA更新为2026-10-04北京时间04:43的服务器实测。不能用源码或本地测试替代服务器验收。
 
@@ -8,13 +8,13 @@
 
 ## 当前MFA更新：已部署并验收
 
-- 当前代码及release：`2cda5189484425c1a04a7a397ff06c97d1f97949`，current指向`/opt/zhongyuan-daojia-acceptance/releases/2cda5189484425c1a04a7a397ff06c97d1f97949`；[该提交GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37152238533)全部success，包含243项API+13项合约测试、6项预览安全测试、构建、14批迁移及三个HTTP/DB流程。
+- 当前代码及release：`c270262e54c3fb85648efb2b6bd24927c5f15ce3`，current指向同名release；[该提交GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37157220065)全部success，包含API257项+contracts13项、6项预览安全测试、构建、15批迁移及四个HTTP/DB流程。
 - 新归档SHA256：`e521cfa6eaeed4655f29d410eacc4d3a2c6161d9499e8e22563b9778d985379e`。相同源码及已构建dist打包，无运行密钥/.env/node_modules；脚本LF、服务范围和归档摘要均核验。
-- 升级前只备份独立验收库，再应用`20261004031000_staff_mfa`；验收库与专用smoke库现有14批迁移全部成功。保留旧release和备份，不撤回migration；正式环境不得回滚到缺少MFA门禁的旧应用。
+- 升级前只备份独立验收库，再应用`20261004052000_browser_login`；验收库与专用smoke库现有15批迁移全部成功。旧release验证后已按用户指示删除，数据库与环境备份保留；正式环境不得回滚到缺少MFA/登录交接门禁的旧应用。
 - 受控私有配置只新增`STAFF_MFA_REQUIRED=true`；自动逐项比对原配置，其余变量和随机密钥完全不变。NODE_ENV=test、AUTH/PAYMENT_PROVIDER=mock，三项真实微信资金开关仍false；没有为真实人员创建身份或绑定验证器。
 - 实际运行API和两个同源代理均验证health/catalog为200、订单与MFA未登录401、敏感.env404。三个新服务active/running且仅监听127.0.0.1:3210/3212/3213；用户非root、资源和系统保护不变，实测内存约51/27/28MiB。
 - 在`zydj_acceptance_smoke`运行商城全流程、支付并发/恢复、MFA实际HTTP/PostgreSQL验证均通过，三个脚本都报告合成数据已清理。覆盖单周期动态码防重放、并发一次提升、五次错误持久锁定、会话隔离/五分钟门禁、角色/组织分离、DB防改及三轮验证/注销竞态；没有真实微信登录或付款。
-- Linux预览边界6项全部通过。验收库和smoke库最终User/Order/MfaCredential均0。更新后数据库备份成功恢复到全新`zydj_acceptance_restore_mfa_20261004`，14批迁移、3个服务及上述零记录完整，没有覆盖任何原有数据库。
+- Linux预览边界6项全部通过。验收库和smoke库最终User/Order/BrowserLoginChallenge/BrowserLoginRateLimit均0。更新后数据库备份成功恢复到临时专用库，15批迁移、3个服务及上述零记录完整；验证后删除临时恢复库，没有覆盖任何原有数据库。
 - 用户电脑隧道health200；浏览器实测“账户安全”未登录保护及正式微信登录待接入提示，无错误/警告。截图仅保留本机`.codex-runtime/private-acceptance-mfa.png`，不提交仓库；不在浏览器中绑定真实MFA设备。
 - 原jingxiang-api/admin的PID/ActiveState/WorkingDirectory仍与首次基线完全一致，https://mtsc.top/返回200；未修改DNS/Nginx/安全组/旧商城库/微信后台。数据库角色仍无superuser/createdb/createrole，配置640，备份600，时间同步NTPSynchronized=yes。
 
@@ -25,7 +25,7 @@
 | 第14批迁移前 | `database-before-2cda5189484425c1a04a7a397ff06c97d1f97949-20261003T204035.dump` | `2c33006e77f5138899185f2b87c81138769e32f9ffc3363523a90f9e6997e84b` |
 | 新版完整备份/恢复验证 | `acceptance-mfa-2cda5189-after-tests.dump` | `99eb28dbb654081a4f083085687c968dbda114b71779230f88a4f6f3b1172621` |
 
-配置升级前备份为`api-env-before-mfa-2cda5189`；三个流程的脱敏日志也在同一专用backups目录。磁盘仍93%，实测剩余3434292KiB，约3.28GiB；未删除旧文件，下一次部署仍执行大于3GiB停止门禁。不得把当前私有验证等同正式经营上线。
+本次配置升级前备份为`api-env-before-browser-c270262e`；除新增非秘密`STAFF_BROWSER_LOGIN_ENABLED=true`外，原密码、pepper和加密钥逐项一致。四个流程的日志也在同一专用backups目录。新完整备份`acceptance-browser-c270262e-after-tests.dump`的SHA256为`165604721194835ab6f307ab75f18779b98f322ed32873b31e745d3959045e00`。最终剩余4163164KiB，下一次部署仍执行3GiB运行余量+512MiB发布门禁。不得把当前私有验证等同正式经营上线。
 
 **下一切片：正式微信到后台浏览器的安全登录/会话交接；之后真人独立设备验收及丢失设备的双人受审恢复。**MFA基础完成，但这些阻断未解除，不能用Mock登录或共享密钥代替。
 

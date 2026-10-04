@@ -4,7 +4,7 @@
 
 ## 已实际执行
 
-最新后台交接增量：本机两库15批迁移，新8项交接单测和6项微信交换替身测试，API257+contracts13=270项代码测试；独立HTTP/DB与编译小程序JS交接流程、原商城/支付/MFA流程回归通过。服务器仍14批/2cda5189，本轮因保留运行及发布容量余量未升级；不删除旧数据。详见[交接报告](BROWSER_LOGIN_IMPLEMENTATION.md)。
+最新后台交接增量：本机两库15批迁移，新8项交接单测和6项微信交换替身测试，API257+contracts13=270项代码测试；独立HTTP/DB与编译小程序JS交接流程、原商城/支付/MFA流程回归通过。服务器已部署c270262e/15批；商城/支付/MFA/浏览器交接四套HTTP/DB流程、6项Linux预览测试和新备份恢复均通过。详见[交接报告](BROWSER_LOGIN_IMPLEMENTATION.md)。
 
 本轮MFA增量：本地两库14批迁移，API243+contracts13=256项代码测试；6项预览边界测试；test:mfa真实HTTP/PostgreSQL通过并清理临时人员；原商城/支付DB流程回归通过。[代码提交2cda5189的GitHub CI](https://github.com/aiavysp-afk/-/actions/runs/37152238533)全部通过；独立服务器新版14批迁移、强制MFA、三个HTTP/DB流程、6项Linux预览测试及备份恢复均实测通过。见[MFA基础交付](STAFF_MFA_IMPLEMENTATION.md)。下表保留上一阶段230项/13批的历史证据，不混作当前增量统计。
 
