@@ -1,6 +1,8 @@
 # 本次改动文件清单
 
-最新双后台只读核对记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。已确认“静享松弛桌游馆”就是目标 AppID，小程序接入的企业 ID、当前 kfid、客服账号、接待人员和时段均一致；真实 iPhone 入口仍失败。没有业务代码、迁移、服务器配置、消息发送或后台权限变更；重新绑定同一客服账号尚待动作前确认。
+最新同账号重新绑定记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`docs/SUPPORT_CHANNELS_IMPLEMENTATION.md`、`docs/SELF_TEST_REPORT.md`、`docs/IMPLEMENTATION_STATUS.md`、本清单。用户动作前明确确认后，企业微信后台已为“静享松弛桌游馆”重新选择并提交原账号“中原到家在线客服”，页面返回已接入列表；没有停止接入、取消授权、修改代码/服务器配置或解除任何上线门禁。操作后的 iPhone 微信实测仍待完成，不能据此把客服验收记为通过。
+
+双后台只读核对记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`docs/SUPPORT_CHANNELS_IMPLEMENTATION.md`、`docs/SELF_TEST_REPORT.md`、`docs/IMPLEMENTATION_STATUS.md`、本清单。已确认“静享松弛桌游馆”就是目标 AppID，小程序接入的企业 ID、当前 kfid、客服账号、接待人员和时段均一致；真实 iPhone 入口仍失败。该次核对没有业务代码、迁移、服务器配置、消息发送或后台权限变更；截至该次核对，重新绑定同一客服账号尚待动作前确认，后续执行记录见上一段。
 
 最新更正后复测记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。20:05 iPhone 真机仍失败；已排除旧链接残留，并记录企业微信侧当前授权列表名称/客服账号及目标 AppID 尚待微信公众平台本人登录核对。没有业务代码、迁移、服务器配置或后台权限变更。
 
