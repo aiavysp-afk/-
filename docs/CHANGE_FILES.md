@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新更正后复测记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。20:05 iPhone 真机仍失败；已排除旧链接残留，并记录企业微信侧当前授权列表名称/客服账号及目标 AppID 尚待微信公众平台本人登录核对。没有业务代码、迁移、服务器配置或后台权限变更。
+
 最新客服配置纠正记录（2026-10-04），共5个文档文件：`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。企业微信后台只读核对确认当前客服链接与旧受控配置不一致；服务器两份配置已先备份后只纠正链接并保持权限，私有 API 公开配置复查通过。没有业务代码、迁移、密钥或数据库变更；仍须重新生成专项包并完成真机/真人验收，其他上线门禁不变。
 
 最新客服诊断切片（2026-10-04），共12文件：`apps/miniapp/utils/customer-service.ts`、生成JS；`assets/contact-acceptance/pages/contact/index.js`、`index.wxml`、`index.wxss`；`scripts/verify-customer-service.test.mjs`、`package-contact-acceptance.test.mjs`；`docs/MINIAPP_WECHAT_ACCEPTANCE.md`、`SUPPORT_CHANNELS_IMPLEMENTATION.md`、`SELF_TEST_REPORT.md`、`IMPLEMENTATION_STATUS.md`、本清单。仅修复失败诊断丢失与同步异常回退，真实客服失败待定位；没有环境变量、迁移或服务器变更。上线前仍须新诊断版真机、正确账号/真人响应、另一设备、失败兜底及值班负责人核验，[明细](MINIAPP_WECHAT_ACCEPTANCE.md)。
