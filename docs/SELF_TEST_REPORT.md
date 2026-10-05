@@ -1,5 +1,7 @@
 # 商城全流程自测报告
 
+最新送达回执与服务器验收（2026-10-05）：本机 Prisma schema、全仓 typecheck/build、API 330、contracts 19、H5 3 项测试通过；覆盖阿里云签名查询、回执等待/失败/送达映射、有限退避、查询耗尽、隐私边界、后台摘要和 HTTP 鉴权。[CI 37296420337](https://github.com/aiavysp-afk/-/actions/runs/37296420337) 在 PostgreSQL 17.6 实际应用全部 20 批迁移并运行全部数据库专项成功。私有服务器运行 `5b6f009`，迁移前 212024 字节备份保留；20 批 up to date，7 个回执字段与 4 个回执约束存在，三服务 active/零 warning，健康/目录/配置/预览 200，摘要未登录 401，敏感文件 404，生产 inactive，公网继续 503。发送和回执查询门禁均为 false，没有真实短信、地图或资金调用。
+
 最新私有服务器验证（2026-10-05）：最终运行 `544b080d4f50186696fb752236948a8a736bbcb3`，对应 [CI 37277317711](https://github.com/aiavysp-afk/-/actions/runs/37277317711) success。独立验收库已备份并完成全部 19 批 migration；三项 loopback 服务 active，health/catalog/config/两项预览为 200，未登录订单 401，敏感文件探测 404，重启后 warning 及以上日志 0。身份/支付/短信/地图为 Mock，资金、短信、地图与安全通知门禁均显式关闭；生产 inactive，公网主站与 API 继续维护 503。该验证没有发送短信、调用地图或执行真实资金交易。
 
 最新安全通知自测（2026-10-05）：独立本地 PostgreSQL 17.6 的 `zhongyuan_safety_test` 与 `zhongyuan_daojia_test` 均成功应用全部 19 批 migration。`test:safety-notifications` 使用替身渠道通过并发单领、渠道接受记录、指数退避、8 次上限、未知结果死信、进程中断不确定状态隔离、值班号码加密和管理员人工重试；没有发送真实短信。全仓 API 318、contracts 18、H5 3 项测试与 66 项独立脚本测试通过，typecheck/build、商城、微信支付数据库、MFA/恢复、浏览器交接、安全值班及通知专项全通过。Codex 内管理端以本地管理员实际登录，主备岗、号码配置和 Outbox 面板视觉/接口自检通过，浏览器无警告或错误。真实短信开关保持关闭，渠道接受不作为手机送达证据。

@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新送达回执切片（2026-10-05）：新增 `apps/api/prisma/migrations/20261005153000_safety_delivery_receipts/migration.sql`、`apps/api/src/safety/safety-notification-receipt.worker.ts` 及测试、`apps/api/src/safety/safety-notification.service.test.ts`；修改 Prisma schema、阿里云短信客户端、投递工作者、环境门禁、共享合约、安全接口、后台安全页面、OpenAPI、私有/生产准备脚本与文档。实现只读回执查询、有限退避、数据库状态约束、积压/死信摘要和明确的 fail-closed 配置；未包含号码、短信正文或渠道密钥，未开启真实调用。
+
 最新私有部署加固（2026-10-05）：`scripts/setup-private-acceptance.mjs` 为新建环境写入、为旧环境仅补齐缺失的非秘密安全门禁，并拒绝任何非 Mock 渠道或已开启的支付/短信/地图/安全通知门禁；没有覆盖已有配置值或读取/提交秘密。同步更新 `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`、`docs/IMPLEMENTATION_STATUS.md`、`docs/SELF_TEST_REPORT.md` 与本清单，记录 `544b080`、CI、19 批迁移、备份、HTTP/端口和公网维护验证。
 
 最新安全通知 Outbox 切片（2026-10-05）：新增第 19 批迁移、租约/退避/死信工作者、阿里云安全短信调度、加密值班号码管理、通知状态/人工复核接口和后台面板；补充 OpenAPI、环境变量、部署、自测与专项说明。核心新增文件：`apps/api/prisma/migrations/20261005090000_safety_notification_outbox/migration.sql`、`apps/api/src/safety/safety-notification.dispatcher.ts`、`apps/api/src/safety/safety-notification.worker.ts`、`apps/api/src/safety/safety-notification.service.ts`、对应单测、`apps/api/scripts/verify-safety-notifications.ts`、`docs/SAFETY_NOTIFICATION_IMPLEMENTATION.md`。修改 Prisma/合约/安全模块、管理端、CI、README 及相关文档。真实发送和经营门禁未开启，不包含手机号或渠道密钥。

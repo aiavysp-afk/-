@@ -1,5 +1,7 @@
 # 中原到家
 
+最新安全增量：[安全通知 Outbox](docs/SAFETY_NOTIFICATION_IMPLEMENTATION.md)已增加阿里云 `QuerySendDetails` 只读送达查询、独立回执门禁、48 次有限退避、送达/失败/未知状态和后台积压/死信摘要；第 20 批迁移及服务器私有验收通过。自动发送、回执查询和真人主备演练均保持关闭，代码验收不等于真实短信送达或经营上线。
+
 最新安全开发：[安全事件主备值班闭环](docs/SAFETY_DUTY_IMPLEMENTATION.md)与[安全通知 Outbox](docs/SAFETY_NOTIFICATION_IMPLEMENTATION.md)已完成值班表、唯一未关闭事件、主岗确认、超时备岗升级、确认人关闭，以及短信通知的数据库租约、并发单领、退避、死信、人工复核和后台可观测性；真实 PostgreSQL 专项验证通过。真实自动发送和真人主备短信演练仍未完成，`SAFETY_NOTIFICATION_DISPATCH_ENABLED` 与 `SAFETY_DUTY_CONFIRMED` 均保持 `false`，不能据此公开经营。
 
 最新小程序验收准备：[修复订单/服务页WXML编译错误并生成独立联系渠道验收包](docs/MINIAPP_WECHAT_ACCEPTANCE.md)。官方本机编译器8页通过，开发者工具首页恢复渲染；专项包不含联网/登录/交易，不等于商城正式版或真机接通验收。

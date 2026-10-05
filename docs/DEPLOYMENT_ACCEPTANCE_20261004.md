@@ -1,5 +1,9 @@
 # 2026-10-04 服务器私有验收记录
 
+最新送达回执私有部署（2026-10-05）：`5b6f0091002126d5be10bd6d119924b30f65cb8b` 已部署，[CI 37296420337](https://github.com/aiavysp-afk/-/actions/runs/37296420337) success；归档 SHA256 `3d82dcb683c33cb16cade2a88add622ff28d1c33c5ca851b5916efd0054eb82f`，485 个条目，未包含 `.env`、`node_modules`、证书、私钥或 Git 元数据。部署前生成 `database-before-5b6f0091002126d5be10bd6d119924b30f65cb8b-20261005T102832.dump`（212024 字节），随后成功应用第 20 批 `20261005153000_safety_delivery_receipts`；最终 20 批 migration up to date，7 个新字段和 4 条回执约束实测存在，验收库无真实回执记录。
+
+三个服务 active 且仅监听 `127.0.0.1:3210/3212/3213`；health/catalog/public-config/后台/H5 为 200，监控摘要未登录为 401，`.env` 探测为 404，重启后 warning 及以上为 0。验收配置新增 `SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED=false`，所有资金、发送、回执、地图和值班确认门禁仍为 false。生产待发布配置先备份为 0600 `api.env.pending-before-receipt-gates`，仅补齐两个缺失的非秘密关闭门禁；生产服务仍 inactive，主站与 API 均维护 503。上传归档验证后删除，release 与数据库/配置备份保留；没有真实短信、地图或资金调用。
+
 最新安全通知私有部署（2026-10-05）：安全通知代码提交 `e3fa4f4f225147e1a4aa5df1688d4d3ce4c0943b` 首次部署前自动备份 `zydj_acceptance`，随后成功应用第 17–19 批迁移；部署核验发现新通知开关依赖默认关闭，遂补强部署脚本，将全部真实渠道门禁显式持久化并校验，最终运行提交为 `544b080d4f50186696fb752236948a8a736bbcb3`，[CI 37277317711](https://github.com/aiavysp-afk/-/actions/runs/37277317711) success。最终归档 SHA256 为 `b6846d2f5c93884bd0960c9e7aeec8c3c2cda3a259afec79201ec8f6d0c6e654`，包内无 `.env`、`node_modules`、证书、私钥或 Git 元数据；两个上传归档在验收后删除，release 与数据库备份保留用于审计/回滚。
 
 最终 `current` 指向 `544b080d4f50186696fb752236948a8a736bbcb3`；19 批 migration 全部为 up to date，升级前备份 `database-before-544b080d4f50186696fb752236948a8a736bbcb3-20261005T072322.dump` 为 212023 字节。API、后台、H5 三服务均 active，只监听 `127.0.0.1:3210/3212/3213`；health/catalog/public-config、后台和 H5 为 200，未登录订单为 401，两个 `.env` 探测为 404，重启后 warning 及以上日志为 0。受控配置保持 640 `root:zydj-acceptance`，身份/支付/短信/地图均为 Mock，三项微信资金门禁、`SAFETY_DUTY_CONFIRMED`、`SMS_SEND_ENABLED`、`MAP_GEOCODING_ENABLED`、`SAFETY_NOTIFICATION_DISPATCH_ENABLED` 均明确为 `false`。生产服务仍 inactive，`mtsc.top` 与 `api.mtsc.top` 继续返回维护 503；没有真实支付、退款、短信或地图请求。
