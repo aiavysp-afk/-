@@ -1,6 +1,6 @@
 App({
   globalData: {
     apiBaseUrl: "https://api.mtsc.top/v1",
-    operatingMode: "DEVELOPMENT",
+    operatingMode: "PRODUCTION",
   },
 });
