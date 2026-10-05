@@ -1,5 +1,7 @@
 # 商城全流程自测报告
 
+最新地图地址提示与私有部署（2026-10-05）：功能提交 `31352aa` 新增登录保护、服务端固定城市、PostgreSQL 每用户/全局分钟与日预算、预约页选择及第 21 批迁移；首次 CI 37300045024 发现专项客服包测试夹具未包含新增公开功能位，未部署。修复提交 `78aaf4e80b4b504df44f3930c358a2c77e76b158` 后，本机 API 337、合约 20、H5 3、专项客服包 13 项测试以及 5 工作区 typecheck/build 成功，[CI 37300569286](https://github.com/aiavysp-afk/-/actions/runs/37300569286) 的 PostgreSQL 迁移及商城、微信支付、MFA、恢复、浏览器登录、安全事件/通知全部成功。私有服务器已部署该提交并应用 21 批迁移；升级前备份 215194 字节、0600 root:root、SHA256 `1524b0f8db28d5d15c915195527fb72c0584ccffdb320bb79ee375e56fc34e50`。三服务 active 且仅监听 3210/3212/3213，health/catalog/config/admin/H5 为 200，地址接口未登录 401，`.env` 404，warning 0；配额表 0 行。地图仍 mock、公开功能位 false，真实资金/短信/地图/值班门禁均 false，生产 inactive，公网主站/API 继续 503；没有真实地图请求。
+
 最新送达回执与服务器验收（2026-10-05）：本机 Prisma schema、全仓 typecheck/build、API 330、contracts 19、H5 3 项测试通过；覆盖阿里云签名查询、回执等待/失败/送达映射、有限退避、查询耗尽、隐私边界、后台摘要和 HTTP 鉴权。[CI 37296420337](https://github.com/aiavysp-afk/-/actions/runs/37296420337) 在 PostgreSQL 17.6 实际应用全部 20 批迁移并运行全部数据库专项成功。私有服务器运行 `5b6f009`，迁移前 212024 字节备份保留；20 批 up to date，7 个回执字段与 4 个回执约束存在，三服务 active/零 warning，健康/目录/配置/预览 200，摘要未登录 401，敏感文件 404，生产 inactive，公网继续 503。发送和回执查询门禁均为 false，没有真实短信、地图或资金调用。
 
 最新私有服务器验证（2026-10-05）：最终运行 `544b080d4f50186696fb752236948a8a736bbcb3`，对应 [CI 37277317711](https://github.com/aiavysp-afk/-/actions/runs/37277317711) success。独立验收库已备份并完成全部 19 批 migration；三项 loopback 服务 active，health/catalog/config/两项预览为 200，未登录订单 401，敏感文件探测 404，重启后 warning 及以上日志 0。身份/支付/短信/地图为 Mock，资金、短信、地图与安全通知门禁均显式关闭；生产 inactive，公网主站与 API 继续维护 503。该验证没有发送短信、调用地图或执行真实资金交易。

@@ -2,6 +2,8 @@
 
 最新地图地址提示闭环（2026-10-05）：新增第 21 批 `MapRequestRateLimit` 迁移、登录保护的 `/v1/locations/address-suggestions`、服务端固定城市和 PostgreSQL 每用户/全局分钟与日配额；预约页仅在公开门禁可用时显示搜索，选择结果后仍提示人工核对门牌号。修改共享合约、公开配置、环境变量、OpenAPI 和渠道文档，并新增服务/HTTP/公开配置测试。腾讯 Key/SK 仍只允许服务器受控注入，当前服务器缺失且门禁保持 false，本切片没有真实地图请求。
 
+该切片最终运行提交为 `78aaf4e80b4b504df44f3930c358a2c77e76b158`；同步修改 `scripts/package-contact-acceptance.test.mjs` 的公开配置夹具。CI 37300569286 成功并部署私有验收，第 21 批迁移、升级前备份、回环 HTTP/端口、零 warning、公网 503 和关闭门禁均已核验；上传归档在验收后删除，release 与数据库备份保留。
+
 最新送达回执切片（2026-10-05）：新增 `apps/api/prisma/migrations/20261005153000_safety_delivery_receipts/migration.sql`、`apps/api/src/safety/safety-notification-receipt.worker.ts` 及测试、`apps/api/src/safety/safety-notification.service.test.ts`；修改 Prisma schema、阿里云短信客户端、投递工作者、环境门禁、共享合约、安全接口、后台安全页面、OpenAPI、私有/生产准备脚本与文档。实现只读回执查询、有限退避、数据库状态约束、积压/死信摘要和明确的 fail-closed 配置；未包含号码、短信正文或渠道密钥，未开启真实调用。
 
 最新私有部署加固（2026-10-05）：`scripts/setup-private-acceptance.mjs` 为新建环境写入、为旧环境仅补齐缺失的非秘密安全门禁，并拒绝任何非 Mock 渠道或已开启的支付/短信/地图/安全通知门禁；没有覆盖已有配置值或读取/提交秘密。同步更新 `docs/DEPLOYMENT_ACCEPTANCE_20261004.md`、`docs/IMPLEMENTATION_STATUS.md`、`docs/SELF_TEST_REPORT.md` 与本清单，记录 `544b080`、CI、19 批迁移、备份、HTTP/端口和公网维护验证。

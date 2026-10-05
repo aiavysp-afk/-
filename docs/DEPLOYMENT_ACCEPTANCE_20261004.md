@@ -1,5 +1,7 @@
 # 2026-10-04 服务器私有验收记录
 
+最新地图地址提示部署（2026-10-05）：运行提交 `78aaf4e80b4b504df44f3930c358a2c77e76b158`，[CI 37300569286](https://github.com/aiavysp-afk/-/actions/runs/37300569286) success；归档 SHA256 `36967963e732e75545bb4d2ad7810e6849904aa5612389b095eaf3faa29e8489`，不含 `.env`、node_modules、钥证或 Git 元数据。部署前自动备份 `database-before-78aaf4e80b4b504df44f3930c358a2c77e76b158-20261005T111057.dump`，215194 字节、0600 root:root、SHA256 `1524b0f8db28d5d15c915195527fb72c0584ccffdb320bb79ee375e56fc34e50`；第 21 批迁移成功，`MapRequestRateLimit` 索引存在且 0 行。三服务 active/回环监听、HTTP 200/401/404 边界及零 warning 通过；地图仍 mock、功能位 false，全部资金/短信/地图/值班门禁 false。生产 inactive，主站/API 均 503，没有真实地图调用。
+
 最新送达回执私有部署（2026-10-05）：`5b6f0091002126d5be10bd6d119924b30f65cb8b` 已部署，[CI 37296420337](https://github.com/aiavysp-afk/-/actions/runs/37296420337) success；归档 SHA256 `3d82dcb683c33cb16cade2a88add622ff28d1c33c5ca851b5916efd0054eb82f`，485 个条目，未包含 `.env`、`node_modules`、证书、私钥或 Git 元数据。部署前生成 `database-before-5b6f0091002126d5be10bd6d119924b30f65cb8b-20261005T102832.dump`（212024 字节），随后成功应用第 20 批 `20261005153000_safety_delivery_receipts`；最终 20 批 migration up to date，7 个新字段和 4 条回执约束实测存在，验收库无真实回执记录。
 
 三个服务 active 且仅监听 `127.0.0.1:3210/3212/3213`；health/catalog/public-config/后台/H5 为 200，监控摘要未登录为 401，`.env` 探测为 404，重启后 warning 及以上为 0。验收配置新增 `SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED=false`，所有资金、发送、回执、地图和值班确认门禁仍为 false。生产待发布配置先备份为 0600 `api.env.pending-before-receipt-gates`，仅补齐两个缺失的非秘密关闭门禁；生产服务仍 inactive，主站与 API 均维护 503。上传归档验证后删除，release 与数据库/配置备份保留；没有真实短信、地图或资金调用。

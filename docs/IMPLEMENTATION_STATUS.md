@@ -1,5 +1,7 @@
 # 中原到家开发交付记录
 
+最新私有运行版本（2026-10-05）：`78aaf4e80b4b504df44f3930c358a2c77e76b158` 已通过 [CI 37300569286](https://github.com/aiavysp-afk/-/actions/runs/37300569286) 并部署。地址提示现在有登录边界、服务端固定 `SERVICE_CITY`、PostgreSQL 持久化用户/全局配额及预约页选择；第 21 批迁移成功，配额表为空。服务器尚无腾讯 Key/SK，`MAP_PROVIDER=mock`、`MAP_GEOCODING_ENABLED=false`，因此界面不显示搜索且没有真实调用。生产服务仍 inactive，公网维护 503，不能把私有代码验证当作真实渠道或经营验收。
+
 最新短信送达回执（2026-10-05）：`5b6f009` 新增第 20 批迁移、阿里云 `QuerySendDetails` 只读查询、独立 `SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED=false` 门禁、有限退避、送达/失败/未知状态、数据库约束和后台监控摘要；[CI 37296420337](https://github.com/aiavysp-afk/-/actions/runs/37296420337) success。私有服务器已备份后升级到 20 批并通过端口、HTTP、schema、日志与公网维护验证；生产初始化门禁补强提交 `27eff88` 的 [CI 37296990790](https://github.com/aiavysp-afk/-/actions/runs/37296990790) 亦成功。验收与生产待发布配置中的发送和回执查询开关均明确为 `false`，没有调用真实阿里云接口。
 
 最新私有服务器部署（2026-10-05）：安全通知 Outbox 已部署到独立验收环境，先由 `e3fa4f4` 应用第 17–19 批迁移，再由 `544b080` 补强部署脚本的显式 fail-closed 环境门禁；[GitHub CI 37277317711](https://github.com/aiavysp-afk/-/actions/runs/37277317711) 成功。三服务仅监听回环地址并通过 HTTP 边界检查，19 批迁移最新，升级前备份保留；真实资金、短信、地图和安全通知开关全部明确为 `false`。生产服务未启动，公网继续维护 503，故该结果仍不是经营上线。
