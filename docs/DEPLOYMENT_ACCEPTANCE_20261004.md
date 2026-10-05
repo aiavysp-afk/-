@@ -1,5 +1,9 @@
 # 2026-10-04 服务器私有验收记录
 
+最新安全通知私有部署（2026-10-05）：安全通知代码提交 `e3fa4f4f225147e1a4aa5df1688d4d3ce4c0943b` 首次部署前自动备份 `zydj_acceptance`，随后成功应用第 17–19 批迁移；部署核验发现新通知开关依赖默认关闭，遂补强部署脚本，将全部真实渠道门禁显式持久化并校验，最终运行提交为 `544b080d4f50186696fb752236948a8a736bbcb3`，[CI 37277317711](https://github.com/aiavysp-afk/-/actions/runs/37277317711) success。最终归档 SHA256 为 `b6846d2f5c93884bd0960c9e7aeec8c3c2cda3a259afec79201ec8f6d0c6e654`，包内无 `.env`、`node_modules`、证书、私钥或 Git 元数据；两个上传归档在验收后删除，release 与数据库备份保留用于审计/回滚。
+
+最终 `current` 指向 `544b080d4f50186696fb752236948a8a736bbcb3`；19 批 migration 全部为 up to date，升级前备份 `database-before-544b080d4f50186696fb752236948a8a736bbcb3-20261005T072322.dump` 为 212023 字节。API、后台、H5 三服务均 active，只监听 `127.0.0.1:3210/3212/3213`；health/catalog/public-config、后台和 H5 为 200，未登录订单为 401，两个 `.env` 探测为 404，重启后 warning 及以上日志为 0。受控配置保持 640 `root:zydj-acceptance`，身份/支付/短信/地图均为 Mock，三项微信资金门禁、`SAFETY_DUTY_CONFIRMED`、`SMS_SEND_ENABLED`、`MAP_GEOCODING_ENABLED`、`SAFETY_NOTIFICATION_DISPATCH_ENABLED` 均明确为 `false`。生产服务仍 inactive，`mtsc.top` 与 `api.mtsc.top` 继续返回维护 503；没有真实支付、退款、短信或地图请求。
+
 最新客服独立确认切片：当前运行代码`6411b16069169768f0be53a6b669853a8b2be7e0`，[CI 37187176968](https://github.com/aiavysp-afk/-/actions/runs/37187176968)success；五套服务器HTTP/PostgreSQL流程、6项预览测试、5项编译小程序测试及真实配置→原生接口替身验证全部通过。用户已明确确认找回旧URL的企业归属/账号/绑定，两份受控配置只更新URL/新增客服确认位，秘密与权限逐字节保持；三端私有客服available=true，安全值班available=false。生产实测剩SMS_PROVIDER、MAP_PROVIDER、SAFETY_DUTY_CONFIRMED三项，公网仍503，资金/SMS/地图关闭。三库16批、用户/订单/登录/恢复记录零行，约34GiB可用。真机打开/接通仍待验收；下文4项门禁、客服缺URL及087代码均为历史回执。
 
 最新客服/紧急值班切片：当前运行代码`087fbdf7c98edbad382db7232fb53fee2136a52c`，[CI 37183031942](https://github.com/aiavysp-afk/-/actions/runs/37183031942)成功，服务器五套HTTP/PostgreSQL流程、6项预览测试和5项编译客服/拨号替身测试通过；紧急号码与用户CorpID已受控配置并核验，企微URL仍待配置，值班未确认。三服务仅loopback；公网三域名维护503，旧商城已按授权清理、旧服务停用，生产pending四项门禁未过。约35GiB可用，无新增迁移、真实拨号或交易。完整摘要/文件/人工项见[最新接入记录](SUPPORT_CHANNELS_IMPLEMENTATION.md)。**下文旧站200、旧服务运行、唯一release及低磁盘数据仅是旧阶段历史，不是当前状态。**
