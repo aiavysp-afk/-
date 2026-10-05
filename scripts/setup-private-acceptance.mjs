@@ -37,6 +37,7 @@ if (!existsSync(envPath)) {
     SMS_SEND_ENABLED: "false",
     MAP_GEOCODING_ENABLED: "false",
     SAFETY_NOTIFICATION_DISPATCH_ENABLED: "false",
+    SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "false",
     CORS_ORIGINS: "http://127.0.0.1:5312,http://127.0.0.1:5313",
   };
   writeFileSync(
@@ -66,6 +67,7 @@ const controlledDefaults = {
   SMS_SEND_ENABLED: "false",
   MAP_GEOCODING_ENABLED: "false",
   SAFETY_NOTIFICATION_DISPATCH_ENABLED: "false",
+  SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "false",
 };
 const missingDefaults = Object.entries(controlledDefaults).filter(
   ([key]) => env[key] === undefined,
@@ -95,6 +97,7 @@ if (
     "SMS_SEND_ENABLED",
     "MAP_GEOCODING_ENABLED",
     "SAFETY_NOTIFICATION_DISPATCH_ENABLED",
+    "SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED",
   ].some((k) => env[k] !== "false")
 )
   throw Error("Private gate changed; refusing deployment");

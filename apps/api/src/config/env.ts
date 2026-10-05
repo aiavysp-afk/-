@@ -59,6 +59,10 @@ const EnvSchema = z.object({
   SAFETY_NOTIFICATION_DISPATCH_ENABLED: z
     .enum(["false", "true"])
     .default("false"),
+  // Read-only provider delivery queries are separately enabled from sending.
+  SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: z
+    .enum(["false", "true"])
+    .default("false"),
   ALIYUN_SMS_ACCESS_KEY_ID: z.string().default(""),
   ALIYUN_SMS_ACCESS_KEY_SECRET: z.string().default(""),
   ALIYUN_SMS_SECURITY_TOKEN: z.string().default(""),
@@ -240,6 +244,11 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
       if (env.SAFETY_DUTY_CONFIRMED !== "true")
         invalid.push("SAFETY_DUTY_CONFIRMED");
     }
+    if (
+      env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED === "true" &&
+      env.SMS_PROVIDER !== "aliyun"
+    )
+      invalid.push("SMS_PROVIDER");
     if (env.MAP_PROVIDER === "tencent") {
       for (const key of [
         "TENCENT_MAP_KEY",

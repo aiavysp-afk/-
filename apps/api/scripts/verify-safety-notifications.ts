@@ -28,7 +28,11 @@ const userId = `${prefix}-duty`;
 const now = new Date("2026-10-05T09:00:00.000Z");
 const outcomes = new Map<
   string,
-  | { outcome: "ACCEPTED"; providerReference: string }
+  | {
+      outcome: "ACCEPTED";
+      providerReference: string;
+      providerBizId: string;
+    }
   | { outcome: "RETRY"; errorCode: string }
   | { outcome: "DEAD_LETTER"; errorCode: string }
 >();
@@ -108,6 +112,7 @@ try {
   outcomes.set(accepted.id, {
     outcome: "ACCEPTED",
     providerReference: "request:biz",
+    providerBizId: "biz",
   });
   const workerA = new SafetyNotificationWorker(prisma, dispatcher, config);
   const workerB = new SafetyNotificationWorker(prisma, dispatcher, config);
@@ -118,7 +123,24 @@ try {
   assert.equal(calls.get(accepted.id), 1);
   assert.equal(acceptedRow.attempts, 1);
   assert.equal(acceptedRow.providerReference, "request:biz");
+  assert.equal(acceptedRow.providerBizId, "biz");
+  assert.equal(acceptedRow.deliveryStatus, "PENDING");
+  assert.equal(acceptedRow.deliveryQueryAttempts, 0);
+  assert(acceptedRow.deliveryNextQueryAt);
   assert(acceptedRow.publishedAt);
+
+  await prisma.outboxEvent.update({
+    where: { id: accepted.id },
+    data: {
+      deliveryStatus: "DELIVERED",
+      deliveryCheckedAt: new Date(now.getTime() + 30_000),
+      deliveredAt: new Date(now.getTime() + 30_000),
+      deliveryNextQueryAt: null,
+    },
+  });
+  await assert.rejects(
+    prisma.$executeRaw`UPDATE "OutboxEvent" SET "deliveryStatus" = 'DELIVERED', "deliveredAt" = NULL WHERE "id" = ${accepted.id}`,
+  );
 
   const retry = await createEvent("retry");
   outcomes.set(retry.id, { outcome: "RETRY", errorCode: "CHANNEL_NOT_READY" });
@@ -198,6 +220,13 @@ try {
       (item) => item.id === unknown.id && item.state === "PENDING",
     ),
   );
+  const summary = await notifications.summary(
+    principal,
+    organizationId,
+    new Date(now.getTime() + 20 * 60_000),
+  );
+  assert.equal(summary.delivered, 1);
+  assert(summary.attentionRequired);
 
   console.log(
     JSON.stringify({
@@ -206,6 +235,7 @@ try {
       checks: [
         "concurrent lease claims dispatch once",
         "provider acceptance records tracking without claiming delivery",
+        "delivery state transition is constrained and monitored",
         "retryable failures use backoff",
         "unknown outcomes dead-letter without blind retry",
         "maximum attempts dead-letter",

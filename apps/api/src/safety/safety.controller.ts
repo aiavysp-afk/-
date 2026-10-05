@@ -97,6 +97,16 @@ export class SafetyController {
     return { data, meta: { total: data.length } };
   }
 
+  @Get("admin/organizations/:organizationId/safety-notifications-summary")
+  async notificationSummary(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+  ) {
+    return {
+      data: await this.notifications.summary(principal, organizationId),
+    };
+  }
+
   @Post("admin/organizations/:organizationId/safety-notifications/:id/retry")
   async retryNotification(
     @CurrentPrincipal() principal: AuthPrincipal,

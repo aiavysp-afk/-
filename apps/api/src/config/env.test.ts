@@ -62,12 +62,39 @@ describe("production safety gate", () => {
     });
     expect(env.SMS_SEND_ENABLED).toBe("false");
     expect(env.SAFETY_NOTIFICATION_DISPATCH_ENABLED).toBe("false");
+    expect(env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED).toBe("false");
     expect(env.MAP_GEOCODING_ENABLED).toBe("false");
     expect(() => validateEnv({ SMS_SEND_ENABLED: "yes" })).toThrow();
     expect(() => validateEnv({ MAP_GEOCODING_ENABLED: "yes" })).toThrow();
     expect(() =>
       validateEnv({ SAFETY_NOTIFICATION_DISPATCH_ENABLED: "yes" }),
     ).toThrow();
+    expect(() =>
+      validateEnv({ SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "yes" }),
+    ).toThrow();
+  });
+  it("allows read-only receipt queries only with the Aliyun provider in production", () => {
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "test-merchant",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "test-serial",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
+      MAP_PROVIDER: "tencent",
+      SAFETY_HOTLINE: "400-000-0000",
+      SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "true",
+    };
+    expect(() => validateEnv({ ...raw, SMS_PROVIDER: "mock" })).toThrow(
+      "SMS_PROVIDER",
+    );
+    expect(
+      validateEnv({ ...raw, SMS_PROVIDER: "aliyun" })
+        .SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED,
+    ).toBe("true");
   });
   it("requires an explicit send gate and confirmed duty before automated safety dispatch", () => {
     const raw = {

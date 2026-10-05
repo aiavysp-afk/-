@@ -134,6 +134,13 @@ export class SafetyNotificationWorker implements OnModuleInit, OnModuleDestroy {
         data: {
           publishedAt: now,
           providerReference: result.providerReference,
+          providerBizId: result.providerBizId,
+          deliveryStatus: "PENDING",
+          deliveryNextQueryAt: new Date(now.getTime() + 60_000),
+          deliveryQueryAttempts: 0,
+          deliveryCheckedAt: null,
+          deliveredAt: null,
+          deliveryErrorCode: null,
           lastErrorCode: null,
           leaseToken: null,
           leaseUntil: null,

@@ -1045,6 +1045,25 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/SafetyNotificationView" }
         "403": { description: 无本组织安全响应权限 }
+  /v1/admin/organizations/{organizationId}/safety-notifications-summary:
+    get:
+      summary: 读取安全通知积压、死信与送达监控摘要
+      description: 超过5分钟未投递、超过15分钟未取得回执、死信、送达失败或最终未知会触发attentionRequired；不返回手机号、正文或渠道标识。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200":
+          description: 本组织安全通知监控摘要
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SafetyNotificationSummary" }
+        "403": { description: 无本组织安全响应权限 }
   /v1/admin/organizations/{organizationId}/safety-notifications/{id}/retry:
     post:
       summary: 管理员人工复核后重试死信安全通知
@@ -1275,6 +1294,11 @@ components:
           createdAt,
           publishedAt,
           deadLetteredAt,
+          deliveryStatus,
+          deliveryQueryAttempts,
+          deliveryCheckedAt,
+          deliveredAt,
+          deliveryErrorCode,
         ]
       properties:
         id: { type: string }
@@ -1291,6 +1315,37 @@ components:
         createdAt: { type: string, format: date-time }
         publishedAt: { type: [string, "null"], format: date-time }
         deadLetteredAt: { type: [string, "null"], format: date-time }
+        deliveryStatus:
+          {
+            type: [string, "null"],
+            enum: [PENDING, DELIVERED, FAILED, UNKNOWN, null],
+          }
+        deliveryQueryAttempts: { type: integer, minimum: 0 }
+        deliveryCheckedAt: { type: [string, "null"], format: date-time }
+        deliveredAt: { type: [string, "null"], format: date-time }
+        deliveryErrorCode: { type: [string, "null"] }
+    SafetyNotificationSummary:
+      type: object
+      required:
+        [
+          dispatchPending,
+          deadLetter,
+          awaitingReceipt,
+          delivered,
+          deliveryFailed,
+          deliveryUnknown,
+          oldestAttentionAt,
+          attentionRequired,
+        ]
+      properties:
+        dispatchPending: { type: integer, minimum: 0 }
+        deadLetter: { type: integer, minimum: 0 }
+        awaitingReceipt: { type: integer, minimum: 0 }
+        delivered: { type: integer, minimum: 0 }
+        deliveryFailed: { type: integer, minimum: 0 }
+        deliveryUnknown: { type: integer, minimum: 0 }
+        oldestAttentionAt: { type: [string, "null"], format: date-time }
+        attentionRequired: { type: boolean }
     SafetyIncidentCategory:
       type: string
       enum: [PERSONAL_SAFETY, MEDICAL_CONCERN, SERVICE_DISPUTE, OTHER_URGENT]

@@ -844,6 +844,22 @@ h1 {
 .safety-notification-row {
   grid-template-columns: 1fr auto;
 }
+.safety-notification-summary {
+  background: #edf5f1;
+  border: 1px solid #bad4ca;
+  border-radius: 10px;
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+.safety-notification-summary.attention {
+  background: #fff4ee;
+  border-color: #d9a38a;
+}
+.safety-notification-summary span {
+  color: #52665d;
+}
 .safety-notification-row > div {
   display: grid;
   gap: 4px;

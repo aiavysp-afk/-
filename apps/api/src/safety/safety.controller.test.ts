@@ -52,6 +52,16 @@ const notifications = {
   updateDutyContact: vi.fn(),
   list: vi.fn().mockResolvedValue([]),
   retry: vi.fn(),
+  summary: vi.fn().mockResolvedValue({
+    dispatchPending: 0,
+    deadLetter: 0,
+    awaitingReceipt: 0,
+    delivered: 0,
+    deliveryFailed: 0,
+    deliveryUnknown: 0,
+    oldestAttentionAt: null,
+    attentionRequired: false,
+  }),
 };
 
 @Module({
@@ -101,6 +111,21 @@ describe("Safety HTTP boundary", () => {
       url: "/v1/orders/order-1/safety-incidents",
     });
     expect(response.statusCode).toBe(401);
+  });
+
+  it("returns the organization-scoped notification monitoring summary", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/admin/organizations/org-1/safety-notifications-summary",
+      headers: { authorization: "Bearer test" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      dispatchPending: 0,
+      delivered: 0,
+      attentionRequired: false,
+    });
+    expect(notifications.summary).toHaveBeenCalledWith(principal, "org-1");
   });
 
   it("requires a bounded idempotency key and strict category", async () => {

@@ -12,6 +12,7 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
     validateEnv({
       SMS_PROVIDER: "aliyun",
       SMS_SEND_ENABLED: "true",
+      SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "true",
       ALIYUN_SMS_ACCESS_KEY_ID: "test-id",
       ALIYUN_SMS_ACCESS_KEY_SECRET: "test-secret",
       ALIYUN_SMS_SIGN_NAME: "测试签名",
@@ -26,6 +27,12 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
 const submission = {
   phone: "13800138000",
   parameters: { order: "TEST0001" },
+  trackingId: "test-tracking",
+};
+const deliveryQuery = {
+  phone: "13800138000",
+  bizId: "test-biz^1",
+  sendDate: "20261005",
   trackingId: "test-tracking",
 };
 const location = {
@@ -204,6 +211,76 @@ describe("SMS internal submission", () => {
       status: "UNKNOWN",
     });
     expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("queries a single accepted message and records delivery without exposing content", async () => {
+    fetcher.mockResolvedValue(
+      json({
+        Code: "OK",
+        RequestId: "query-request",
+        SmsSendDetailDTOs: {
+          SmsSendDetailDTO: [
+            {
+              OutId: "test-tracking",
+              SendStatus: 3,
+              ErrCode: "DELIVERED",
+              PhoneNum: "13800138000",
+              Content: "private content",
+            },
+          ],
+        },
+      }),
+    );
+    expect(
+      await new AliyunSmsClient(config()).queryDelivery(deliveryQuery),
+    ).toEqual({ status: "DELIVERED" });
+    const [url, options] = fetcher.mock.calls[0]!;
+    const parsed = new URL(url);
+    expect(parsed.hostname).toBe("dysmsapi.aliyuncs.com");
+    expect(parsed.searchParams.get("BizId")).toBe("test-biz^1");
+    expect(parsed.searchParams.get("PhoneNumber")).toBe("13800138000");
+    expect(parsed.searchParams.get("SendDate")).toBe("20261005");
+    expect(options.headers.authorization).toMatch(/^ACS3-HMAC-SHA256 /);
+  });
+
+  it.each([
+    [1, { status: "PENDING" }],
+    [2, { status: "FAILED", errorCode: "SMS_DELIVERY_ERROR_42" }],
+  ])(
+    "maps delivery status %s without returning message text",
+    async (status, expected) => {
+      fetcher.mockResolvedValue(
+        json({
+          Code: "OK",
+          RequestId: "query-request",
+          SmsSendDetailDTOs: {
+            SmsSendDetailDTO: [
+              {
+                OutId: "test-tracking",
+                SendStatus: status,
+                ErrCode: status === 2 ? "error 42" : "",
+              },
+            ],
+          },
+        }),
+      );
+      expect(
+        await new AliyunSmsClient(config()).queryDelivery(deliveryQuery),
+      ).toEqual(expected);
+    },
+  );
+
+  it("does not query with a closed receipt gate or malformed provider result", async () => {
+    await expect(
+      new AliyunSmsClient(
+        config({ SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "false" }),
+      ).queryDelivery(deliveryQuery),
+    ).rejects.toThrow("门禁");
+    expect(fetcher).not.toHaveBeenCalled();
+    fetcher.mockResolvedValue(json({ Code: "OK", RequestId: "query-request" }));
+    expect(
+      await new AliyunSmsClient(config()).queryDelivery(deliveryQuery),
+    ).toEqual({ status: "PENDING" });
   });
 });
 

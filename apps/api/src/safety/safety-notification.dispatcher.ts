@@ -11,7 +11,11 @@ const Payload = z.object({
 });
 
 export type SafetyDispatchResult =
-  | { outcome: "ACCEPTED"; providerReference: string }
+  | {
+      outcome: "ACCEPTED";
+      providerReference: string;
+      providerBizId: string;
+    }
   | { outcome: "RETRY"; errorCode: string }
   | { outcome: "DEAD_LETTER"; errorCode: string };
 
@@ -97,6 +101,7 @@ export class SafetyNotificationDispatcher {
         return {
           outcome: "ACCEPTED",
           providerReference: `${receipt.requestId}:${receipt.bizId}`,
+          providerBizId: receipt.bizId,
         };
       if (receipt.status === "REJECTED")
         return { outcome: "RETRY", errorCode: "SMS_REJECTED" };

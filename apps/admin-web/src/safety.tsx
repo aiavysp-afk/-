@@ -6,6 +6,7 @@ import type {
   SafetyIncidentClose,
   SafetyIncidentView,
   SafetyNotificationView,
+  SafetyNotificationSummary,
 } from "@zydj/contracts";
 
 const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -45,6 +46,8 @@ export function SafetyWorkspace({
   const [notifications, setNotifications] = useState<SafetyNotificationView[]>(
     [],
   );
+  const [notificationSummary, setNotificationSummary] =
+    useState<SafetyNotificationSummary | null>(null);
   const [contactPhones, setContactPhones] = useState<Record<string, string>>(
     {},
   );
@@ -82,6 +85,7 @@ export function SafetyWorkspace({
     setRoster(null);
     setIncidents([]);
     setNotifications([]);
+    setNotificationSummary(null);
     setStaff([]);
     setError("");
     if (token)
@@ -118,27 +122,36 @@ export function SafetyWorkspace({
     if (!token || !organizationId) return;
     setError("");
     try {
-      const [nextRoster, nextIncidents, nextStaff, nextNotifications] =
-        await Promise.all([
-          request<SafetyDutyRosterView | null>(
-            `/admin/organizations/${organizationId}/safety-duty-rosters/current`,
-          ),
-          request<SafetyIncidentView[]>(
-            `/admin/organizations/${organizationId}/safety-incidents`,
-          ),
-          canConfigure
-            ? request<SafetyDutyStaffView[]>(
-                `/admin/organizations/${organizationId}/safety-duty-staff`,
-              )
-            : Promise.resolve([]),
-          request<SafetyNotificationView[]>(
-            `/admin/organizations/${organizationId}/safety-notifications`,
-          ),
-        ]);
+      const [
+        nextRoster,
+        nextIncidents,
+        nextStaff,
+        nextNotifications,
+        nextNotificationSummary,
+      ] = await Promise.all([
+        request<SafetyDutyRosterView | null>(
+          `/admin/organizations/${organizationId}/safety-duty-rosters/current`,
+        ),
+        request<SafetyIncidentView[]>(
+          `/admin/organizations/${organizationId}/safety-incidents`,
+        ),
+        canConfigure
+          ? request<SafetyDutyStaffView[]>(
+              `/admin/organizations/${organizationId}/safety-duty-staff`,
+            )
+          : Promise.resolve([]),
+        request<SafetyNotificationView[]>(
+          `/admin/organizations/${organizationId}/safety-notifications`,
+        ),
+        request<SafetyNotificationSummary>(
+          `/admin/organizations/${organizationId}/safety-notifications-summary`,
+        ),
+      ]);
       setRoster(nextRoster);
       setIncidents(nextIncidents);
       setStaff(nextStaff);
       setNotifications(nextNotifications);
+      setNotificationSummary(nextNotificationSummary);
       if (nextRoster) {
         setPrimaryUserId(nextRoster.primaryUserId);
         setBackupUserId(nextRoster.backupUserId);
@@ -509,8 +522,29 @@ export function SafetyWorkspace({
         <article className="panel safety-notification-panel">
           <h3>通知 Outbox</h3>
           <p>
-            “渠道已接受”不代表手机已收到；未知结果进入人工复核，系统不会盲目重复发送。
+            “渠道已接受”不代表手机已收到；系统只读查询送达回执，未知结果不会触发重复发送。
           </p>
+          {notificationSummary && (
+            <div
+              className={`safety-notification-summary${
+                notificationSummary.attentionRequired ? " attention" : ""
+              }`}
+            >
+              <strong>
+                {notificationSummary.attentionRequired
+                  ? "通知链路需要人工关注"
+                  : "通知链路当前无积压告警"}
+              </strong>
+              <span>
+                待投递 {notificationSummary.dispatchPending} · 等待回执{" "}
+                {notificationSummary.awaitingReceipt} · 已送达{" "}
+                {notificationSummary.delivered} · 送达失败{" "}
+                {notificationSummary.deliveryFailed} · 回执未知{" "}
+                {notificationSummary.deliveryUnknown} · 死信{" "}
+                {notificationSummary.deadLetter}
+              </span>
+            </div>
+          )}
           <div className="safety-notification-list">
             {notifications.map((notification) => (
               <div className="safety-notification-row" key={notification.id}>
@@ -522,7 +556,15 @@ export function SafetyWorkspace({
                   </strong>
                   <span>
                     {notification.state === "ACCEPTED"
-                      ? "渠道已接受"
+                      ? notification.deliveryStatus === "DELIVERED"
+                        ? "手机已送达"
+                        : notification.deliveryStatus === "FAILED"
+                          ? "手机送达失败"
+                          : notification.deliveryStatus === "UNKNOWN"
+                            ? "送达回执未知"
+                            : notification.deliveryStatus === "PENDING"
+                              ? "渠道已接受，等待送达回执"
+                              : "渠道已接受，回执查询未启用"
                       : notification.state === "DEAD_LETTER"
                         ? "需人工复核"
                         : "等待投递"}
@@ -531,6 +573,12 @@ export function SafetyWorkspace({
                     尝试 {notification.attempts} 次
                     {notification.lastErrorCode
                       ? ` · ${notification.lastErrorCode}`
+                      : ""}
+                    {notification.deliveryQueryAttempts
+                      ? ` · 回执查询 ${notification.deliveryQueryAttempts} 次`
+                      : ""}
+                    {notification.deliveryErrorCode
+                      ? ` · ${notification.deliveryErrorCode}`
                       : ""}
                   </small>
                 </div>

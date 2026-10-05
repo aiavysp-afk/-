@@ -69,6 +69,7 @@ describe("SafetyNotificationDispatcher", () => {
     await expect(f.dispatcher.dispatch("outbox-1")).resolves.toEqual({
       outcome: "ACCEPTED",
       providerReference: "request-1:biz-1",
+      providerBizId: "biz-1",
     });
     expect(f.sms.submit).toHaveBeenCalledWith({
       phone: "13800138000",

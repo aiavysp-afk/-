@@ -308,6 +308,12 @@ export const SafetyNotificationStateSchema = z.enum([
   "ACCEPTED",
   "DEAD_LETTER",
 ]);
+export const SafetyNotificationDeliveryStatusSchema = z.enum([
+  "PENDING",
+  "DELIVERED",
+  "FAILED",
+  "UNKNOWN",
+]);
 export const SafetyNotificationViewSchema = z.object({
   id: z.string(),
   incidentId: z.string(),
@@ -319,6 +325,21 @@ export const SafetyNotificationViewSchema = z.object({
   createdAt: IsoDateTimeSchema,
   publishedAt: IsoDateTimeSchema.nullable(),
   deadLetteredAt: IsoDateTimeSchema.nullable(),
+  deliveryStatus: SafetyNotificationDeliveryStatusSchema.nullable(),
+  deliveryQueryAttempts: z.number().int().nonnegative(),
+  deliveryCheckedAt: IsoDateTimeSchema.nullable(),
+  deliveredAt: IsoDateTimeSchema.nullable(),
+  deliveryErrorCode: z.string().nullable(),
+});
+export const SafetyNotificationSummarySchema = z.object({
+  dispatchPending: z.number().int().nonnegative(),
+  deadLetter: z.number().int().nonnegative(),
+  awaitingReceipt: z.number().int().nonnegative(),
+  delivered: z.number().int().nonnegative(),
+  deliveryFailed: z.number().int().nonnegative(),
+  deliveryUnknown: z.number().int().nonnegative(),
+  oldestAttentionAt: IsoDateTimeSchema.nullable(),
+  attentionRequired: z.boolean(),
 });
 
 export const SafetyIncidentCategorySchema = z.enum([
@@ -466,6 +487,9 @@ export type SafetyNotificationState = z.infer<
 >;
 export type SafetyNotificationView = z.infer<
   typeof SafetyNotificationViewSchema
+>;
+export type SafetyNotificationSummary = z.infer<
+  typeof SafetyNotificationSummarySchema
 >;
 export type SafetyIncidentCreate = z.infer<typeof SafetyIncidentCreateSchema>;
 export type SafetyIncidentClose = z.infer<typeof SafetyIncidentCloseSchema>;

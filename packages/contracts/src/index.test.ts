@@ -15,6 +15,7 @@ import {
   SafetyIncidentCreateSchema,
   SafetyIncidentCustomerViewSchema,
   SafetyNotificationViewSchema,
+  SafetyNotificationSummarySchema,
   ServiceAdminUpdateSchema,
   ShiftCreateSchema,
   WechatMiniappLoginRequestSchema,
@@ -307,8 +308,28 @@ describe("safety notification contracts", () => {
       createdAt: "2026-10-05T08:59:00.000Z",
       publishedAt: null,
       deadLetteredAt: "2026-10-05T09:00:01.000Z",
+      deliveryStatus: null,
+      deliveryQueryAttempts: 0,
+      deliveryCheckedAt: null,
+      deliveredAt: null,
+      deliveryErrorCode: null,
     });
     expect(notification.state).toBe("DEAD_LETTER");
     expect(notification).not.toHaveProperty("providerReference");
+  });
+
+  it("validates delivery monitoring summaries without provider or phone data", () => {
+    expect(
+      SafetyNotificationSummarySchema.parse({
+        dispatchPending: 1,
+        deadLetter: 0,
+        awaitingReceipt: 2,
+        delivered: 3,
+        deliveryFailed: 0,
+        deliveryUnknown: 0,
+        oldestAttentionAt: "2026-10-05T09:00:00.000Z",
+        attentionRequired: true,
+      }).dispatchPending,
+    ).toBe(1);
   });
 });
