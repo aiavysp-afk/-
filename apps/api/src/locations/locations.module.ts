@@ -8,5 +8,6 @@ import { LocationsService } from "./locations.service.js";
   imports: [AuthModule, IntegrationsModule],
   controllers: [LocationsController],
   providers: [LocationsService],
+  exports: [LocationsService],
 })
 export class LocationsModule {}

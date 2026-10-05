@@ -157,6 +157,7 @@ model User {
   backupSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentBackup")
   acknowledgedIncidents   SafetyIncident[]         @relation("SafetyIncidentAcknowledger")
   closedSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentCloser")
+  addressVerifications    AddressVerification[]
 }
 
 model ExternalIdentity {
@@ -223,6 +224,21 @@ model MapRequestRateLimit {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+model AddressVerification {
+  id            String                 @id @default(cuid())
+  userId        String
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservationId String                 @unique
+  reservation   AppointmentReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  detailHash    String
+  adcode        String
+  expiresAt     DateTime
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@index([userId, expiresAt])
 }
 
 model MfaCredential {
@@ -315,23 +331,24 @@ model TherapistShift {
 }
 
 model AppointmentReservation {
-  id               String            @id @default(cuid())
-  organizationId   String
-  organization     Organization      @relation(fields: [organizationId], references: [id])
-  serviceId        String
-  service          Service           @relation(fields: [serviceId], references: [id])
-  therapistId      String
-  therapist        User              @relation("TherapistReservations", fields: [therapistId], references: [id])
-  customerId       String
-  customer         User              @relation("CustomerReservations", fields: [customerId], references: [id])
-  serviceAmountFen BigInt
-  startsAt         DateTime
-  endsAt           DateTime
-  expiresAt        DateTime
-  status           ReservationStatus @default(HOLD)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  order            Order?
+  id                  String               @id @default(cuid())
+  organizationId      String
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  serviceId           String
+  service             Service              @relation(fields: [serviceId], references: [id])
+  therapistId         String
+  therapist           User                 @relation("TherapistReservations", fields: [therapistId], references: [id])
+  customerId          String
+  customer            User                 @relation("CustomerReservations", fields: [customerId], references: [id])
+  serviceAmountFen    BigInt
+  startsAt            DateTime
+  endsAt              DateTime
+  expiresAt           DateTime
+  status              ReservationStatus    @default(HOLD)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  order               Order?
+  addressVerification AddressVerification?
 
   @@index([organizationId, startsAt])
   @@index([therapistId, status, startsAt])

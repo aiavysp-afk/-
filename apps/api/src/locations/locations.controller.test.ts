@@ -31,6 +31,12 @@ const service = {
       coordinateSystem: "GCJ-02",
     },
   ]),
+  verify: vi.fn().mockResolvedValue({
+    id: "verification-1",
+    reservationId: "reservation-1",
+    adcode: "410102",
+    expiresAt: "2026-10-05T10:10:00.000Z",
+  }),
 };
 
 @Module({
@@ -97,5 +103,34 @@ describe("Locations HTTP boundary", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().meta.total).toBe(1);
     expect(service.suggest).toHaveBeenCalledWith(principal, "中原");
+  });
+
+  it("requires a strict reservation-bound address verification body", async () => {
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/v1/locations/address-verifications",
+      headers: { authorization: "Bearer test" },
+      payload: {
+        reservationId: "reservation-1",
+        detail: "郑州市中原区测试路1号",
+        adcode: "110101",
+      },
+    });
+    expect(invalid.statusCode, invalid.body).toBe(400);
+    const valid = await app.inject({
+      method: "POST",
+      url: "/v1/locations/address-verifications",
+      headers: { authorization: "Bearer test" },
+      payload: {
+        reservationId: "reservation-1",
+        detail: "郑州市中原区测试路1号",
+      },
+    });
+    expect(valid.statusCode).toBe(201);
+    expect(valid.json().data.adcode).toBe("410102");
+    expect(service.verify).toHaveBeenCalledWith(principal, {
+      reservationId: "reservation-1",
+      detail: "郑州市中原区测试路1号",
+    });
   });
 });

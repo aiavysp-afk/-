@@ -68,6 +68,26 @@ describe("production safety gate", () => {
     expect(() => validateEnv({ SMS_SEND_ENABLED: "yes" })).toThrow();
     expect(() => validateEnv({ MAP_GEOCODING_ENABLED: "yes" })).toThrow();
     expect(() =>
+      validateEnv({
+        MAP_PROVIDER: "tencent",
+        MAP_GEOCODING_ENABLED: "true",
+        TENCENT_MAP_KEY: "test-map-key",
+        TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+      }),
+    ).toThrow("SERVICE_AREA_ADCODE_ALLOWLIST");
+    expect(
+      validateEnv({
+        MAP_PROVIDER: "tencent",
+        MAP_GEOCODING_ENABLED: "true",
+        TENCENT_MAP_KEY: "test-map-key",
+        TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+        SERVICE_AREA_ADCODE_ALLOWLIST: "410102,410105",
+      }).SERVICE_AREA_ADCODE_ALLOWLIST,
+    ).toBe("410102,410105");
+    expect(() =>
+      validateEnv({ SERVICE_AREA_ADCODE_ALLOWLIST: "410102,410102" }),
+    ).toThrow("无重复");
+    expect(() =>
       validateEnv({ SAFETY_NOTIFICATION_DISPATCH_ENABLED: "yes" }),
     ).toThrow();
     expect(() =>

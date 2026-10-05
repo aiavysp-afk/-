@@ -13,6 +13,9 @@ const principal: AuthPrincipal = {
   displayName: "客户",
   memberships: [],
 };
+const locations = {
+  assertOrderVerification: vi.fn().mockResolvedValue(undefined),
+};
 
 const input: OrderCreate = {
   reservationId: "reservation-1",
@@ -64,6 +67,7 @@ describe("OrdersService", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T00:00:00.000Z"));
+    locations.assertOrderVerification.mockClear();
   });
 
   afterEach(() => vi.useRealTimers());
@@ -84,6 +88,7 @@ describe("OrdersService", () => {
       prisma as never,
       {} as never,
       new OrderStateMachine(),
+      locations as never,
     );
 
     await expect(service.quote(principal, "reservation-1")).resolves.toEqual({
@@ -113,6 +118,7 @@ describe("OrdersService", () => {
       prisma as never,
       {} as never,
       new OrderStateMachine(),
+      locations as never,
     );
     await expect(
       service.quote(principal, "reservation-1"),
@@ -154,6 +160,7 @@ describe("OrdersService", () => {
       prisma as never,
       crypto as never,
       new OrderStateMachine(),
+      locations as never,
     );
 
     const result = await service.create(
@@ -172,6 +179,7 @@ describe("OrdersService", () => {
     expect(tx.auditLog.create).toHaveBeenCalledOnce();
     expect(tx.outboxEvent.create).toHaveBeenCalledOnce();
     expect(crypto.encrypt).toHaveBeenCalledOnce();
+    expect(locations.assertOrderVerification).toHaveBeenCalledOnce();
   });
 
   it("returns the same order for an identical idempotent replay", async () => {
@@ -183,6 +191,7 @@ describe("OrdersService", () => {
       prisma as never,
       {} as never,
       new OrderStateMachine(),
+      locations as never,
     );
     await expect(
       service.create(principal, input, "order-20261003-0001"),
@@ -201,6 +210,7 @@ describe("OrdersService", () => {
       prisma as never,
       {} as never,
       new OrderStateMachine(),
+      locations as never,
     );
     await expect(
       service.create(
@@ -243,6 +253,7 @@ describe("OrdersService", () => {
       prisma as never,
       {} as never,
       new OrderStateMachine(),
+      locations as never,
     );
 
     await expect(
@@ -276,6 +287,7 @@ describe("OrdersService", () => {
       prisma as never,
       {} as never,
       new OrderStateMachine(),
+      locations as never,
     );
     await expect(service.cancelOwn(principal, current.id)).rejects.toThrow(
       "原单尚未确认关闭",

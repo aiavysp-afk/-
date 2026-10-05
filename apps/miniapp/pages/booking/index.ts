@@ -4,6 +4,7 @@ import type {
   OrderQuote,
   OrderView,
   AddressSuggestion,
+  AddressVerification,
   PublicConfig,
   ServiceItem,
 } from "@zydj/contracts";
@@ -20,6 +21,9 @@ Page({
     phone: "",
     detail: "",
     addressSuggestionAvailable: false,
+    addressVerificationRequired: false,
+    addressVerificationId: "",
+    orderSubmissionAttempted: false,
     serviceCity: "",
     suggestions: [] as AddressSuggestion[],
     suggestionBusy: false,
@@ -54,6 +58,8 @@ Page({
       const config = await api<PublicConfig>("/config/public");
       this.setData({
         addressSuggestionAvailable: config.features.addressSuggestionAvailable,
+        addressVerificationRequired:
+          config.features.addressVerificationRequired,
         serviceCity: config.serviceCity,
       });
     } catch {
@@ -100,18 +106,20 @@ Page({
     const field = e.currentTarget.dataset.field;
     if (
       ["contactName", "phone", "detail"].includes(field) &&
-      !this.data.reservationId
+      !this.data.orderSubmissionAttempted
     )
       this.setData({
         [field]: e.detail.value,
-        ...(field === "detail" ? { suggestions: [] } : {}),
+        ...(field === "detail"
+          ? { suggestions: [], addressVerificationId: "" }
+          : {}),
       });
   },
   async searchAddress() {
     if (
       this.data.suggestionBusy ||
       !this.data.addressSuggestionAvailable ||
-      this.data.reservationId
+      this.data.orderSubmissionAttempted
     )
       return;
     const keyword = this.data.detail.trim();
@@ -135,14 +143,14 @@ Page({
     }
   },
   selectAddress(e: { currentTarget: { dataset: { index: number } } }) {
-    if (this.data.reservationId) return;
+    if (this.data.orderSubmissionAttempted) return;
     const suggestion =
       this.data.suggestions[Number(e.currentTarget.dataset.index)];
     if (!suggestion) return;
     const detail = `${suggestion.title} ${suggestion.address}`
       .trim()
       .slice(0, 200);
-    this.setData({ detail, suggestions: [] });
+    this.setData({ detail, suggestions: [], addressVerificationId: "" });
   },
   consentChanged(e: { detail: { value: string[] } }) {
     this.setData({ consent: e.detail.value.includes("agree") });
@@ -175,12 +183,29 @@ Page({
         });
         this.setData({ reservationId: hold.id, orderKey: newKey() });
       }
+      if (
+        this.data.addressVerificationRequired &&
+        !this.data.addressVerificationId
+      ) {
+        const verification = await api<AddressVerification>(
+          "/locations/address-verifications",
+          "POST",
+          {
+            reservationId: this.data.reservationId,
+            detail: this.data.detail.trim(),
+          },
+        );
+        this.setData({ addressVerificationId: verification.id });
+      }
       if (!this.data.quote) {
         const quote = await api<OrderQuote>("/orders/quote", "POST", {
           reservationId: this.data.reservationId,
         });
         this.setData({ quote: money(quote.payableFen) });
       }
+      // Once an order request leaves the device, keep the request immutable so
+      // an uncertain network result can be retried with the same fingerprint.
+      this.setData({ orderSubmissionAttempted: true });
       await api<OrderView>(
         "/orders",
         "POST",
@@ -191,10 +216,18 @@ Page({
             phone: this.data.phone,
             detail: this.data.detail.trim(),
           },
+          ...(this.data.addressVerificationId
+            ? { addressVerificationId: this.data.addressVerificationId }
+            : {}),
         },
         this.data.orderKey,
       );
-      this.setData({ reservationId: "", orderKey: "" });
+      this.setData({
+        reservationId: "",
+        orderKey: "",
+        addressVerificationId: "",
+        orderSubmissionAttempted: false,
+      });
       wx.showToast({ title: "订单已创建，请到订单页支付", icon: "none" });
       wx.switchTab({ url: "/pages/orders/index" });
     } catch (error) {
@@ -209,6 +242,8 @@ Page({
       phone: "",
       detail: "",
       suggestions: [],
+      addressVerificationId: "",
+      orderSubmissionAttempted: false,
     });
   },
 });

@@ -131,6 +131,20 @@ export const AddressSuggestionSchema = z.object({
   coordinateSystem: z.literal("GCJ-02"),
 });
 
+export const AddressVerificationCreateSchema = z
+  .object({
+    reservationId: z.string().trim().min(1).max(128),
+    detail: z.string().trim().min(5).max(200),
+  })
+  .strict();
+
+export const AddressVerificationSchema = z.object({
+  id: z.string(),
+  reservationId: z.string(),
+  adcode: z.string().regex(/^\d{6}$/),
+  expiresAt: IsoDateTimeSchema,
+});
+
 export const OrderQuoteRequestSchema = z
   .object({ reservationId: z.string().trim().min(1).max(128) })
   .strict();
@@ -139,6 +153,7 @@ export const OrderCreateSchema = z
   .object({
     reservationId: z.string().trim().min(1).max(128),
     address: ServiceAddressSchema,
+    addressVerificationId: z.string().trim().min(1).max(128).optional(),
   })
   .strict();
 
@@ -251,6 +266,7 @@ export const PublicConfigSchema = z.object({
   }),
   features: z.object({
     addressSuggestionAvailable: z.boolean(),
+    addressVerificationRequired: z.boolean(),
   }),
 });
 
@@ -483,6 +499,7 @@ export type BookingHoldCreate = z.infer<typeof BookingHoldCreateSchema>;
 export type BookingHold = z.infer<typeof BookingHoldSchema>;
 export type ServiceAddress = z.infer<typeof ServiceAddressSchema>;
 export type AddressSuggestion = z.infer<typeof AddressSuggestionSchema>;
+export type AddressVerification = z.infer<typeof AddressVerificationSchema>;
 export type OrderQuoteRequest = z.infer<typeof OrderQuoteRequestSchema>;
 export type OrderCreate = z.infer<typeof OrderCreateSchema>;
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;

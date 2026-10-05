@@ -13,6 +13,9 @@ Page({
         phone: "",
         detail: "",
         addressSuggestionAvailable: false,
+        addressVerificationRequired: false,
+        addressVerificationId: "",
+        orderSubmissionAttempted: false,
         serviceCity: "",
         suggestions: [],
         suggestionBusy: false,
@@ -47,6 +50,7 @@ Page({
             const config = await (0, api_1.api)("/config/public");
             this.setData({
                 addressSuggestionAvailable: config.features.addressSuggestionAvailable,
+                addressVerificationRequired: config.features.addressVerificationRequired,
                 serviceCity: config.serviceCity,
             });
         }
@@ -91,16 +95,18 @@ Page({
     input(e) {
         const field = e.currentTarget.dataset.field;
         if (["contactName", "phone", "detail"].includes(field) &&
-            !this.data.reservationId)
+            !this.data.orderSubmissionAttempted)
             this.setData({
                 [field]: e.detail.value,
-                ...(field === "detail" ? { suggestions: [] } : {}),
+                ...(field === "detail"
+                    ? { suggestions: [], addressVerificationId: "" }
+                    : {}),
             });
     },
     async searchAddress() {
         if (this.data.suggestionBusy ||
             !this.data.addressSuggestionAvailable ||
-            this.data.reservationId)
+            this.data.orderSubmissionAttempted)
             return;
         const keyword = this.data.detail.trim();
         if (keyword.length < 2 || keyword.length > 32) {
@@ -124,7 +130,7 @@ Page({
         }
     },
     selectAddress(e) {
-        if (this.data.reservationId)
+        if (this.data.orderSubmissionAttempted)
             return;
         const suggestion = this.data.suggestions[Number(e.currentTarget.dataset.index)];
         if (!suggestion)
@@ -132,7 +138,7 @@ Page({
         const detail = `${suggestion.title} ${suggestion.address}`
             .trim()
             .slice(0, 200);
-        this.setData({ detail, suggestions: [] });
+        this.setData({ detail, suggestions: [], addressVerificationId: "" });
     },
     consentChanged(e) {
         this.setData({ consent: e.detail.value.includes("agree") });
@@ -162,12 +168,23 @@ Page({
                 });
                 this.setData({ reservationId: hold.id, orderKey: (0, api_1.newKey)() });
             }
+            if (this.data.addressVerificationRequired &&
+                !this.data.addressVerificationId) {
+                const verification = await (0, api_1.api)("/locations/address-verifications", "POST", {
+                    reservationId: this.data.reservationId,
+                    detail: this.data.detail.trim(),
+                });
+                this.setData({ addressVerificationId: verification.id });
+            }
             if (!this.data.quote) {
                 const quote = await (0, api_1.api)("/orders/quote", "POST", {
                     reservationId: this.data.reservationId,
                 });
                 this.setData({ quote: (0, api_1.money)(quote.payableFen) });
             }
+            // Once an order request leaves the device, keep the request immutable so
+            // an uncertain network result can be retried with the same fingerprint.
+            this.setData({ orderSubmissionAttempted: true });
             await (0, api_1.api)("/orders", "POST", {
                 reservationId: this.data.reservationId,
                 address: {
@@ -175,8 +192,16 @@ Page({
                     phone: this.data.phone,
                     detail: this.data.detail.trim(),
                 },
+                ...(this.data.addressVerificationId
+                    ? { addressVerificationId: this.data.addressVerificationId }
+                    : {}),
             }, this.data.orderKey);
-            this.setData({ reservationId: "", orderKey: "" });
+            this.setData({
+                reservationId: "",
+                orderKey: "",
+                addressVerificationId: "",
+                orderSubmissionAttempted: false,
+            });
             wx.showToast({ title: "订单已创建，请到订单页支付", icon: "none" });
             wx.switchTab({ url: "/pages/orders/index" });
         }
@@ -193,6 +218,8 @@ Page({
             phone: "",
             detail: "",
             suggestions: [],
+            addressVerificationId: "",
+            orderSubmissionAttempted: false,
         });
     },
 });

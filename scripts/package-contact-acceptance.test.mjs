@@ -60,7 +60,10 @@ function config(overrides = {}) {
     customerService: { ...fixtureContact },
     emergencyContact: { ...fixtureEmergency },
     integrations: { payment: "mock", sms: "mock", map: "mock" },
-    features: { addressSuggestionAvailable: false },
+    features: {
+      addressSuggestionAvailable: false,
+      addressVerificationRequired: false,
+    },
     ...overrides,
   };
 }

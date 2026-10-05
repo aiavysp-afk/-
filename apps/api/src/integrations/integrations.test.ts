@@ -19,6 +19,7 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
       ALIYUN_SMS_TEMPLATE_CODE: "SMS_test123",
       MAP_PROVIDER: "tencent",
       MAP_GEOCODING_ENABLED: "true",
+      SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
       TENCENT_MAP_KEY: "test-map-key",
       TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
       ...overrides,
@@ -349,25 +350,24 @@ describe("Tencent geocoding primitive", () => {
       client.suggest({ keyword: "中原", city: "郑州市" }),
     ).rejects.toThrow("响应无效");
   });
-  it.each([{ MAP_GEOCODING_ENABLED: "false" }, { MAP_PROVIDER: "mock" }])(
-    "blocks calls with gate %j",
-    async (overrides) => {
-      await expect(
-        new TencentMapClient(config(overrides)).geocode({
-          address: "郑州市中原路1号",
-          city: "郑州市",
-        }),
-      ).rejects.toThrow("门禁");
-      expect(fetcher).not.toHaveBeenCalled();
-    },
-  );
-  it("blocks missing SK and invalid city/address", async () => {
+  it("blocks calls when the runtime gate is off", async () => {
     await expect(
-      new TencentMapClient(config({ TENCENT_MAP_SIGNING_SECRET: "" })).geocode({
+      new TencentMapClient(config({ MAP_GEOCODING_ENABLED: "false" })).geocode({
         address: "郑州市中原路1号",
-        city: "郑州",
+        city: "郑州市",
       }),
-    ).rejects.toThrow("未就绪");
+    ).rejects.toThrow("门禁");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails startup when an enabled map gate has the wrong provider", () => {
+    expect(() => config({ MAP_PROVIDER: "mock" })).toThrow("MAP_PROVIDER");
+  });
+
+  it("blocks missing SK and invalid city/address", async () => {
+    expect(() => config({ TENCENT_MAP_SIGNING_SECRET: "" })).toThrow(
+      "TENCENT_MAP_SIGNING_SECRET",
+    );
     await expect(
       new TencentMapClient(config()).geocode({
         address: "郑州市中原路1号",

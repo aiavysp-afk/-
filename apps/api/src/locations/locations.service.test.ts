@@ -16,7 +16,8 @@ const principal: AuthPrincipal = {
 
 function harness(overrides: Record<string, string> = {}) {
   const counters = new Map<string, number>();
-  const prisma = {
+  const expiresAt = new Date("2026-10-05T10:10:00.000Z");
+  const prismaMock = {
     mapRequestRateLimit: {
       upsert: vi.fn(async ({ where }: { where: { key: string } }) => {
         const count = (counters.get(where.key) ?? 0) + 1;
@@ -25,8 +26,26 @@ function harness(overrides: Record<string, string> = {}) {
       }),
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
-  } as unknown as PrismaService;
-  const maps = {
+    appointmentReservation: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: "reservation-1",
+        customerId: principal.userId,
+        status: "HOLD",
+        expiresAt,
+      }),
+    },
+    addressVerification: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi
+        .fn()
+        .mockImplementation(({ create }: { create: object }) =>
+          Promise.resolve({ id: "verification-1", ...create }),
+        ),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+  };
+  const prisma = prismaMock as unknown as PrismaService;
+  const mapsMock = {
     suggest: vi.fn().mockResolvedValue([
       {
         id: "poi-1",
@@ -39,19 +58,34 @@ function harness(overrides: Record<string, string> = {}) {
         coordinateSystem: "GCJ-02",
       },
     ]),
-  } as unknown as TencentMapClient;
+    geocode: vi.fn().mockResolvedValue({
+      latitude: 34.75,
+      longitude: 113.65,
+      adcode: "410102",
+      coordinateSystem: "GCJ-02",
+      reliability: 8,
+      level: 9,
+      requiresManualConfirmation: false,
+    }),
+  };
+  const maps = mapsMock as unknown as TencentMapClient;
   const config = new ConfigService<AppEnv, true>(
     validateEnv({
       MAP_PROVIDER: "tencent",
       MAP_GEOCODING_ENABLED: "true",
       SERVICE_CITY: "郑州市",
+      SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
+      TENCENT_MAP_KEY: "test-map-key",
+      TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
       ...overrides,
     }),
   );
   return {
     service: new LocationsService(prisma, maps, config),
     prisma,
+    prismaMock,
     maps,
+    mapsMock,
   };
 }
 
@@ -69,6 +103,144 @@ describe("LocationsService", () => {
       city: "郑州市",
     });
     expect(prisma.mapRequestRateLimit.upsert).toHaveBeenCalledTimes(4);
+  });
+
+  it("stores only a keyed address digest and bounded district verification", async () => {
+    const { service, prismaMock, mapsMock } = harness();
+    const now = new Date("2026-10-05T10:00:00.000Z");
+    await expect(
+      service.verify(
+        principal,
+        {
+          reservationId: "reservation-1",
+          detail: "郑州市中原区测试路1号A座",
+        },
+        now,
+      ),
+    ).resolves.toEqual({
+      id: "verification-1",
+      reservationId: "reservation-1",
+      adcode: "410102",
+      expiresAt: "2026-10-05T10:10:00.000Z",
+    });
+    expect(mapsMock.geocode).toHaveBeenCalledWith({
+      address: "郑州市中原区测试路1号A座",
+      city: "郑州市",
+    });
+    const create =
+      prismaMock.addressVerification.upsert.mock.calls[0]![0].create;
+    expect(create.detailHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(create).not.toHaveProperty("detail");
+    expect(create).not.toHaveProperty("latitude");
+    expect(create).not.toHaveProperty("longitude");
+  });
+
+  it("rejects other users, low precision and out-of-area addresses before issuing a usable proof", async () => {
+    const foreign = harness();
+    foreign.prismaMock.appointmentReservation.findUnique.mockResolvedValue({
+      id: "reservation-1",
+      customerId: "another-user",
+      status: "HOLD",
+      expiresAt: new Date("2026-10-05T10:10:00.000Z"),
+    });
+    await expect(
+      foreign.service.verify(principal, {
+        reservationId: "reservation-1",
+        detail: "郑州市中原区测试路1号A座",
+      }),
+    ).rejects.toThrow("其他用户");
+    expect(foreign.mapsMock.geocode).not.toHaveBeenCalled();
+
+    const imprecise = harness();
+    imprecise.mapsMock.geocode.mockResolvedValue({
+      latitude: 34.75,
+      longitude: 113.65,
+      adcode: "410102",
+      coordinateSystem: "GCJ-02",
+      reliability: 3,
+      level: 7,
+      requiresManualConfirmation: true,
+    });
+    await expect(
+      imprecise.service.verify(
+        principal,
+        {
+          reservationId: "reservation-1",
+          detail: "郑州市中原区测试路1号A座",
+        },
+        new Date("2026-10-05T10:00:00.000Z"),
+      ),
+    ).rejects.toThrow("精度不足");
+    expect(
+      imprecise.prismaMock.addressVerification.upsert,
+    ).not.toHaveBeenCalled();
+
+    const outside = harness();
+    outside.mapsMock.geocode.mockResolvedValue({
+      latitude: 39.9,
+      longitude: 116.4,
+      adcode: "110101",
+      coordinateSystem: "GCJ-02",
+      reliability: 9,
+      level: 10,
+      requiresManualConfirmation: false,
+    });
+    await expect(
+      outside.service.verify(
+        principal,
+        {
+          reservationId: "reservation-1",
+          detail: "北京市东城区测试地址1号",
+        },
+        new Date("2026-10-05T10:00:00.000Z"),
+      ),
+    ).rejects.toThrow("不在已配置服务范围");
+  });
+
+  it("binds order proofs to the user, reservation, exact address and current allowlist", async () => {
+    const { service, prismaMock } = harness();
+    const now = new Date("2026-10-05T10:00:00.000Z");
+    await service.verify(
+      principal,
+      {
+        reservationId: "reservation-1",
+        detail: "郑州市中原区测试路1号A座",
+      },
+      now,
+    );
+    const created =
+      prismaMock.addressVerification.upsert.mock.calls[0]![0].create;
+    const tx = {
+      addressVerification: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "verification-1",
+          ...created,
+        }),
+      },
+    };
+    const input = {
+      reservationId: "reservation-1",
+      addressVerificationId: "verification-1",
+      address: {
+        contactName: "林女士",
+        phone: "13800138000",
+        detail: "郑州市中原区测试路1号A座",
+      },
+    };
+    await expect(
+      service.assertOrderVerification(tx as never, principal, input, now),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.assertOrderVerification(
+        tx as never,
+        principal,
+        {
+          ...input,
+          address: { ...input.address, detail: "郑州市其他地址2号" },
+        },
+        now,
+      ),
+    ).rejects.toThrow("已失效");
   });
 
   it("fails closed before database or provider access when the feature gate is off", async () => {

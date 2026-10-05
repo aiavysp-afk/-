@@ -13,6 +13,9 @@ describe("public configuration", () => {
             SERVICE_CITY: "郑州市",
             MAP_PROVIDER: "tencent",
             MAP_GEOCODING_ENABLED: enabled,
+            TENCENT_MAP_KEY: "test-map-key",
+            TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+            SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
           }),
         ),
       );
@@ -21,6 +24,9 @@ describe("public configuration", () => {
         "郑州市",
       );
       expect(response.data.features.addressSuggestionAvailable).toBe(
+        enabled === "true",
+      );
+      expect(response.data.features.addressVerificationRequired).toBe(
         enabled === "true",
       );
     }

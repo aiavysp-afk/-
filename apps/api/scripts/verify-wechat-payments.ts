@@ -83,7 +83,9 @@ const mock = new PaymentsService(
   stateMachine,
   { configuredProvider: () => PaymentProvider.MOCK } as never,
 );
-const orders = new OrdersService(prisma, {} as never, stateMachine);
+const orders = new OrdersService(prisma, {} as never, stateMachine, {
+  assertOrderVerification: async () => undefined,
+} as never);
 let organizationId: string | undefined;
 const orderIds: string[] = [];
 let verificationSucceeded = false;

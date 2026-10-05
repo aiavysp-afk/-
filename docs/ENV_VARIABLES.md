@@ -18,7 +18,7 @@
 | API_HOST                                     | 127.0.0.1                | 127.0.0.1，通过反代访问                                                                   |
 | CORS_ORIGINS                                 | 本地5173/5174            | 精确授权管理端/H5 HTTPS源，不能\*                                                         |
 | BRAND_NAME                                   | 中原到家                 | 品牌名                                                                                    |
-| SERVICE_CITY                                 | 郑州市                   | 地图地址提示的唯一服务城市；客户端不能覆盖                                                |
+| SERVICE_CITY                                 | 郑州市                   | 地图地址提示与核验的唯一服务城市；客户端不能覆盖                                          |
 | AUTH_PROVIDER                                | mock                     | wechat                                                                                    |
 | WECHAT_MINIAPP_APP_ID                        | wxab76ea213eb6d01a       | 核对实际主体                                                                              |
 | WECHAT_MINIAPP_SECRET                        | 空                       | 小程序AppSecret，仅服务端                                                                 |
@@ -49,7 +49,8 @@
 | ALIYUN_SMS_SIGN_NAME                         | 空                       | 已审核且主体一致的短信签名                                                                |
 | ALIYUN_SMS_TEMPLATE_CODE                     | 空                       | 已审核模板，变量必须为orderNo/category/stage/deadline                                     |
 | MAP_PROVIDER                                 | mock                     | tencent；仅选择渠道，不会自动开放地址查询                                                 |
-| MAP_GEOCODING_ENABLED                        | false                    | 地址提示/解析的独立付费调用门禁；凭据、配额和隐私验收完成前保持false                      |
+| MAP_GEOCODING_ENABLED                        | false                    | 地址提示/核验的独立付费调用门禁；凭据、配额、服务区和隐私验收完成前保持false              |
+| SERVICE_AREA_ADCODE_ALLOWLIST                | 空                       | 逗号分隔且不重复的六位行政区代码；开启地图门禁时必须非空，只能由经营负责人核定            |
 | TENCENT_MAP_KEY / TENCENT_MAP_SIGNING_SECRET | 空                       | WebService Key 与签名SK；只放服务端受控配置，绝不下发小程序                               |
 | SAFETY_HOTLINE                               | 空                       | 经实际接通测试的值；标签不代表自动呼叫能力                                                |
 | VITE_API_BASE_URL                            | http://127.0.0.1:3100/v1 | 构建管理端时提供HTTPS API地址，仅公开信息                                                 |

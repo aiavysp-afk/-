@@ -66,6 +66,10 @@ export class PublicController {
             this.config.get("MAP_PROVIDER", { infer: true }) === "tencent" &&
             this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) ===
               "true",
+          addressVerificationRequired:
+            this.config.get("MAP_PROVIDER", { infer: true }) === "tencent" &&
+            this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) ===
+              "true",
         },
       },
     };

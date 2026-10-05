@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AddressVerificationCreateSchema,
+  AddressVerificationSchema,
   AvailabilityQuerySchema,
   AddressSuggestionQuerySchema,
   AddressSuggestionSchema,
@@ -274,6 +276,61 @@ describe("address suggestion contracts", () => {
     });
     expect(() =>
       AddressSuggestionQuerySchema.parse({ keyword: "中原", city: "北京" }),
+    ).toThrow();
+  });
+});
+
+describe("address verification contracts", () => {
+  it("accepts only an owned-reservation-shaped request and a bounded proof", () => {
+    expect(
+      AddressVerificationCreateSchema.parse({
+        reservationId: "hold-1",
+        detail: "郑州市中原区测试路 1 号 A 座",
+      }),
+    ).toEqual({
+      reservationId: "hold-1",
+      detail: "郑州市中原区测试路 1 号 A 座",
+    });
+    expect(() =>
+      AddressVerificationCreateSchema.parse({
+        reservationId: "hold-1",
+        detail: "郑州市中原区测试路 1 号 A 座",
+        adcode: "110101",
+      }),
+    ).toThrow();
+    expect(
+      AddressVerificationSchema.parse({
+        id: "verification-1",
+        reservationId: "hold-1",
+        adcode: "410102",
+        expiresAt: "2026-10-05T10:10:00.000Z",
+      }).adcode,
+    ).toBe("410102");
+  });
+
+  it("allows only the opaque proof id on an order request", () => {
+    expect(
+      OrderCreateSchema.parse({
+        reservationId: "hold-1",
+        addressVerificationId: "verification-1",
+        address: {
+          contactName: "林女士",
+          phone: "13800000000",
+          detail: "郑州市中原区测试路 1 号 A 座",
+        },
+      }).addressVerificationId,
+    ).toBe("verification-1");
+    expect(() =>
+      OrderCreateSchema.parse({
+        reservationId: "hold-1",
+        addressVerificationId: "verification-1",
+        address: {
+          contactName: "林女士",
+          phone: "13800000000",
+          detail: "郑州市中原区测试路 1 号 A 座",
+        },
+        adcode: "410102",
+      }),
     ).toThrow();
   });
 });

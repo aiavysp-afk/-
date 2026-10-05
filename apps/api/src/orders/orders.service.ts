@@ -22,6 +22,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
+import { LocationsService } from "../locations/locations.service.js";
 import { OrderStateMachine } from "./order-state-machine.js";
 
 const PAYMENT_WINDOW_MS = 15 * 60 * 1_000;
@@ -35,6 +36,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly crypto: AuthCryptoService,
     private readonly stateMachine: OrderStateMachine,
+    private readonly locations: LocationsService,
   ) {}
 
   async quote(
@@ -106,6 +108,8 @@ export class OrdersService {
           }
           return null;
         }
+
+        await this.locations.assertOrderVerification(tx, principal, input, now);
 
         const locked = await tx.appointmentReservation.updateMany({
           where: {
