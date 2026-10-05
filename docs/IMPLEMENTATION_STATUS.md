@@ -1,5 +1,7 @@
 # 中原到家开发交付记录
 
+最新服务区核验部署（2026-10-05）：`b01b0264393741d83ce86e5aee69d89d8580335d` 通过 CI 37307351804 并部署至私有验收；第 22 批迁移成功，`AddressVerification` 表存在且 0 行。API/后台/H5 仅监听 `127.0.0.1:3210/3212/3213`，健康、目录、公开配置和预览为 200，地址提示/核验未登录均为 401，恢复后 warning 为 0。地图仍为 mock 且门禁 false，生产 inactive，公网主站/API 均为 503。部署归档漏带共享契约 dist 的问题已恢复，并在脚本中改为服务器显式构建。
+
 最新私有运行版本（2026-10-05）：`78aaf4e80b4b504df44f3930c358a2c77e76b158` 已通过 [CI 37300569286](https://github.com/aiavysp-afk/-/actions/runs/37300569286) 并部署。地址提示现在有登录边界、服务端固定 `SERVICE_CITY`、PostgreSQL 持久化用户/全局配额及预约页选择；第 21 批迁移成功，配额表为空。服务器尚无腾讯 Key/SK，`MAP_PROVIDER=mock`、`MAP_GEOCODING_ENABLED=false`，因此界面不显示搜索且没有真实调用。生产服务仍 inactive，公网维护 503，不能把私有代码验证当作真实渠道或经营验收。
 
 最新短信送达回执（2026-10-05）：`5b6f009` 新增第 20 批迁移、阿里云 `QuerySendDetails` 只读查询、独立 `SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED=false` 门禁、有限退避、送达/失败/未知状态、数据库约束和后台监控摘要；[CI 37296420337](https://github.com/aiavysp-afk/-/actions/runs/37296420337) success。私有服务器已备份后升级到 20 批并通过端口、HTTP、schema、日志与公网维护验证；生产初始化门禁补强提交 `27eff88` 的 [CI 37296990790](https://github.com/aiavysp-afk/-/actions/runs/37296990790) 亦成功。验收与生产待发布配置中的发送和回执查询开关均明确为 `false`，没有调用真实阿里云接口。

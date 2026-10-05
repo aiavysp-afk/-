@@ -35,6 +35,9 @@ if [[ ! -x "$base/tooling/node_modules/.bin/pnpm" ]]; then npm install --prefix 
 [[ $(pnpm --version) == 11.19.0 ]] || exit 1
 cd "$release"
 pnpm install --frozen-lockfile --ignore-scripts --filter '@zydj/api...' --store-dir "$base/store"
+# Runtime imports the workspace contract package. Build it inside the verified
+# release so deployment does not depend on an ignored local dist directory.
+pnpm --filter @zydj/contracts build
 id -u zydj-acceptance >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin zydj-acceptance
 chown -R root:zydj-acceptance "$base/runtime" "$release"
 chown root:zydj-acceptance "$base" "$base/releases"
