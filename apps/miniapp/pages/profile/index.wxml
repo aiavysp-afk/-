@@ -15,13 +15,11 @@
       登录</button
     ><button wx:else bindtap="logout">退出</button></view
   ><view class="stats"
-    ><view><text class="stat-value">0</text><text>待服务</text></view
-    ><view><text class="stat-value">0</text><text>进行中</text></view
-    ><view><text class="stat-value">0</text><text>待评价</text></view
-    ><view><text class="stat-value">0</text><text>售后</text></view></view
+    ><view><text class="stat-value">{{stats.upcoming}}</text><text>待服务</text></view
+    ><view><text class="stat-value">{{stats.active}}</text><text>进行中</text></view
+    ><view><text class="stat-value">{{stats.confirmation}}</text><text>待确认</text></view
+    ><view><text class="stat-value">{{stats.afterSale}}</text><text>售后</text></view></view
   ><view class="menus"
-    ><view wx:for="{{menus}}" wx:key="*this"
-      ><text>{{item}}</text><text class="chevron">›</text></view
     ><view class="customer-service-row" bindtap="openCustomerService"
       ><text>企业微信客服</text
       ><text>{{customerService.available ? '联系' : '未就绪'}} ›</text></view
@@ -33,5 +31,5 @@
     ><view bindtap="openMfaRecovery"
       ><text>验证器丢失恢复（本人申请）</text><text>›</text></view
     ></view
-  ><view class="version">中原到家 · 开发预览版</view></view
+  ><view class="version">中原到家 · 郑州全域服务版</view></view
 >

@@ -1,1 +1,16 @@
-<view class="page"><view class="header"><text class="eyebrow">平台资料审核</text><text class="header-title serif">认真服务，也安心选择</text><text class="header-desc">只展示服务所需资料，不公开证件与实时位置</text></view><view wx:for="{{people}}" wx:key="name" class="person"><view class="portrait p{{index}}"><text>{{item.initial}}</text><text class="available">可预约</text></view><view class="info"><view><text class="info-name">{{item.name}}</text><text class="score">★ {{item.score}}</text></view><text class="info-meta">{{item.level}} · 已服务 {{item.count}} 次</text><view class="skills">{{item.skills}}</view><button>查看可约时间</button></view></view></view>
+<view class="page">
+  <view class="header">
+    <text class="eyebrow">平台资料审核</text>
+    <text class="header-title serif">认真服务，也安心选择</text>
+    <text class="header-desc">不展示未经授权的人员姓名、证件或实时位置</text>
+  </view>
+  <view class="standard" wx:for="{{standards}}" wx:key="title">
+    <view class="standard-index">0{{index + 1}}</view>
+    <view>
+      <text class="standard-title">{{item.title}}</text>
+      <text class="standard-detail">{{item.detail}}</text>
+    </view>
+  </view>
+  <view class="notice">可约人员与服务时段会在预约页根据真实排班返回；未取得公开展示授权前，不使用虚构或演示技师资料。</view>
+  <button bindtap="openServices">查看服务与可约时段</button>
+</view>

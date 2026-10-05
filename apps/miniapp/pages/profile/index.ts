@@ -4,7 +4,7 @@ import {
   loginWithWechat,
 } from "../../utils/auth";
 import { api } from "../../utils/api";
-import type { PublicConfig } from "@zydj/contracts";
+import type { OrderView, PublicConfig } from "@zydj/contracts";
 import {
   openWecomCustomerService,
   callEmergencyDuty,
@@ -28,10 +28,10 @@ const PUBLIC_CONTACT_FALLBACK = {
 
 Page({
   data: {
-    menus: ["我的地址", "优惠券", "发票申请", "协议与隐私", "账户与安全"],
     loggedIn: false,
     loggingIn: false,
     displayName: "微信用户",
+    stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
     customerService:
       PUBLIC_CONTACT_FALLBACK.customerService as PublicConfig["customerService"],
     emergencyContact:
@@ -58,6 +58,33 @@ Page({
     } catch {
       /* Unconfigured/unreachable is shown explicitly by the tap handler. */
     }
+    if (getStoredSession()) await this.loadStats();
+  },
+  async loadStats() {
+    try {
+      const orders = await api<OrderView[]>("/orders");
+      this.setData({
+        stats: {
+          upcoming: orders.filter((order) =>
+            ["PAID", "DISPATCHING", "ASSIGNED", "EN_ROUTE", "ARRIVED"].includes(
+              order.status,
+            ),
+          ).length,
+          active: orders.filter((order) => order.status === "IN_SERVICE")
+            .length,
+          confirmation: orders.filter(
+            (order) => order.status === "AWAITING_CONFIRMATION",
+          ).length,
+          afterSale: orders.filter((order) =>
+            ["REFUNDING", "REFUNDED"].includes(order.status),
+          ).length,
+        },
+      });
+    } catch {
+      this.setData({
+        stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
+      });
+    }
   },
   openCustomerService() {
     openWecomCustomerService(this.data.customerService);
@@ -75,6 +102,7 @@ Page({
         loggingIn: false,
         displayName: session.user.displayName,
       });
+      await this.loadStats();
       wx.showToast({ title: "登录成功", icon: "success" });
     } catch (error) {
       this.setData({ loggingIn: false });
@@ -98,7 +126,11 @@ Page({
       return;
     }
     clearStoredSession();
-    this.setData({ loggedIn: false, displayName: "微信用户" });
+    this.setData({
+      loggedIn: false,
+      displayName: "微信用户",
+      stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
+    });
     wx.showToast({ title: "会话已安全注销", icon: "success" });
   },
 });

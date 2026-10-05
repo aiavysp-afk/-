@@ -1,18 +1,77 @@
+import type { PublicConfig, ServiceItem } from "@zydj/contracts";
+import { api, money } from "../../utils/api";
+import { openWecomCustomerService } from "../../utils/customer-service";
+
+type HomeService = ServiceItem & {
+  duration: string;
+  price: string;
+  tone: "sage" | "tea" | "clay";
+};
+
+const CUSTOMER_SERVICE_FALLBACK: PublicConfig["customerService"] = {
+  provider: "wecom",
+  available: true,
+  corpId: "ww715e0d876d9f3cb4",
+  url: "https://work.weixin.qq.com/kfid/kfca6852bf5e57656af",
+};
+
 Page({
   data: {
-    services: [
-      { id:'neck', name:'肩颈舒缓', subtitle:'久坐之后，让紧绷慢慢松开', duration:'60 分钟', price:'198', badge:'人气之选', tone:'sage' },
-      { id:'spa', name:'全身释压 SPA', subtitle:'以温和节奏，找回身体的松弛感', duration:'90 分钟', price:'268', badge:'深度放松', tone:'tea' },
-      { id:'foot', name:'足部舒缓', subtitle:'从脚步开始，卸下一天的疲惫', duration:'60 分钟', price:'198', badge:'轻松入门', tone:'clay' }
-    ],
-    therapists: [
-      { name:'安然', level:'资深舒缓师', score:'4.9', tags:['肩颈','SPA'], avatar:'安' },
-      { name:'若溪', level:'专业理疗师', score:'4.8', tags:['足部','全身'], avatar:'若' },
-      { name:'静宜', level:'金牌服务师', score:'5.0', tags:['SPA','肩颈'], avatar:'静' }
-    ]
+    services: [] as HomeService[],
+    loading: false,
+    error: "",
+    serviceCity: "郑州市",
+    customerService: CUSTOMER_SERVICE_FALLBACK,
   },
-  chooseAddress(){ wx.showToast({ title:'服务区域尚未配置', icon:'none' }); },
-  bookNow(){ wx.showToast({ title:'预约链路开发中', icon:'none' }); },
-  callSupport(){ wx.showToast({ title:'客服热线尚未配置', icon:'none' }); }
+  async onShow() {
+    await Promise.all([this.loadServices(), this.loadPublicConfig()]);
+  },
+  async loadServices() {
+    this.setData({ loading: true, error: "" });
+    try {
+      const services = await api<ServiceItem[]>("/catalog/services");
+      this.setData({
+        services: services.slice(0, 3).map((service, index) => ({
+          ...service,
+          duration: `${service.durationMinutes} 分钟`,
+          price: money(service.priceFen),
+          tone: (["sage", "tea", "clay"] as const)[index % 3]!,
+        })),
+      });
+    } catch (error) {
+      this.setData({
+        error: error instanceof Error ? error.message : "服务目录加载失败",
+      });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+  async loadPublicConfig() {
+    this.setData({ customerService: CUSTOMER_SERVICE_FALLBACK });
+    try {
+      const config = await api<PublicConfig>("/config/public");
+      this.setData({
+        serviceCity: config.serviceCity,
+        customerService: config.customerService,
+      });
+    } catch {
+      // The verified public customer-service fallback remains usable during API maintenance.
+    }
+  },
+  chooseAddress() {
+    wx.switchTab({ url: "/pages/services/index" });
+  },
+  bookNow() {
+    wx.switchTab({ url: "/pages/services/index" });
+  },
+  bookService(e: { currentTarget: { dataset: { slug?: string } } }) {
+    const slug = e.currentTarget.dataset.slug;
+    if (!slug) return;
+    wx.navigateTo({
+      url: `/pages/booking/index?slug=${encodeURIComponent(slug)}`,
+    });
+  },
+  callSupport() {
+    openWecomCustomerService(this.data.customerService);
+  },
 });
-

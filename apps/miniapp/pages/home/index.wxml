@@ -1,15 +1,19 @@
 <view class="page">
   <view class="hero">
-    <view class="nav"><view class="brand"><text>中</text><view><text class="brand-name">中原到家</text><text class="brand-sub">生活养护服务</text></view></view><button bindtap="callSupport">客服</button></view>
-    <view class="location" bindtap="chooseAddress"><text class="pin">⌖</text><view><text class="location-label">当前服务区域</text><text class="location-value">请选择上门地址</text></view><text>›</text></view>
+    <view class="nav">
+      <view class="brand"><text>中</text><view><text class="brand-name">中原到家</text><text class="brand-sub">生活养护服务</text></view></view>
+      <button bindtap="callSupport">客服</button>
+    </view>
+    <view class="location" bindtap="chooseAddress"><text class="pin">⌖</text><view><text class="location-label">服务范围</text><text class="location-value">{{serviceCity}}全域</text></view><text>›</text></view>
     <view class="hero-copy"><text class="eyebrow">WELLNESS AT HOME</text><text class="title serif">让专业的放松，</text><text class="title serif">如约抵达</text><text class="desc">正规上门按摩 · 透明价格 · 平台审核</text><button bindtap="bookNow">立即预约 <text>→</text></button></view>
     <view class="zen-art"><view class="sun"/><view class="leaf l1"/><view class="leaf l2"/><view class="stone s1"/><view class="stone s2"/></view>
   </view>
-  <view class="dev-note"><text>开发预览</text><view>当前服务与人员均为演示数据，暂未开放真实下单</view></view>
-  <view class="promises"><view><text>净</text><view class="promise-name">规范洁净</view><view class="promise-desc">用品一客一换</view></view><view><text>审</text><view class="promise-name">平台审核</view><view class="promise-desc">资料私密核验</view></view><view><text>明</text><view class="promise-name">价格透明</view><view class="promise-desc">下单前明细确认</view></view><view><text>护</text><view class="promise-name">双向安全</view><view class="promise-desc">异常及时响应</view></view></view>
-  <view class="section-head"><view><text class="serif">精选服务</text><view class="section-desc">为忙碌生活留一段松弛</view></view><navigator url="/pages/services/index">全部服务 ›</navigator></view>
-  <scroll-view class="service-scroll" scroll-x enhanced show-scrollbar="{{false}}"><view class="service-row"><view wx:for="{{services}}" wx:key="id" class="service-card {{item.tone}}"><view class="service-art"><view class="ring"/><view class="bowl"/><text>{{item.badge}}</text></view><view class="service-body"><text class="service-name serif">{{item.name}}</text><text class="service-sub">{{item.subtitle}}</text><view class="service-meta"><text>{{item.duration}}</text><view><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">起</text></view></view></view></view></view></scroll-view>
-  <view class="section-head therapist-head"><view><text class="serif">用心服务的人</text><view class="section-desc">每一位都经过平台资料审核</view></view><navigator url="/pages/therapists/index">认识更多 ›</navigator></view>
-  <view class="therapists"><view wx:for="{{therapists}}" wx:key="name" class="therapist"><view class="avatar a{{index}}"><text>{{item.avatar}}</text><view class="online"/></view><view class="therapist-info"><view><text class="person-name">{{item.name}}</text><text>{{item.score}} ★</text></view><view class="person-level">{{item.level}}</view><view class="tags"><text wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text></view></view><text class="arrow">›</text></view></view>
+  <view class="service-area"><text>郑州全域服务</text><view>具体地址与可约时段以下单页实时结果为准</view></view>
+  <view class="promises"><view><text>净</text><view class="promise-name">规范洁净</view><view class="promise-desc">用品一客一换</view></view><view><text>审</text><view class="promise-name">平台审核</view><view class="promise-desc">资料后台核验</view></view><view><text>明</text><view class="promise-name">价格透明</view><view class="promise-desc">下单前明细确认</view></view><view><text>护</text><view class="promise-name">双向安全</view><view class="promise-desc">异常及时留痕</view></view></view>
+  <view class="section-head"><view><text class="serif">精选服务</text><view class="section-desc">为忙碌生活留一段松弛</view></view><navigator url="/pages/services/index" open-type="switchTab">全部服务 ›</navigator></view>
+  <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
+  <view wx:if="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="loadServices">重试</button></view>
+  <scroll-view wx:if="{{services.length}}" class="service-scroll" scroll-x enhanced show-scrollbar="{{false}}"><view class="service-row"><view wx:for="{{services}}" wx:key="id" class="service-card {{item.tone}}" data-slug="{{item.slug}}" bindtap="bookService"><view class="service-art"><view class="ring"/><view class="bowl"/><text>{{item.badge || '安心服务'}}</text></view><view class="service-body"><text class="service-name serif">{{item.name}}</text><text class="service-sub">{{item.subtitle}}</text><view class="service-meta"><text>{{item.duration}}</text><view><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">起</text></view></view></view></view></view></scroll-view>
+  <view class="team-note"><text class="serif">服务人员按真实排班安排</text><view>平台不展示未经授权的姓名、证件或实时位置；进入预约页查看可约时段。</view><navigator url="/pages/therapists/index" open-type="switchTab">了解审核标准 ›</navigator></view>
   <view class="boundary"><text class="seal">正</text><view><text class="boundary-title">正规服务边界</text><text>中原到家仅提供非医疗养生放松服务，拒绝任何违法违规或超出公示范围的要求。</text></view></view><view class="safe-bottom"/>
 </view>
