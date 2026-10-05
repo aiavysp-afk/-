@@ -33,6 +33,10 @@ if (!existsSync(envPath)) {
     WECHAT_PAY_PREPAY_ENABLED: "false",
     WECHAT_PAY_REFUND_ENABLED: "false",
     WECHAT_PAY_RECOVERY_ENABLED: "false",
+    SAFETY_DUTY_CONFIRMED: "false",
+    SMS_SEND_ENABLED: "false",
+    MAP_GEOCODING_ENABLED: "false",
+    SAFETY_NOTIFICATION_DISPATCH_ENABLED: "false",
     CORS_ORIGINS: "http://127.0.0.1:5312,http://127.0.0.1:5313",
   };
   writeFileSync(
@@ -53,16 +57,44 @@ const env = Object.fromEntries(
       return [match[1], match[2]];
     }),
 );
+// Older private environments predate some non-secret safety gates. Persist the
+// fail-closed defaults explicitly so a future application default cannot enable
+// a real channel by accident. Existing values are never overwritten here.
+const controlledDefaults = {
+  STAFF_MFA_REQUIRED: "true",
+  SAFETY_DUTY_CONFIRMED: "false",
+  SMS_SEND_ENABLED: "false",
+  MAP_GEOCODING_ENABLED: "false",
+  SAFETY_NOTIFICATION_DISPATCH_ENABLED: "false",
+};
+const missingDefaults = Object.entries(controlledDefaults).filter(
+  ([key]) => env[key] === undefined,
+);
+if (missingDefaults.length > 0) {
+  appendFileSync(
+    envPath,
+    `${readFileSync(envPath, "utf8").endsWith("\n") ? "" : "\n"}${missingDefaults
+      .map(([key, value]) => `${key}='${value}'`)
+      .join("\n")}\n`,
+  );
+  Object.assign(env, Object.fromEntries(missingDefaults));
+}
 if (
   env.NODE_ENV !== "test" ||
   env.AUTH_PROVIDER !== "mock" ||
   env.PAYMENT_PROVIDER !== "mock" ||
+  env.SMS_PROVIDER !== "mock" ||
+  env.MAP_PROVIDER !== "mock" ||
   env.API_HOST !== "127.0.0.1" ||
   env.API_PORT !== "3210" ||
   [
     "WECHAT_PAY_PREPAY_ENABLED",
     "WECHAT_PAY_REFUND_ENABLED",
     "WECHAT_PAY_RECOVERY_ENABLED",
+    "SAFETY_DUTY_CONFIRMED",
+    "SMS_SEND_ENABLED",
+    "MAP_GEOCODING_ENABLED",
+    "SAFETY_NOTIFICATION_DISPATCH_ENABLED",
   ].some((k) => env[k] !== "false")
 )
   throw Error("Private gate changed; refusing deployment");
@@ -73,14 +105,6 @@ if (
   target.username !== "zydj_acceptance"
 )
   throw Error("Wrong private database");
-// Existing private env files predate MFA. Add only this non-secret gate, preserving all keys.
-if (env.STAFF_MFA_REQUIRED === undefined) {
-  appendFileSync(
-    envPath,
-    `${readFileSync(envPath, "utf8").endsWith("\n") ? "" : "\n"}STAFF_MFA_REQUIRED='true'\n`,
-  );
-  env.STAFF_MFA_REQUIRED = "true";
-}
 if (env.STAFF_MFA_REQUIRED !== "true")
   throw Error("Private staff MFA gate must remain enabled");
 const sql = (text) =>
