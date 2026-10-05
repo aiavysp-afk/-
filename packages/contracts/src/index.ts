@@ -114,6 +114,23 @@ export const ServiceAddressSchema = z
   })
   .strict();
 
+export const AddressSuggestionQuerySchema = z
+  .object({
+    keyword: z.string().trim().min(2).max(32),
+  })
+  .strict();
+
+export const AddressSuggestionSchema = z.object({
+  id: z.string().min(1).max(128),
+  title: z.string().min(1).max(200),
+  address: z.string().max(300),
+  city: z.string().min(1).max(64),
+  adcode: z.string().regex(/^\d{6}$/),
+  latitude: z.number().finite().min(-90).max(90),
+  longitude: z.number().finite().min(-180).max(180),
+  coordinateSystem: z.literal("GCJ-02"),
+});
+
 export const OrderQuoteRequestSchema = z
   .object({ reservationId: z.string().trim().min(1).max(128) })
   .strict();
@@ -231,6 +248,9 @@ export const PublicConfigSchema = z.object({
     payment: z.enum(["mock", "wechat"]),
     sms: z.enum(["mock", "aliyun"]),
     map: z.enum(["mock", "tencent"]),
+  }),
+  features: z.object({
+    addressSuggestionAvailable: z.boolean(),
   }),
 });
 
@@ -462,6 +482,7 @@ export type ShiftCreate = z.infer<typeof ShiftCreateSchema>;
 export type BookingHoldCreate = z.infer<typeof BookingHoldCreateSchema>;
 export type BookingHold = z.infer<typeof BookingHoldSchema>;
 export type ServiceAddress = z.infer<typeof ServiceAddressSchema>;
+export type AddressSuggestion = z.infer<typeof AddressSuggestionSchema>;
 export type OrderQuoteRequest = z.infer<typeof OrderQuoteRequestSchema>;
 export type OrderCreate = z.infer<typeof OrderCreateSchema>;
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;

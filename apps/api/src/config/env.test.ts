@@ -64,6 +64,7 @@ describe("production safety gate", () => {
     expect(env.SAFETY_NOTIFICATION_DISPATCH_ENABLED).toBe("false");
     expect(env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED).toBe("false");
     expect(env.MAP_GEOCODING_ENABLED).toBe("false");
+    expect(env.SERVICE_CITY).toBe("郑州市");
     expect(() => validateEnv({ SMS_SEND_ENABLED: "yes" })).toThrow();
     expect(() => validateEnv({ MAP_GEOCODING_ENABLED: "yes" })).toThrow();
     expect(() =>

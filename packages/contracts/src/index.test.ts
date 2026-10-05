@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AvailabilityQuerySchema,
+  AddressSuggestionQuerySchema,
+  AddressSuggestionSchema,
   BookingHoldCreateSchema,
   IdempotencyKeySchema,
   MoneyFenSchema,
@@ -249,6 +251,29 @@ describe("order contracts", () => {
         },
         payableFen: 1,
       }),
+    ).toThrow();
+  });
+});
+
+describe("address suggestion contracts", () => {
+  it("accepts normalized GCJ-02 results and refuses client-selected cities", () => {
+    expect(
+      AddressSuggestionSchema.parse({
+        id: "poi-1",
+        title: "测试楼宇",
+        address: "中原区测试路1号",
+        city: "郑州市",
+        adcode: "410102",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
+      }).adcode,
+    ).toBe("410102");
+    expect(AddressSuggestionQuerySchema.parse({ keyword: " 中原 " })).toEqual({
+      keyword: "中原",
+    });
+    expect(() =>
+      AddressSuggestionQuerySchema.parse({ keyword: "中原", city: "北京" }),
     ).toThrow();
   });
 });

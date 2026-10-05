@@ -12,6 +12,10 @@ Page({
         contactName: "",
         phone: "",
         detail: "",
+        addressSuggestionAvailable: false,
+        serviceCity: "",
+        suggestions: [],
+        suggestionBusy: false,
         busy: false,
         error: "",
         consent: false,
@@ -20,6 +24,7 @@ Page({
         quote: "",
     },
     async onLoad(options) {
+        void this.loadMapConfig();
         try {
             if (!options.slug)
                 throw new Error("缺少服务参数");
@@ -35,6 +40,19 @@ Page({
         }
         catch (error) {
             this.fail(error);
+        }
+    },
+    async loadMapConfig() {
+        try {
+            const config = await (0, api_1.api)("/config/public");
+            this.setData({
+                addressSuggestionAvailable: config.features.addressSuggestionAvailable,
+                serviceCity: config.serviceCity,
+            });
+        }
+        catch {
+            // Address search is an optional enhancement; manual entry remains usable.
+            this.setData({ addressSuggestionAvailable: false });
         }
     },
     fail(error) {
@@ -74,7 +92,47 @@ Page({
         const field = e.currentTarget.dataset.field;
         if (["contactName", "phone", "detail"].includes(field) &&
             !this.data.reservationId)
-            this.setData({ [field]: e.detail.value });
+            this.setData({
+                [field]: e.detail.value,
+                ...(field === "detail" ? { suggestions: [] } : {}),
+            });
+    },
+    async searchAddress() {
+        if (this.data.suggestionBusy ||
+            !this.data.addressSuggestionAvailable ||
+            this.data.reservationId)
+            return;
+        const keyword = this.data.detail.trim();
+        if (keyword.length < 2 || keyword.length > 32) {
+            this.fail(new Error("请输入 2 至 32 个字的地址关键词"));
+            return;
+        }
+        this.setData({ suggestionBusy: true, error: "", suggestions: [] });
+        try {
+            if (!(0, auth_1.getStoredSession)())
+                await (0, auth_1.loginWithWechat)();
+            const suggestions = await (0, api_1.api)(`/locations/address-suggestions?keyword=${encodeURIComponent(keyword)}`);
+            this.setData({ suggestions });
+            if (!suggestions.length)
+                this.fail(new Error("当前服务城市内未找到匹配地址，请继续手填"));
+        }
+        catch (error) {
+            this.fail(error);
+        }
+        finally {
+            this.setData({ suggestionBusy: false });
+        }
+    },
+    selectAddress(e) {
+        if (this.data.reservationId)
+            return;
+        const suggestion = this.data.suggestions[Number(e.currentTarget.dataset.index)];
+        if (!suggestion)
+            return;
+        const detail = `${suggestion.title} ${suggestion.address}`
+            .trim()
+            .slice(0, 200);
+        this.setData({ detail, suggestions: [] });
     },
     consentChanged(e) {
         this.setData({ consent: e.detail.value.includes("agree") });
@@ -130,6 +188,11 @@ Page({
         }
     },
     onUnload() {
-        this.setData({ contactName: "", phone: "", detail: "" });
+        this.setData({
+            contactName: "",
+            phone: "",
+            detail: "",
+            suggestions: [],
+        });
     },
 });

@@ -16,6 +16,7 @@ const EnvSchema = z.object({
       "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
     ),
   BRAND_NAME: z.string().default("中原到家"),
+  SERVICE_CITY: z.string().trim().min(2).max(32).default("郑州市"),
   WECHAT_MINIAPP_APP_ID: z.string().default("wxab76ea213eb6d01a"),
   WECHAT_MINIAPP_SECRET: z.string().default(""),
   WECHAT_OFFICIAL_ACCOUNT_ID: z.string().default("gh_a4b5f9d63539"),

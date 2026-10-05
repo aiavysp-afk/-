@@ -217,6 +217,14 @@ model BrowserLoginRateLimit {
   @@index([expiresAt])
 }
 
+model MapRequestRateLimit {
+  key       String   @id
+  count     Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 model MfaCredential {
   userId              String    @id
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)

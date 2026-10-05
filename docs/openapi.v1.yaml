@@ -493,6 +493,24 @@ paths:
         "401": { description: 未登录或会话失效 }
         "404": { description: 服务不存在或未上架 }
         "409": { description: 时段刚刚被其他请求占用 }
+  /v1/locations/address-suggestions:
+    get:
+      summary: 在服务器配置的服务城市内查询地址提示
+      description: 必须登录；客户端不能指定城市。服务端持久化执行每用户与全局分钟/日配额，地图门禁关闭时不写配额且不外呼。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: keyword
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 32 }
+      responses:
+        "200":
+          description: 最多十条普通 POI；GCJ-02 坐标仅用于辅助填写
+        "400": { description: 关键词无效或包含额外查询参数 }
+        "401": { description: 未登录或会话失效 }
+        "429": { description: 用户或全局地址查询配额已达上限 }
+        "502": { description: 地图渠道响应无效或暂不可用 }
+        "503": { description: 地图渠道、凭据或独立门禁未就绪 }
   /v1/booking-holds/{id}/release:
     post:
       summary: 释放当前用户自己的预约占位
@@ -1506,6 +1524,28 @@ components:
         contactName: { type: string, minLength: 2, maxLength: 40 }
         phone: { type: string, pattern: "^1\\d{10}$" }
         detail: { type: string, minLength: 5, maxLength: 200 }
+    AddressSuggestion:
+      type: object
+      required:
+        [
+          id,
+          title,
+          address,
+          city,
+          adcode,
+          latitude,
+          longitude,
+          coordinateSystem,
+        ]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 128 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        address: { type: string, maxLength: 300 }
+        city: { type: string, minLength: 1, maxLength: 64 }
+        adcode: { type: string, pattern: "^\\d{6}$" }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, enum: [GCJ-02] }
     OrderCreate:
       type: object
       additionalProperties: false

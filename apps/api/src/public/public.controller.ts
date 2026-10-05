@@ -27,7 +27,7 @@ export class PublicController {
           infer: true,
         }),
         operatingMode: nodeEnv === "production" ? "PRODUCTION" : "DEVELOPMENT",
-        serviceCity: "试运营区域",
+        serviceCity: this.config.get("SERVICE_CITY", { infer: true }),
         safetyHotlineAvailable: Boolean(
           this.config.get("SAFETY_HOTLINE", { infer: true }),
         ),
@@ -60,6 +60,12 @@ export class PublicController {
           payment: this.config.get("PAYMENT_PROVIDER", { infer: true }),
           sms: this.config.get("SMS_PROVIDER", { infer: true }),
           map: this.config.get("MAP_PROVIDER", { infer: true }),
+        },
+        features: {
+          addressSuggestionAvailable:
+            this.config.get("MAP_PROVIDER", { infer: true }) === "tencent" &&
+            this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) ===
+              "true",
         },
       },
     };

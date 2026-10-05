@@ -10,6 +10,7 @@ import { PublicController } from "./public/public.controller.js";
 import { SchedulingModule } from "./scheduling/scheduling.module.js";
 import { IntegrationsModule } from "./integrations/integrations.module.js";
 import { SafetyModule } from "./safety/safety.module.js";
+import { LocationsModule } from "./locations/locations.module.js";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SafetyModule } from "./safety/safety.module.js";
     PaymentsModule,
     IntegrationsModule,
     SafetyModule,
+    LocationsModule,
   ],
   controllers: [PublicController],
 })
