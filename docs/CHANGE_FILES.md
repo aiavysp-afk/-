@@ -1,5 +1,7 @@
 # 本次改动文件清单
 
+最新安全通知 Outbox 切片（2026-10-05）：新增第 19 批迁移、租约/退避/死信工作者、阿里云安全短信调度、加密值班号码管理、通知状态/人工复核接口和后台面板；补充 OpenAPI、环境变量、部署、自测与专项说明。核心新增文件：`apps/api/prisma/migrations/20261005090000_safety_notification_outbox/migration.sql`、`apps/api/src/safety/safety-notification.dispatcher.ts`、`apps/api/src/safety/safety-notification.worker.ts`、`apps/api/src/safety/safety-notification.service.ts`、对应单测、`apps/api/scripts/verify-safety-notifications.ts`、`docs/SAFETY_NOTIFICATION_IMPLEMENTATION.md`。修改 Prisma/合约/安全模块、管理端、CI、README 及相关文档。真实发送和经营门禁未开启，不包含手机号或渠道密钥。
+
 最新安全值班界面闭环（2026-10-05）在前一安全事件后端上新增第18批“同一订单唯一未关闭事件”迁移、小程序固定分类/二次确认/幂等重试入口、管理后台主备岗配置及确认/关闭队列、管理员候选人员接口、隔离开发身份和专项脚本。隔离 PostgreSQL 迁移/并发测试及 Codex 内管理员、主岗、备岗真实页面验收通过；角色切换竞态已修复，非管理员不显示内部人员 ID。没有接入真实自动通知、修改服务器生产数据或启用 `SAFETY_DUTY_CONFIRMED`。
 
 本增量主要文件：

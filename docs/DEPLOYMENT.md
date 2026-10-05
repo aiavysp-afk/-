@@ -1,6 +1,6 @@
 # 完整部署步骤与发布门禁
 
-最新安全迁移（2026-10-05）：发布包含 `20261005034000_safety_duty_incidents` 与 `20261005050000_safety_single_active_incident` 的版本前先备份，并在副本执行全部 18 批 migration。部署后先由管理员配置两个不同且有效的 `SAFETY_DUTY` 成员，再在隔离环境完成创建、主岗确认、超时升级、备岗确认和关闭演练。Outbox 消费、积压告警与真人主备响应未完成前，`SAFETY_DUTY_CONFIRMED=false`，不得仅凭接口或数据库测试解除公网经营门禁。详见[安全值班闭环](SAFETY_DUTY_IMPLEMENTATION.md)。
+最新安全迁移（2026-10-05）：发布包含 `20261005034000_safety_duty_incidents`、`20261005050000_safety_single_active_incident` 与 `20261005090000_safety_notification_outbox` 的版本前先备份，并在副本执行全部 19 批 migration。部署后先保持两个安全发送开关为 false，由管理员配置两个不同且有效的 `SAFETY_DUTY` 成员及加密值班号码，再在隔离环境完成事件、主岗通知、超时备岗升级、未知结果人工复核和关闭演练。送达回执/积压告警与真人响应未完成前，`SAFETY_DUTY_CONFIRMED=false`、`SAFETY_NOTIFICATION_DISPATCH_ENABLED=false`，不得仅凭接口、数据库或渠道接受结果解除公网经营门禁。详见[安全通知 Outbox](SAFETY_NOTIFICATION_IMPLEMENTATION.md)。
 
 当前私有运行代码`6411b16`，CI及服务器五流程/6+5脚本测试通过。用户明确核验归属/账号/绑定后复用旧客服URL，三端私有入口可用，安全值班仍未确认；新生产配置实测缺SMS_PROVIDER、MAP_PROVIDER、SAFETY_DUTY_CONFIRMED三项。公网维护503、资金/SMS/地图开关关闭，真机和接通仍待验收；下文缺URL/四项门禁及087代码均为此前历史。
 
@@ -69,7 +69,7 @@ bash scripts/database-init.sh
 
 [MFA基础](STAFF_MFA_IMPLEMENTATION.md)、第15批[浏览器交接](BROWSER_LOGIN_IMPLEMENTATION.md)与第16批[丢失恢复](MFA_RECOVERY_IMPLEMENTATION.md)均已实现。production工作人员权限始终要求当前会话五分钟内的MFA。STAFF_MFA_REQUIRED仅用于非生产显式验收，不能关闭生产门禁。真人微信、独立设备与双人恢复演练仍阻止公开经营；不能使用粘贴token或固定code代替。
 
-按 [环境变量清单](ENV_VARIABLES.md) 创建 `/etc/zhongyuan-daojia/api.env`，密钥只读；`NODE_ENV=production`、`API_HOST=127.0.0.1`、`API_PORT=3210`，所有真实provider、加密密钥、验签材料和热线必须经过核验。`WECHAT_PAY_PREPAY_ENABLED=false`、`WECHAT_PAY_REFUND_ENABLED=false`、`WECHAT_PAY_RECOVERY_ENABLED=false`。生产启动门禁不通过时必须修复缺项，不可改成development来规避。独立私有验收环境可明确使用test/Mock，但只能监听回环地址，不能冒充生产经营版。
+按 [环境变量清单](ENV_VARIABLES.md) 创建 `/etc/zhongyuan-daojia/api.env`，密钥只读；`NODE_ENV=production`、`API_HOST=127.0.0.1`、`API_PORT=3210`，所有真实provider、加密密钥、验签材料和热线必须经过核验。`WECHAT_PAY_PREPAY_ENABLED=false`、`WECHAT_PAY_REFUND_ENABLED=false`、`WECHAT_PAY_RECOVERY_ENABLED=false`、`SMS_SEND_ENABLED=false`、`SAFETY_NOTIFICATION_DISPATCH_ENABLED=false`。生产启动门禁不通过时必须修复缺项，不可改成development来规避。独立私有验收环境可明确使用test/Mock，但只能监听回环地址，不能冒充生产经营版。
 
 生产管理端须先接入正式登录和MFA，目前不能用开发固定code登录生产。两位真实微信用户完成登录后，由企业管理员核验身份，再把UserID填入一次性BOOTSTRAP变量，执行：
 
@@ -99,7 +99,7 @@ pnpm --filter @zydj/api exec tsx scripts/bootstrap-production.ts
 ## 7. 自测、监控与回滚
 
 - 在独立本地 `zhongyuan_daojia_test` 应用完整migration，设置MALL_TEST_DATABASE_URL后执行 `pnpm --filter @zydj/api test:mall`。脚本拒绝远程/生产目标，合成测试记录自动删除；不能替代真机/真实微信资金验收。
-- 监控500/503、退款UNKNOWN/ABNORMAL/CLOSED、恢复attempt12、outbox未处理积压、数据库预算/成功记账一致性、磁盘/证书/备份。当前outbox只是持久化事件，没有投递消费者或自动告警平台，必须人工或运维监控落地后上线。
+- 监控500/503、退款UNKNOWN/ABNORMAL/CLOSED、恢复attempt12、安全通知PENDING/DEAD_LETTER/attempt8、租约过期和数据库预算/成功记账一致性、磁盘/证书/备份。安全通知已有受控消费者和后台状态页，但尚无外部积压告警与送达回执，必须在上线前接入运维告警并完成真人演练。
 - 每日授权财务按组织核对交易账单；账单不可代替退款查单。时区Asia/Shanghai，跨日退款按原单号关联；未核对新金额、部分退款、失败/关闭不得标成功。
 - 回滚先关闭退款开关并停止新交易，保留数据库和待查退款，不删除账簿。只可切回经兼容测试、仍强制工作人员MFA的应用release并重启；禁止生产回滚到不含MFA门禁的旧代码。新增migration不自动降级、不drop表，不删MfaCredential或改计数来解锁。对恢复/校验故障应从备份恢复到独立新库核对，再由管理员决定切换，不能盲目覆盖已发生支付/退款后的在线库。
 
@@ -115,5 +115,6 @@ pnpm --filter @zydj/api exec tsx scripts/bootstrap-production.ts
 - [ ] 真机登录、商品浏览、时段竞争、地址确认、下单、支付、订单、退款到账与对账全部受控验收；生产无mock按钮与接口。
 - [ ] UNKNOWN/异常/关闭及崩溃恢复有明确人工处理责任人，禁止另建退款号；上线监控/告警及outbox消费方案落地。
 - [ ] 安全主岗/备岗为不同自然人；完成主岗超时、备岗接手、真人确认、关闭、公共应急转介和失败回退演练，Outbox送达/重试/积压告警可观测。
+- [ ] 两名值班人员的号码由管理员分别核验并加密录入；阿里云签名/模板变量、受限RAM权限、渠道拒绝、超时未知结果和人工复核均在受控环境验收，渠道接受不记作手机送达。
 - [ ] 开始后、部分退款、争议及用户投诉策略另行批准；本版本自动规则只覆盖开始前剩余额度全退/已记录的迟到支付。
 - [ ] 发布commit、migration版本、验收结果、回滚负责人和维护窗口已登记。

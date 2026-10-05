@@ -5,6 +5,7 @@ import type {
   SafetyDutyStaffView,
   SafetyIncidentClose,
   SafetyIncidentView,
+  SafetyNotificationView,
 } from "@zydj/contracts";
 
 const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -41,6 +42,12 @@ export function SafetyWorkspace({
   const [staff, setStaff] = useState<SafetyDutyStaffView[]>([]);
   const [roster, setRoster] = useState<SafetyDutyRosterView | null>(null);
   const [incidents, setIncidents] = useState<SafetyIncidentView[]>([]);
+  const [notifications, setNotifications] = useState<SafetyNotificationView[]>(
+    [],
+  );
+  const [contactPhones, setContactPhones] = useState<Record<string, string>>(
+    {},
+  );
   const [primaryUserId, setPrimaryUserId] = useState("");
   const [backupUserId, setBackupUserId] = useState("");
   const [timeoutSeconds, setTimeoutSeconds] = useState(120);
@@ -74,6 +81,7 @@ export function SafetyWorkspace({
     setOrganizationId("");
     setRoster(null);
     setIncidents([]);
+    setNotifications([]);
     setStaff([]);
     setError("");
     if (token)
@@ -110,22 +118,27 @@ export function SafetyWorkspace({
     if (!token || !organizationId) return;
     setError("");
     try {
-      const [nextRoster, nextIncidents, nextStaff] = await Promise.all([
-        request<SafetyDutyRosterView | null>(
-          `/admin/organizations/${organizationId}/safety-duty-rosters/current`,
-        ),
-        request<SafetyIncidentView[]>(
-          `/admin/organizations/${organizationId}/safety-incidents`,
-        ),
-        canConfigure
-          ? request<SafetyDutyStaffView[]>(
-              `/admin/organizations/${organizationId}/safety-duty-staff`,
-            )
-          : Promise.resolve([]),
-      ]);
+      const [nextRoster, nextIncidents, nextStaff, nextNotifications] =
+        await Promise.all([
+          request<SafetyDutyRosterView | null>(
+            `/admin/organizations/${organizationId}/safety-duty-rosters/current`,
+          ),
+          request<SafetyIncidentView[]>(
+            `/admin/organizations/${organizationId}/safety-incidents`,
+          ),
+          canConfigure
+            ? request<SafetyDutyStaffView[]>(
+                `/admin/organizations/${organizationId}/safety-duty-staff`,
+              )
+            : Promise.resolve([]),
+          request<SafetyNotificationView[]>(
+            `/admin/organizations/${organizationId}/safety-notifications`,
+          ),
+        ]);
       setRoster(nextRoster);
       setIncidents(nextIncidents);
       setStaff(nextStaff);
+      setNotifications(nextNotifications);
       if (nextRoster) {
         setPrimaryUserId(nextRoster.primaryUserId);
         setBackupUserId(nextRoster.backupUserId);
@@ -215,7 +228,7 @@ export function SafetyWorkspace({
         <span>重要</span>
         <p>
           数据库事件和 Outbox
-          不等于通知送达。自动短信、电话、企微告警尚未启用，值班人员必须同时保持人工渠道在线。
+          不等于通知送达。自动短信默认关闭，只有受控开关、真实值班号码与渠道验收全部通过后才投递；值班人员仍须保持人工渠道在线。
         </p>
       </div>
 
@@ -343,6 +356,59 @@ export function SafetyWorkspace({
         </article>
       )}
 
+      {canConfigure && staff.length > 0 && (
+        <article className="panel safety-contact-card">
+          <h3>值班通知号码</h3>
+          <p>
+            号码只会加密保存，页面不回显原号码；更新后仍需受控短信验收才能开启自动投递。
+          </p>
+          <div className="safety-contact-list">
+            {staff.map((member) => (
+              <div className="safety-contact-row" key={member.userId}>
+                <span>
+                  {member.displayName} ·{" "}
+                  {member.phoneConfigured ? "已配置" : "未配置"}
+                </span>
+                <input
+                  aria-label={`${member.displayName}值班手机号`}
+                  inputMode="numeric"
+                  maxLength={11}
+                  placeholder="输入新的 11 位手机号"
+                  type="password"
+                  value={contactPhones[member.userId] ?? ""}
+                  onChange={(event) =>
+                    setContactPhones((current) => ({
+                      ...current,
+                      [member.userId]: event.target.value.replace(/\D/g, ""),
+                    }))
+                  }
+                />
+                <button
+                  disabled={
+                    !!busy ||
+                    !/^1[3-9]\d{9}$/.test(contactPhones[member.userId] ?? "")
+                  }
+                  onClick={() =>
+                    void perform(`contact-${member.userId}`, async () => {
+                      await request(
+                        `/admin/organizations/${organizationId}/safety-duty-staff/${member.userId}/contact`,
+                        { phone: contactPhones[member.userId] },
+                      );
+                      setContactPhones((current) => ({
+                        ...current,
+                        [member.userId]: "",
+                      }));
+                    })
+                  }
+                >
+                  加密保存
+                </button>
+              </div>
+            ))}
+          </div>
+        </article>
+      )}
+
       {roster && (
         <article className="panel safety-roster-summary">
           <h3>当前活动值班表</h3>
@@ -438,6 +504,59 @@ export function SafetyWorkspace({
           <div className="catalog-empty">当前没有安全事件。</div>
         )}
       </div>
+
+      {token && organizationId && (
+        <article className="panel safety-notification-panel">
+          <h3>通知 Outbox</h3>
+          <p>
+            “渠道已接受”不代表手机已收到；未知结果进入人工复核，系统不会盲目重复发送。
+          </p>
+          <div className="safety-notification-list">
+            {notifications.map((notification) => (
+              <div className="safety-notification-row" key={notification.id}>
+                <div>
+                  <strong>
+                    {notification.type === "SAFETY_INCIDENT_OPENED"
+                      ? "主岗首报"
+                      : "备岗升级"}
+                  </strong>
+                  <span>
+                    {notification.state === "ACCEPTED"
+                      ? "渠道已接受"
+                      : notification.state === "DEAD_LETTER"
+                        ? "需人工复核"
+                        : "等待投递"}
+                  </span>
+                  <small>
+                    尝试 {notification.attempts} 次
+                    {notification.lastErrorCode
+                      ? ` · ${notification.lastErrorCode}`
+                      : ""}
+                  </small>
+                </div>
+                {canConfigure && notification.state === "DEAD_LETTER" && (
+                  <button
+                    disabled={!!busy}
+                    onClick={() =>
+                      void perform(`retry-${notification.id}`, () =>
+                        request(
+                          `/admin/organizations/${organizationId}/safety-notifications/${notification.id}/retry`,
+                          {},
+                        ),
+                      )
+                    }
+                  >
+                    人工复核后重试
+                  </button>
+                )}
+              </div>
+            ))}
+            {!notifications.length && (
+              <div className="catalog-empty">当前没有安全通知记录。</div>
+            )}
+          </div>
+        </article>
+      )}
     </section>
   );
 }

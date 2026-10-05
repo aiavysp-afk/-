@@ -61,9 +61,41 @@ describe("production safety gate", () => {
       MAP_PROVIDER: "tencent",
     });
     expect(env.SMS_SEND_ENABLED).toBe("false");
+    expect(env.SAFETY_NOTIFICATION_DISPATCH_ENABLED).toBe("false");
     expect(env.MAP_GEOCODING_ENABLED).toBe("false");
     expect(() => validateEnv({ SMS_SEND_ENABLED: "yes" })).toThrow();
     expect(() => validateEnv({ MAP_GEOCODING_ENABLED: "yes" })).toThrow();
+    expect(() =>
+      validateEnv({ SAFETY_NOTIFICATION_DISPATCH_ENABLED: "yes" }),
+    ).toThrow();
+  });
+  it("requires an explicit send gate and confirmed duty before automated safety dispatch", () => {
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "test-merchant",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "test-serial",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
+      SMS_PROVIDER: "aliyun",
+      MAP_PROVIDER: "tencent",
+      SAFETY_HOTLINE: "400-000-0000",
+      SAFETY_NOTIFICATION_DISPATCH_ENABLED: "true",
+    };
+    expect(() => validateEnv(raw)).toThrow("SMS_SEND_ENABLED");
+    expect(() => validateEnv({ ...raw, SMS_SEND_ENABLED: "true" })).toThrow(
+      "SAFETY_DUTY_CONFIRMED",
+    );
+    expect(
+      validateEnv({
+        ...raw,
+        SMS_SEND_ENABLED: "true",
+        SAFETY_DUTY_CONFIRMED: "true",
+      }).SAFETY_NOTIFICATION_DISPATCH_ENABLED,
+    ).toBe("true");
   });
   it("rejects provider label substitution without SMS/map credentials in production", () => {
     const raw = {

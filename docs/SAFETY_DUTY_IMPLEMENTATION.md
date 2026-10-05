@@ -19,6 +19,9 @@
 - `POST /v1/admin/organizations/:organizationId/safety-duty-rosters`
 - `GET /v1/admin/organizations/:organizationId/safety-duty-rosters/current`
 - `GET /v1/admin/organizations/:organizationId/safety-duty-staff`（仅管理员选择有效候选人）
+- `POST /v1/admin/organizations/:organizationId/safety-duty-staff/:userId/contact`（管理员加密配置值班号码）
+- `GET /v1/admin/organizations/:organizationId/safety-notifications`
+- `POST /v1/admin/organizations/:organizationId/safety-notifications/:id/retry`（仅管理员人工复核死信）
 - `POST /v1/orders/:orderId/safety-incidents`
 - `GET /v1/orders/:orderId/safety-incidents`
 - `GET /v1/admin/organizations/:organizationId/safety-incidents`
@@ -33,15 +36,17 @@
 2. 并发相同请求依靠唯一索引和请求指纹只保留一条事件、一次 OPENED 事件和一次 Outbox。
 3. 超时扫描每 30 秒运行，多个实例即使同时看到到期记录，也会通过事件行锁和状态条件只升级一次。
 4. 重复确认只对同一确认人幂等；不同人员不能接管已确认事件。关闭同样只允许原确认人。
-5. Outbox 当前仅是可靠持久化边界，尚无短信、电话或企业微信自动投递消费者。API 成功不等于真人已接通，也不能替代公共应急服务。
+5. Outbox 已有租约、并发单领、指数退避、最多 8 次、未知结果死信和人工复核消费者；真实发送由独立默认关闭门禁控制。渠道接受仍不等于手机送达或真人接通，也不能替代公共应急服务。详见[安全通知 Outbox](SAFETY_NOTIFICATION_IMPLEMENTATION.md)。
 
 ## 验证
 
-独立本地 PostgreSQL 17.6 数据库已实际执行全部 18 批迁移，并运行：
+独立本地 PostgreSQL 17.6 数据库已实际执行全部 19 批迁移，并运行：
 
 ```powershell
 $env:SAFETY_TEST_DATABASE_URL='postgresql://zhongyuan:local_only@127.0.0.1:5432/zhongyuan_safety_test?schema=public'
 pnpm --filter @zydj/api test:safety
+$env:SAFETY_NOTIFICATION_TEST_DATABASE_URL=$env:SAFETY_TEST_DATABASE_URL
+pnpm --filter @zydj/api test:safety-notifications
 ```
 
 验证覆盖数据库主备约束、同一订单唯一未关闭事件、并发事件幂等、截止前主岗限制、并发单次升级、升级后备岗限制、并发重复确认、仅确认人关闭、审计及 Outbox。脚本拒绝非本机专用库；CI 仅允许 Actions 自身的隔离测试库，并在结束时清理合成数据。另以隔离库和本地浏览器实测管理员配置、主岗与备岗最小权限视图。
@@ -49,7 +54,7 @@ pnpm --filter @zydj/api test:safety
 ## 上线门禁
 
 - 至少两名不同自然人完成主岗/备岗排班、独立设备登录与交接。
-- Outbox 消费者、送达重试、人工告警面板和积压监控完成；不得把数据库事件写入等同于通知送达。
+- 已完成的 Outbox 消费者仍须接入送达回执/积压告警并完成真实渠道演练；不得把数据库事件或渠道接受等同于通知送达。
 - 演练主岗超时、备岗接手、真人确认、公共应急转介、失败回退和事后审计。
 - `SAFETY_DUTY_CONFIRMED` 继续保持 `false`，直到上述真人和运维闭环验收签字。该变量不是本轮代码的绕过开关。
-- 生产应用第 17、18 批迁移前必须备份并在副本执行；回滚应用时保留新表和所有安全事件，不得删除或手工改状态。
+- 生产应用第 17、18、19 批迁移前必须备份并在副本执行；回滚应用时保留新表、通知记录和所有安全事件，不得删除或手工改状态。

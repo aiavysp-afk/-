@@ -298,6 +298,27 @@ export const SafetyDutyRosterViewSchema = z.object({
 export const SafetyDutyStaffViewSchema = z.object({
   userId: z.string(),
   displayName: z.string(),
+  phoneConfigured: z.boolean(),
+});
+export const SafetyDutyContactUpdateSchema = z
+  .object({ phone: z.string().regex(/^1[3-9]\d{9}$/) })
+  .strict();
+export const SafetyNotificationStateSchema = z.enum([
+  "PENDING",
+  "ACCEPTED",
+  "DEAD_LETTER",
+]);
+export const SafetyNotificationViewSchema = z.object({
+  id: z.string(),
+  incidentId: z.string(),
+  type: z.enum(["SAFETY_INCIDENT_OPENED", "SAFETY_INCIDENT_ESCALATED"]),
+  state: SafetyNotificationStateSchema,
+  attempts: z.number().int().nonnegative(),
+  nextAttemptAt: IsoDateTimeSchema,
+  lastErrorCode: z.string().nullable(),
+  createdAt: IsoDateTimeSchema,
+  publishedAt: IsoDateTimeSchema.nullable(),
+  deadLetteredAt: IsoDateTimeSchema.nullable(),
 });
 
 export const SafetyIncidentCategorySchema = z.enum([
@@ -437,6 +458,15 @@ export type SafetyDutyRosterUpsert = z.infer<
 >;
 export type SafetyDutyRosterView = z.infer<typeof SafetyDutyRosterViewSchema>;
 export type SafetyDutyStaffView = z.infer<typeof SafetyDutyStaffViewSchema>;
+export type SafetyDutyContactUpdate = z.infer<
+  typeof SafetyDutyContactUpdateSchema
+>;
+export type SafetyNotificationState = z.infer<
+  typeof SafetyNotificationStateSchema
+>;
+export type SafetyNotificationView = z.infer<
+  typeof SafetyNotificationViewSchema
+>;
 export type SafetyIncidentCreate = z.infer<typeof SafetyIncidentCreateSchema>;
 export type SafetyIncidentClose = z.infer<typeof SafetyIncidentCloseSchema>;
 export type SafetyIncidentView = z.infer<typeof SafetyIncidentViewSchema>;

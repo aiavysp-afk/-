@@ -594,13 +594,23 @@ model AuditLog {
 }
 
 model OutboxEvent {
-  id          String    @id @default(cuid())
-  aggregateId String
-  type        String
-  payload     Json
-  createdAt   DateTime  @default(now())
-  publishedAt DateTime?
-  attempts    Int       @default(0)
+  id                String    @id @default(cuid())
+  organizationId    String?
+  aggregateId       String
+  type              String
+  payload           Json
+  createdAt         DateTime  @default(now())
+  publishedAt       DateTime?
+  attempts          Int       @default(0)
+  nextAttemptAt     DateTime  @default(now())
+  leaseToken        String?
+  leaseUntil        DateTime?
+  dispatchStartedAt DateTime?
+  lastErrorCode     String?
+  providerReference String?
+  deadLetteredAt    DateTime?
 
   @@index([publishedAt, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([publishedAt, deadLetteredAt, nextAttemptAt, leaseUntil], map: "OutboxEvent_dispatch_idx")
 }

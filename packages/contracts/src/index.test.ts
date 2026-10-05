@@ -10,9 +10,11 @@ import {
   RefundRequestSchema,
   RefundReviewSchema,
   SafetyDutyRosterUpsertSchema,
+  SafetyDutyContactUpdateSchema,
   SafetyIncidentCloseSchema,
   SafetyIncidentCreateSchema,
   SafetyIncidentCustomerViewSchema,
+  SafetyNotificationViewSchema,
   ServiceAdminUpdateSchema,
   ShiftCreateSchema,
   WechatMiniappLoginRequestSchema,
@@ -274,5 +276,39 @@ describe("payment contracts", () => {
         mockConfirmationAvailable: true,
       }),
     ).toThrow();
+  });
+});
+
+describe("safety notification contracts", () => {
+  it("accepts mainland duty contacts and rejects malformed or extra fields", () => {
+    expect(
+      SafetyDutyContactUpdateSchema.parse({ phone: "13800138000" }),
+    ).toEqual({ phone: "13800138000" });
+    expect(() =>
+      SafetyDutyContactUpdateSchema.parse({ phone: "01012345678" }),
+    ).toThrow();
+    expect(() =>
+      SafetyDutyContactUpdateSchema.parse({
+        phone: "13800138000",
+        displayName: "不允许由此接口修改",
+      }),
+    ).toThrow();
+  });
+
+  it("exposes operational state without provider tracking identifiers", () => {
+    const notification = SafetyNotificationViewSchema.parse({
+      id: "outbox-1",
+      incidentId: "incident-1",
+      type: "SAFETY_INCIDENT_OPENED",
+      state: "DEAD_LETTER",
+      attempts: 2,
+      nextAttemptAt: "2026-10-05T09:00:00.000Z",
+      lastErrorCode: "SMS_ACCEPTANCE_UNKNOWN",
+      createdAt: "2026-10-05T08:59:00.000Z",
+      publishedAt: null,
+      deadLetteredAt: "2026-10-05T09:00:01.000Z",
+    });
+    expect(notification.state).toBe("DEAD_LETTER");
+    expect(notification).not.toHaveProperty("providerReference");
   });
 });

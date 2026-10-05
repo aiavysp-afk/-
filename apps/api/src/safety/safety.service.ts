@@ -131,13 +131,14 @@ export class SafetyService {
       },
       select: {
         userId: true,
-        user: { select: { displayName: true } },
+        user: { select: { displayName: true, phoneEncrypted: true } },
       },
       orderBy: { createdAt: "asc" },
     });
     return memberships.map((membership) => ({
       userId: membership.userId,
       displayName: membership.user.displayName,
+      phoneConfigured: Boolean(membership.user.phoneEncrypted),
     }));
   }
 
@@ -256,6 +257,7 @@ export class SafetyService {
         });
         await tx.outboxEvent.create({
           data: {
+            organizationId: lockedOrder.organizationId,
             aggregateId: record.id,
             type: "SAFETY_INCIDENT_OPENED",
             payload: {
@@ -381,6 +383,7 @@ export class SafetyService {
       });
       await tx.outboxEvent.create({
         data: {
+          organizationId,
           aggregateId: incident.id,
           type: "SAFETY_INCIDENT_ACKNOWLEDGED",
           payload: {
@@ -453,6 +456,7 @@ export class SafetyService {
       });
       await tx.outboxEvent.create({
         data: {
+          organizationId,
           aggregateId: incident.id,
           type: "SAFETY_INCIDENT_CLOSED",
           payload: {
@@ -533,6 +537,7 @@ export class SafetyService {
     });
     await tx.outboxEvent.create({
       data: {
+        organizationId: incident.organizationId,
         aggregateId: incident.id,
         type: "SAFETY_INCIDENT_ESCALATED",
         payload: {

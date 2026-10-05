@@ -55,6 +55,10 @@ const EnvSchema = z.object({
   SMS_PROVIDER: z.enum(["mock", "aliyun"]).default("mock"),
   MAP_PROVIDER: z.enum(["mock", "tencent"]).default("mock"),
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
+  // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
+  SAFETY_NOTIFICATION_DISPATCH_ENABLED: z
+    .enum(["false", "true"])
+    .default("false"),
   ALIYUN_SMS_ACCESS_KEY_ID: z.string().default(""),
   ALIYUN_SMS_ACCESS_KEY_SECRET: z.string().default(""),
   ALIYUN_SMS_SECURITY_TOKEN: z.string().default(""),
@@ -229,6 +233,12 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
       }
       if (!/^SMS_[A-Za-z0-9]+$/.test(env.ALIYUN_SMS_TEMPLATE_CODE))
         invalid.push("ALIYUN_SMS_TEMPLATE_CODE");
+    }
+    if (env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true") {
+      if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
+      if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
+      if (env.SAFETY_DUTY_CONFIRMED !== "true")
+        invalid.push("SAFETY_DUTY_CONFIRMED");
     }
     if (env.MAP_PROVIDER === "tencent") {
       for (const key of [

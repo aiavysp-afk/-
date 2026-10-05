@@ -10,6 +10,7 @@ import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import { AuthService } from "../auth/auth.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { SafetyController } from "./safety.controller.js";
+import { SafetyNotificationService } from "./safety-notification.service.js";
 import { SafetyService } from "./safety.service.js";
 
 const principal: AuthPrincipal = {
@@ -47,11 +48,17 @@ const service = {
   }),
   close: vi.fn(),
 };
+const notifications = {
+  updateDutyContact: vi.fn(),
+  list: vi.fn().mockResolvedValue([]),
+  retry: vi.fn(),
+};
 
 @Module({
   controllers: [SafetyController],
   providers: [
     { provide: SafetyService, useValue: service },
+    { provide: SafetyNotificationService, useValue: notifications },
     {
       provide: AuthService,
       useValue: {
@@ -78,7 +85,10 @@ describe("Safety HTTP boundary", () => {
     Object.assign(app.get(SessionAuthGuard), {
       auth: { authenticate: vi.fn().mockResolvedValue(principal) },
     });
-    Object.assign(app.get(SafetyController), { safety: service });
+    Object.assign(app.get(SafetyController), {
+      safety: service,
+      notifications,
+    });
     await app.getHttpAdapter().getInstance().ready();
   });
   afterAll(async () => {

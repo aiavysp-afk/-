@@ -1002,6 +1002,67 @@ paths:
       responses:
         "200": { description: 有效候选人列表 }
         "403": { description: 无组织身份管理权限 }
+  /v1/admin/organizations/{organizationId}/safety-duty-staff/{userId}/contact:
+    post:
+      summary: 管理员配置安全值班人员短信号码
+      description: 号码仅在服务端加密保存；接口和后续列表只返回是否已配置，不回显号码。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - { in: path, name: userId, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SafetyDutyContactUpdate" }
+      responses:
+        "201": { description: 联系号码已加密保存 }
+        "403": { description: 无组织身份管理权限 }
+        "404": { description: 不是本组织有效安全值班人员 }
+  /v1/admin/organizations/{organizationId}/safety-notifications:
+    get:
+      summary: 读取安全事件通知Outbox状态
+      description: 渠道接受不等于手机送达；不返回号码、模板内容或渠道跟踪标识。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200":
+          description: 最多200条本组织安全通知状态
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SafetyNotificationView" }
+        "403": { description: 无本组织安全响应权限 }
+  /v1/admin/organizations/{organizationId}/safety-notifications/{id}/retry:
+    post:
+      summary: 管理员人工复核后重试死信安全通知
+      description: 只允许重置DEAD_LETTER；已被渠道接受或仍在等待的通知不能重发。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "201": { description: 通知已回到等待投递状态并写入审计 }
+        "403": { description: 无组织身份管理权限 }
+        "404": { description: 通知不存在或不属于本组织 }
+        "409": { description: 通知不是可人工重试的死信状态 }
   /v1/orders/{orderId}/safety-incidents:
     parameters:
       - { in: path, name: orderId, required: true, schema: { type: string } }
@@ -1189,10 +1250,47 @@ components:
         createdAt: { type: string, format: date-time }
     SafetyDutyStaffView:
       type: object
-      required: [userId, displayName]
+      required: [userId, displayName, phoneConfigured]
       properties:
         userId: { type: string }
         displayName: { type: string }
+        phoneConfigured: { type: boolean }
+    SafetyDutyContactUpdate:
+      type: object
+      additionalProperties: false
+      required: [phone]
+      properties:
+        phone: { type: string, pattern: "^1[3-9][0-9]{9}$", writeOnly: true }
+    SafetyNotificationView:
+      type: object
+      required:
+        [
+          id,
+          incidentId,
+          type,
+          state,
+          attempts,
+          nextAttemptAt,
+          lastErrorCode,
+          createdAt,
+          publishedAt,
+          deadLetteredAt,
+        ]
+      properties:
+        id: { type: string }
+        incidentId: { type: string }
+        type:
+          {
+            type: string,
+            enum: [SAFETY_INCIDENT_OPENED, SAFETY_INCIDENT_ESCALATED],
+          }
+        state: { type: string, enum: [PENDING, ACCEPTED, DEAD_LETTER] }
+        attempts: { type: integer, minimum: 0 }
+        nextAttemptAt: { type: string, format: date-time }
+        lastErrorCode: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        publishedAt: { type: [string, "null"], format: date-time }
+        deadLetteredAt: { type: [string, "null"], format: date-time }
     SafetyIncidentCategory:
       type: string
       enum: [PERSONAL_SAFETY, MEDICAL_CONCERN, SERVICE_DISPUTE, OTHER_URGENT]

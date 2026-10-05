@@ -152,8 +152,14 @@ function fixture(options?: { dueAt?: Date; status?: SafetyIncidentStatus }) {
     },
     staffMembership: {
       findMany: vi.fn(async () => [
-        { userId: primary.userId, user: { displayName: "Primary" } },
-        { userId: backup.userId, user: { displayName: "Backup" } },
+        {
+          userId: primary.userId,
+          user: { displayName: "Primary", phoneEncrypted: "encrypted-phone" },
+        },
+        {
+          userId: backup.userId,
+          user: { displayName: "Backup", phoneEncrypted: null },
+        },
       ]),
     },
     safetyDutyRoster: {
@@ -243,8 +249,16 @@ describe("SafetyService", () => {
         organizationId,
       ),
     ).resolves.toEqual([
-      { userId: primary.userId, displayName: "Primary" },
-      { userId: backup.userId, displayName: "Backup" },
+      {
+        userId: primary.userId,
+        displayName: "Primary",
+        phoneConfigured: true,
+      },
+      {
+        userId: backup.userId,
+        displayName: "Backup",
+        phoneConfigured: false,
+      },
     ]);
     expect(f.access.assertPermission).toHaveBeenCalledWith(
       expect.anything(),

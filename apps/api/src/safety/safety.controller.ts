@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import {
   IdempotencyKeySchema,
+  SafetyDutyContactUpdateSchema,
   SafetyDutyRosterUpsertSchema,
   SafetyIncidentCloseSchema,
   SafetyIncidentCreateSchema,
@@ -18,11 +19,15 @@ import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { SafetyService } from "./safety.service.js";
+import { SafetyNotificationService } from "./safety-notification.service.js";
 
 @Controller()
 @UseGuards(SessionAuthGuard)
 export class SafetyController {
-  constructor(private readonly safety: SafetyService) {}
+  constructor(
+    private readonly safety: SafetyService,
+    private readonly notifications: SafetyNotificationService,
+  ) {}
 
   @Post("admin/organizations/:organizationId/safety-duty-rosters")
   async configureRoster(
@@ -62,6 +67,45 @@ export class SafetyController {
       organizationId,
     );
     return { data, meta: { total: data.length } };
+  }
+
+  @Post("admin/organizations/:organizationId/safety-duty-staff/:userId/contact")
+  async updateDutyContact(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("userId") userId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = SafetyDutyContactUpdateSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("值班联系电话格式无效");
+    return {
+      data: await this.notifications.updateDutyContact(
+        principal,
+        organizationId,
+        userId,
+        parsed.data,
+      ),
+    };
+  }
+
+  @Get("admin/organizations/:organizationId/safety-notifications")
+  async listNotifications(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+  ) {
+    const data = await this.notifications.list(principal, organizationId);
+    return { data, meta: { total: data.length } };
+  }
+
+  @Post("admin/organizations/:organizationId/safety-notifications/:id/retry")
+  async retryNotification(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("id") id: string,
+  ) {
+    return {
+      data: await this.notifications.retry(principal, organizationId, id),
+    };
   }
 
   @Post("orders/:orderId/safety-incidents")

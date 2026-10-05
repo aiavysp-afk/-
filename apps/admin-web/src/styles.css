@@ -770,6 +770,8 @@ h1 {
 }
 .safety-roster-card,
 .safety-roster-summary,
+.safety-contact-card,
+.safety-notification-panel,
 .safety-incident {
   padding: 22px;
   margin-top: 18px;
@@ -819,6 +821,37 @@ h1 {
   justify-content: center;
   gap: 10px;
 }
+.safety-contact-list,
+.safety-notification-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.safety-contact-row,
+.safety-notification-row {
+  align-items: center;
+  background: rgba(247, 244, 235, 0.72);
+  border: 1px solid rgba(32, 82, 69, 0.12);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(160px, 1fr) minmax(190px, 1fr) auto;
+  padding: 14px;
+}
+.safety-contact-row input {
+  min-width: 0;
+}
+.safety-notification-row {
+  grid-template-columns: 1fr auto;
+}
+.safety-notification-row > div {
+  display: grid;
+  gap: 4px;
+}
+.safety-notification-row span,
+.safety-notification-row small {
+  color: #68776f;
+}
 @media (max-width: 980px) {
   .safety-roster-form {
     grid-template-columns: 1fr;
@@ -828,5 +861,9 @@ h1 {
   }
   .safety-incident-actions {
     min-width: 0;
+  }
+  .safety-contact-row,
+  .safety-notification-row {
+    grid-template-columns: 1fr;
   }
 }
