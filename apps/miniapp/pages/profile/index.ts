@@ -9,6 +9,7 @@ import {
   openWecomCustomerService,
   callEmergencyDuty,
 } from "../../utils/customer-service";
+import { syncCustomTabBar } from "../../utils/tab-bar";
 
 // These are public merchant contact channels, not credentials. Keeping a
 // compile-time fallback makes emergency/contact access survive API maintenance.
@@ -43,6 +44,7 @@ Page({
       this.setData({ loggedIn: true, displayName: session.user.displayName });
   },
   async onShow() {
+    syncCustomTabBar(this, 4);
     // Public, compile-time safety channels remain available during API maintenance.
     // Any successful server response is authoritative and replaces this fallback.
     this.setData({

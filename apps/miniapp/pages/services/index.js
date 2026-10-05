@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
+const tab_bar_1 = require("../../utils/tab-bar");
 Page({
     data: {
         categories: ["全部", "按摩舒缓", "SPA 放松", "足部养护"],
@@ -12,6 +13,7 @@ Page({
         showEmptyServices: false,
     },
     async onShow() {
+        (0, tab_bar_1.syncCustomTabBar)(this, 1);
         await this.load();
     },
     async load() {

@@ -72,6 +72,8 @@ function fixture({ selected = 0, confirm = true, postFails = false } = {}) {
           getStoredSession: () => ({ accessToken: "fixture" }),
           loginWithWechat: async () => ({}),
         };
+      if (name === "../../utils/tab-bar")
+        return { syncCustomTabBar() {} };
       throw new Error(`Unexpected dependency ${name}`);
     },
   });

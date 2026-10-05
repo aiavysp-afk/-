@@ -7,6 +7,7 @@ import type {
 } from "@zydj/contracts";
 import { api, money, newKey, shanghaiTime } from "../../utils/api";
 import { getStoredSession, loginWithWechat } from "../../utils/auth";
+import { syncCustomTabBar } from "../../utils/tab-bar";
 type Row = OrderView & {
   price: string;
   time: string;
@@ -40,6 +41,7 @@ Page({
     showEmptyOrders: false,
   },
   async onShow() {
+    syncCustomTabBar(this, 3);
     await this.load();
   },
   async login() {

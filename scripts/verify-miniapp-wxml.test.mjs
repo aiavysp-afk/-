@@ -26,6 +26,12 @@ test("every source WXML binding has no HTML-escaped operators and parses", () =>
     );
     checkBindings(source);
   }
+  checkBindings(
+    readFileSync(
+      new URL("../apps/miniapp/custom-tab-bar/index.wxml", import.meta.url),
+      "utf8",
+    ),
+  );
 });
 test("guard catches the reported escaped AND regression but allows ordinary text entities", () => {
   assert.throws(() =>
@@ -204,4 +210,86 @@ test("compiled miniapp points real-device previews at the configured HTTPS API",
     assert.match(source, /https:\/\/api\.mtsc\.top\/v1/);
     assert.doesNotMatch(source, /localhost|127\.0\.0\.1|http:\/\//);
   }
+});
+
+test("all miniapp buttons resolve to handlers and all navigator targets are registered", () => {
+  const app = JSON.parse(
+    readFileSync(new URL("../apps/miniapp/app.json", import.meta.url), "utf8"),
+  );
+  const registered = new Set(app.pages.map((page) => `/${page}`));
+  const tabPages = new Set(app.tabBar.list.map((item) => `/${item.pagePath}`));
+  assert.equal(app.tabBar.custom, true);
+  assert.deepEqual([...tabPages], [
+    "/pages/home/index",
+    "/pages/services/index",
+    "/pages/therapists/index",
+    "/pages/orders/index",
+    "/pages/profile/index",
+  ]);
+
+  for (const pagePath of app.pages) {
+    const directory = pagePath.replace(/^pages\//, "").replace(/\/index$/, "");
+    const source = readFileSync(
+      new URL(`../apps/miniapp/pages/${directory}/index.wxml`, import.meta.url),
+      "utf8",
+    );
+    const page = loadPage(`../apps/miniapp/pages/${directory}/index.js`);
+    for (const match of source.matchAll(
+      /\b(?:bind|catch)(?:tap|change|input)="([A-Za-z_$][\w$]*)"/g,
+    )) {
+      assert.equal(
+        typeof page[match[1]],
+        "function",
+        `${pagePath} is missing handler ${match[1]}`,
+      );
+    }
+    for (const match of source.matchAll(/<navigator\b[^>]*\burl="([^"?]+)[^"]*"/g)) {
+      assert.ok(
+        registered.has(match[1]),
+        `${pagePath} navigates to unregistered page ${match[1]}`,
+      );
+      const tag = match[0];
+      if (/open-type="switchTab"/.test(tag))
+        assert.ok(
+          tabPages.has(match[1]),
+          `${pagePath} switchTab target is not a tab page: ${match[1]}`,
+        );
+    }
+  }
+});
+
+test("custom tab bar matches app configuration and routes every item", () => {
+  let component;
+  const previous = globalThis.Component;
+  globalThis.Component = (options) => {
+    component = options;
+  };
+  try {
+    delete require.cache[
+      require.resolve("../apps/miniapp/custom-tab-bar/index.js")
+    ];
+    require("../apps/miniapp/custom-tab-bar/index.js");
+  } finally {
+    globalThis.Component = previous;
+  }
+  assert.equal(component.data.list.length, 5);
+  const routed = [];
+  const previousWx = globalThis.wx;
+  globalThis.wx = { switchTab: ({ url }) => routed.push(url) };
+  try {
+    for (let index = 0; index < component.data.list.length; index += 1) {
+      const context = {
+        data: { ...component.data, selected: index === 0 ? 4 : index - 1 },
+      };
+      component.methods.switchTab.call(context, {
+        currentTarget: { dataset: { index } },
+      });
+    }
+  } finally {
+    globalThis.wx = previousWx;
+  }
+  assert.deepEqual(
+    routed,
+    component.data.list.map((item) => item.pagePath),
+  );
 });

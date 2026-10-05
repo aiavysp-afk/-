@@ -1,6 +1,7 @@
 import type { PublicConfig, ServiceItem } from "@zydj/contracts";
 import { api, money } from "../../utils/api";
 import { openWecomCustomerService } from "../../utils/customer-service";
+import { syncCustomTabBar } from "../../utils/tab-bar";
 
 type HomeService = ServiceItem & {
   duration: string;
@@ -24,6 +25,7 @@ Page({
     customerService: CUSTOMER_SERVICE_FALLBACK,
   },
   async onShow() {
+    syncCustomTabBar(this, 0);
     await Promise.all([this.loadServices(), this.loadPublicConfig()]);
   },
   async loadServices() {

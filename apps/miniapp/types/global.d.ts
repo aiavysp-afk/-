@@ -2,6 +2,7 @@ declare function App<T extends object>(options: T): void;
 declare function Page<T extends object>(
   options: T & ThisType<T & { setData(data: Record<string, unknown>): void }>,
 ): void;
+declare function Component<T extends object>(options: T): void;
 declare function getApp<T extends object>(): T;
 declare const wx: {
   openCustomerServiceChat?(options: {

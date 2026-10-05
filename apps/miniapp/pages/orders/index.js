@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
+const tab_bar_1 = require("../../utils/tab-bar");
 const safetyCategories = [
     { label: "人身安全风险", value: "PERSONAL_SAFETY" },
     { label: "身体不适或医疗顾虑", value: "MEDICAL_CONCERN" },
@@ -24,6 +25,7 @@ Page({
         showEmptyOrders: false,
     },
     async onShow() {
+        (0, tab_bar_1.syncCustomTabBar)(this, 3);
         await this.load();
     },
     async login() {

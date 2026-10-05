@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
 const customer_service_1 = require("../../utils/customer-service");
+const tab_bar_1 = require("../../utils/tab-bar");
 const CUSTOMER_SERVICE_FALLBACK = {
     provider: "wecom",
     available: true,
@@ -17,6 +18,7 @@ Page({
         customerService: CUSTOMER_SERVICE_FALLBACK,
     },
     async onShow() {
+        (0, tab_bar_1.syncCustomTabBar)(this, 0);
         await Promise.all([this.loadServices(), this.loadPublicConfig()]);
     },
     async loadServices() {

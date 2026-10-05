@@ -1,4 +1,6 @@
 "use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const tab_bar_1 = require("../../utils/tab-bar");
 Page({
     data: {
         standards: [
@@ -19,6 +21,9 @@ Page({
                 detail: "仅提供公示的非医疗养生放松服务，拒绝违法违规要求。",
             },
         ],
+    },
+    onShow() {
+        (0, tab_bar_1.syncCustomTabBar)(this, 2);
     },
     openServices() {
         wx.switchTab({ url: "/pages/services/index" });

@@ -148,6 +148,8 @@ async function fixture({
             getStoredSession: () => session,
             loginWithWechat: async () => session,
           };
+        if (name === "../../utils/tab-bar")
+          return { syncCustomTabBar() {} };
         throw new Error("Unexpected compiled page dependency");
       },
     },

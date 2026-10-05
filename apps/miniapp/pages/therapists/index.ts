@@ -1,3 +1,5 @@
+import { syncCustomTabBar } from "../../utils/tab-bar";
+
 Page({
   data: {
     standards: [
@@ -18,6 +20,9 @@ Page({
         detail: "仅提供公示的非医疗养生放松服务，拒绝违法违规要求。",
       },
     ],
+  },
+  onShow() {
+    syncCustomTabBar(this, 2);
   },
   openServices() {
     wx.switchTab({ url: "/pages/services/index" });

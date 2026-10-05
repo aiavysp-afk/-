@@ -1,5 +1,6 @@
 import type { ServiceItem } from "@zydj/contracts";
 import { api, money } from "../../utils/api";
+import { syncCustomTabBar } from "../../utils/tab-bar";
 type Card = ServiceItem & { price: string };
 Page({
   data: {
@@ -12,6 +13,7 @@ Page({
     showEmptyServices: false,
   },
   async onShow() {
+    syncCustomTabBar(this, 1);
     await this.load();
   },
   async load() {

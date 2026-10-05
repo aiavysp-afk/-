@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
 const api_1 = require("../../utils/api");
 const customer_service_1 = require("../../utils/customer-service");
+const tab_bar_1 = require("../../utils/tab-bar");
 // These are public merchant contact channels, not credentials. Keeping a
 // compile-time fallback makes emergency/contact access survive API maintenance.
 // A successful public-config response remains authoritative and replaces them.
@@ -33,6 +34,7 @@ Page({
             this.setData({ loggedIn: true, displayName: session.user.displayName });
     },
     async onShow() {
+        (0, tab_bar_1.syncCustomTabBar)(this, 4);
         // Public, compile-time safety channels remain available during API maintenance.
         // Any successful server response is authoritative and replaces this fallback.
         this.setData({
