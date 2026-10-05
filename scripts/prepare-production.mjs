@@ -130,8 +130,13 @@ const env = {
   WECHAT_PAY_REFUND_ENABLED: "false",
   WECHAT_PAY_RECOVERY_ENABLED: "false",
   SMS_PROVIDER: "mock",
+  SMS_SEND_ENABLED: "false",
+  SAFETY_NOTIFICATION_DISPATCH_ENABLED: "false",
+  SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "false",
   MAP_PROVIDER: "mock",
+  MAP_GEOCODING_ENABLED: "false",
   SAFETY_HOTLINE: "",
+  SAFETY_DUTY_CONFIRMED: "false",
 };
 if (env.WECHAT_MINIAPP_APP_ID !== "wxab76ea213eb6d01a")
   throw Error("Miniapp identity changed");
