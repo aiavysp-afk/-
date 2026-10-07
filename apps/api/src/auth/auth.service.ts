@@ -1,7 +1,10 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IdentityProvider, MembershipStatus, UserRole } from "@prisma/client";
-import type { AuthSession } from "@zydj/contracts";
+import type {
+  AuthSession,
+  WechatPhoneVerificationResult,
+} from "@zydj/contracts";
 import type { AppEnv } from "../config/env.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
@@ -95,11 +98,42 @@ export class AuthService {
       user: {
         id: result.id,
         displayName: result.displayName,
+        phoneVerified: Boolean(
+          result.phoneEncrypted && result.phoneVerifiedAt,
+        ),
         memberships: result.memberships.map((membership) => ({
           organizationId: membership.organizationId,
           role: membership.role,
         })),
       },
+    };
+  }
+
+  async verifyWechatPhone(
+    principal: AuthPrincipal,
+    code: string,
+  ): Promise<WechatPhoneVerificationResult> {
+    const { phoneNumber } = await this.wechat.exchangePhoneCode(code);
+    const phoneEncrypted = this.crypto.encrypt(phoneNumber);
+    const phoneVerifiedAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: principal.userId },
+        data: { phoneEncrypted, phoneVerifiedAt },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          actorId: principal.userId,
+          action: "AUTH_WECHAT_PHONE_VERIFIED",
+          resourceType: "User",
+          resourceId: principal.userId,
+          metadata: { provider: IdentityProvider.WECHAT_MINIAPP },
+        },
+      }),
+    ]);
+    return {
+      phoneVerified: true,
+      maskedPhone: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-4)}`,
     };
   }
 

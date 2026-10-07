@@ -83,6 +83,19 @@ export class OrdersService {
     );
     if (existing) return this.replay(existing, requestFingerprint);
 
+    const customer = await this.prisma.user.findUnique({
+      where: { id: principal.userId },
+      select: { phoneEncrypted: true, phoneVerifiedAt: true, status: true },
+    });
+    if (
+      !customer ||
+      customer.status !== "ACTIVE" ||
+      !customer.phoneEncrypted ||
+      !customer.phoneVerifiedAt
+    ) {
+      throw new ForbiddenException("请先完成微信手机号验证");
+    }
+
     const now = new Date();
     const paymentExpiresAt = new Date(now.getTime() + PAYMENT_WINDOW_MS);
     const addressEncrypted = this.crypto.encrypt(

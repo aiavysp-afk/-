@@ -181,11 +181,37 @@ describe("production safety gate", () => {
       "ALIYUN_SMS_ACCESS_KEY_ID",
       "ALIYUN_SMS_ACCESS_KEY_SECRET",
       "ALIYUN_SMS_SIGN_NAME",
-      "ALIYUN_SMS_TEMPLATE_CODE",
       "AMAP_MINIAPP_KEY",
       "AMAP_WEB_SERVICE_KEY",
     ])
       expect(() => validateEnv(raw)).toThrow(field);
+  });
+  it("requires the dedicated approved template before enabling SMS phone verification", () => {
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "test-merchant",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "test-serial",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
+      SMS_PROVIDER: "aliyun",
+      SMS_SEND_ENABLED: "true",
+      PHONE_VERIFICATION_SMS_ENABLED: "true",
+      MAP_PROVIDER: "amap",
+      SAFETY_HOTLINE: "400-000-0000",
+    };
+    expect(() => validateEnv(raw)).toThrow(
+      "ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE",
+    );
+    expect(
+      validateEnv({
+        ...raw,
+        ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: "SMS_512625587",
+      }).PHONE_VERIFICATION_SMS_ENABLED,
+    ).toBe("true");
   });
   it("keeps original-order recovery independently opt-in", () => {
     expect(

@@ -8,7 +8,12 @@ import type {
   SafetyIncidentCustomerView,
 } from "@zydj/contracts";
 import { api, money, newKey, shanghaiTime } from "../../utils/api";
-import { getStoredSession, loginWithWechat } from "../../utils/auth";
+import {
+  getStoredSession,
+  goToPhoneVerification,
+  loginWithWechat,
+  needsPhoneVerification,
+} from "../../utils/auth";
 import { syncCustomTabBar } from "../../utils/tab-bar";
 type Row = OrderView & {
   price: string;
@@ -51,6 +56,7 @@ Page({
     busy: "",
     error: "",
     loggedIn: false,
+    phoneVerified: false,
     showEmptyOrders: false,
   },
   async onShow() {
@@ -59,7 +65,12 @@ Page({
   },
   async login() {
     try {
-      await loginWithWechat();
+      const session = await loginWithWechat();
+      if (needsPhoneVerification(session)) {
+        this.setData({ loggedIn: true, phoneVerified: false });
+        goToPhoneVerification();
+        return;
+      }
       await this.load();
     } catch (error) {
       this.fail(error);
@@ -71,15 +82,22 @@ Page({
     });
   },
   async load() {
-    const loggedIn = !!getStoredSession();
+    const session = getStoredSession();
+    const loggedIn = Boolean(session);
+    const phoneVerified = session?.user.phoneVerified === true;
     this.setData({
       loggedIn,
+      phoneVerified,
       loading: loggedIn,
       error: "",
       orders: [],
       showEmptyOrders: false,
     });
     if (!loggedIn) return;
+    if (!phoneVerified) {
+      this.setData({ error: "请先完成手机号验证后查看订单" });
+      return;
+    }
     try {
       const orders = await api<OrderView[]>("/orders");
       const rows = await Promise.all(
@@ -146,6 +164,9 @@ Page({
           loggedIn && !this.data.error && this.data.orders.length === 0,
       });
     }
+  },
+  verifyPhone() {
+    goToPhoneVerification();
   },
   async action(e: {
     currentTarget: { dataset: { id: string; action: string } };

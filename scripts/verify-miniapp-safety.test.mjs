@@ -69,8 +69,13 @@ function fixture({ selected = 0, confirm = true, postFails = false } = {}) {
         };
       if (name === "../../utils/auth")
         return {
-          getStoredSession: () => ({ accessToken: "fixture" }),
+          getStoredSession: () => ({
+            accessToken: "fixture",
+            user: { phoneVerified: true },
+          }),
           loginWithWechat: async () => ({}),
+          needsPhoneVerification: () => false,
+          goToPhoneVerification() {},
         };
       if (name === "../../utils/tab-bar")
         return { syncCustomTabBar() {} };

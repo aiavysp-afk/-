@@ -129,36 +129,38 @@ model Organization {
 }
 
 model User {
-  id                      String                   @id @default(cuid())
-  organizationId          String?
-  organization            Organization?            @relation(fields: [organizationId], references: [id])
-  role                    UserRole
-  displayName             String
-  phoneEncrypted          String?
-  status                  String                   @default("ACTIVE")
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  identities              ExternalIdentity[]
-  sessions                Session[]
-  memberships             StaffMembership[]
-  mfaCredential           MfaCredential?
-  customerOrders          Order[]                  @relation("CustomerOrders")
-  therapistOrders         Order[]                  @relation("TherapistOrders")
-  therapistShifts         TherapistShift[]         @relation("TherapistShifts")
-  customerReservations    AppointmentReservation[] @relation("CustomerReservations")
-  therapistReservations   AppointmentReservation[] @relation("TherapistReservations")
-  requestedMfaRecoveries  MfaRecoveryRequest[]     @relation("MfaRecoveryTarget")
-  reviewedMfaRecoveries   MfaRecoveryRequest[]     @relation("MfaRecoveryReviewer")
-  createdSafetyRosters    SafetyDutyRoster[]       @relation("SafetyRosterCreator")
-  primarySafetyRosters    SafetyDutyRoster[]       @relation("SafetyRosterPrimary")
-  backupSafetyRosters     SafetyDutyRoster[]       @relation("SafetyRosterBackup")
-  reportedSafetyIncidents SafetyIncident[]         @relation("SafetyIncidentReporter")
-  primarySafetyIncidents  SafetyIncident[]         @relation("SafetyIncidentPrimary")
-  backupSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentBackup")
-  acknowledgedIncidents   SafetyIncident[]         @relation("SafetyIncidentAcknowledger")
-  closedSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentCloser")
-  addressVerifications    AddressVerification[]
-  technicianLocation      TechnicianLocation?
+  id                          String                       @id @default(cuid())
+  organizationId              String?
+  organization                Organization?                @relation(fields: [organizationId], references: [id])
+  role                        UserRole
+  displayName                 String
+  phoneEncrypted              String?
+  phoneVerifiedAt             DateTime?
+  status                      String                       @default("ACTIVE")
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  identities                  ExternalIdentity[]
+  sessions                    Session[]
+  memberships                 StaffMembership[]
+  mfaCredential               MfaCredential?
+  customerOrders              Order[]                      @relation("CustomerOrders")
+  therapistOrders             Order[]                      @relation("TherapistOrders")
+  therapistShifts             TherapistShift[]             @relation("TherapistShifts")
+  customerReservations        AppointmentReservation[]     @relation("CustomerReservations")
+  therapistReservations       AppointmentReservation[]     @relation("TherapistReservations")
+  requestedMfaRecoveries      MfaRecoveryRequest[]         @relation("MfaRecoveryTarget")
+  reviewedMfaRecoveries       MfaRecoveryRequest[]         @relation("MfaRecoveryReviewer")
+  createdSafetyRosters        SafetyDutyRoster[]           @relation("SafetyRosterCreator")
+  primarySafetyRosters        SafetyDutyRoster[]           @relation("SafetyRosterPrimary")
+  backupSafetyRosters         SafetyDutyRoster[]           @relation("SafetyRosterBackup")
+  reportedSafetyIncidents     SafetyIncident[]             @relation("SafetyIncidentReporter")
+  primarySafetyIncidents      SafetyIncident[]             @relation("SafetyIncidentPrimary")
+  backupSafetyIncidents       SafetyIncident[]             @relation("SafetyIncidentBackup")
+  acknowledgedIncidents       SafetyIncident[]             @relation("SafetyIncidentAcknowledger")
+  closedSafetyIncidents       SafetyIncident[]             @relation("SafetyIncidentCloser")
+  addressVerifications        AddressVerification[]
+  phoneVerificationChallenges PhoneVerificationChallenge[]
+  technicianLocation          TechnicianLocation?
 }
 
 model ExternalIdentity {
@@ -220,6 +222,35 @@ model BrowserLoginRateLimit {
 }
 
 model MapRequestRateLimit {
+  key       String   @id
+  count     Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+model PhoneVerificationChallenge {
+  id                String    @id
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneHash         String
+  phoneEncrypted    String
+  codeHash          String
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  providerRequestId String?
+  providerBizId     String?
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([phoneHash, createdAt])
+  @@index([status, expiresAt])
+}
+
+model PhoneVerificationRateLimit {
   key       String   @id
   count     Int
   expiresAt DateTime

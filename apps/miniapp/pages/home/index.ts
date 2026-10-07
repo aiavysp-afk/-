@@ -1,6 +1,5 @@
 import type { PublicConfig, ServiceItem } from "@zydj/contracts";
 import { api, money } from "../../utils/api";
-import { openWecomCustomerService } from "../../utils/customer-service";
 import { syncCustomTabBar } from "../../utils/tab-bar";
 
 type HomeService = ServiceItem & {
@@ -9,20 +8,12 @@ type HomeService = ServiceItem & {
   tone: "sage" | "tea" | "clay";
 };
 
-const CUSTOMER_SERVICE_FALLBACK: PublicConfig["customerService"] = {
-  provider: "wecom",
-  available: true,
-  corpId: "ww715e0d876d9f3cb4",
-  url: "https://work.weixin.qq.com/kfid/kfca6852bf5e57656af",
-};
-
 Page({
   data: {
     services: [] as HomeService[],
     loading: false,
     error: "",
     serviceCity: "郑州市",
-    customerService: CUSTOMER_SERVICE_FALLBACK,
   },
   async onShow() {
     syncCustomTabBar(this, 0);
@@ -49,15 +40,11 @@ Page({
     }
   },
   async loadPublicConfig() {
-    this.setData({ customerService: CUSTOMER_SERVICE_FALLBACK });
     try {
       const config = await api<PublicConfig>("/config/public");
-      this.setData({
-        serviceCity: config.serviceCity,
-        customerService: config.customerService,
-      });
+      this.setData({ serviceCity: config.serviceCity });
     } catch {
-      // The verified public customer-service fallback remains usable during API maintenance.
+      // The city fallback remains visible while the public API is unavailable.
     }
   },
   chooseAddress() {
@@ -72,8 +59,5 @@ Page({
     wx.navigateTo({
       url: `/pages/booking/index?slug=${encodeURIComponent(slug)}`,
     });
-  },
-  callSupport() {
-    openWecomCustomerService(this.data.customerService);
   },
 });

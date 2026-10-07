@@ -21,7 +21,12 @@ const order = {
 const session = {
   accessToken: "synthetic-fixture-token",
   expiresAt: "2099-01-01T00:00:00Z",
-  user: { id: "fixture-customer", displayName: "Fixture", memberships: [] },
+  user: {
+    id: "fixture-customer",
+    displayName: "Fixture",
+    phoneVerified: true,
+    memberships: [],
+  },
 };
 const parameters = {
   timeStamp: "1791091200",
@@ -147,6 +152,8 @@ async function fixture({
           return {
             getStoredSession: () => session,
             loginWithWechat: async () => session,
+            needsPhoneVerification: () => false,
+            goToPhoneVerification() {},
           };
         if (name === "../../utils/tab-bar")
           return { syncCustomTabBar() {} };

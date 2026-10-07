@@ -154,6 +154,13 @@ describe("OrdersService", () => {
     };
     const prisma = {
       order: { findUnique: vi.fn().mockResolvedValue(null) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          phoneEncrypted: "encrypted-phone",
+          phoneVerifiedAt: new Date("2026-10-03T00:00:00.000Z"),
+          status: "ACTIVE",
+        }),
+      },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
         callback(tx),
       ),
@@ -183,6 +190,28 @@ describe("OrdersService", () => {
     expect(tx.outboxEvent.create).toHaveBeenCalledOnce();
     expect(crypto.encrypt).toHaveBeenCalledOnce();
     expect(locations.assertOrderVerification).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a new order until the customer verifies a WeChat phone number", async () => {
+    const prisma = {
+      order: { findUnique: vi.fn().mockResolvedValue(null) },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          phoneEncrypted: null,
+          phoneVerifiedAt: null,
+          status: "ACTIVE",
+        }),
+      },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+    await expect(
+      service.create(principal, input, "order-unverified-customer"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("returns the same order for an identical idempotent replay", async () => {

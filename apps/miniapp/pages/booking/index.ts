@@ -9,7 +9,12 @@ import type {
   ServiceItem,
 } from "@zydj/contracts";
 import { api, money, newKey, shanghaiTime } from "../../utils/api";
-import { getStoredSession, loginWithWechat } from "../../utils/auth";
+import {
+  getStoredSession,
+  goToPhoneVerification,
+  loginWithWechat,
+  needsPhoneVerification,
+} from "../../utils/auth";
 import {
   getGcj02Location,
   reverseGeocode,
@@ -44,11 +49,16 @@ Page({
     orderKey: "",
     quote: "",
     loggedIn: false,
+    phoneVerified: false,
     loginBusy: false,
     loginError: "",
   },
   async onLoad(options: { slug?: string }) {
-    this.setData({ loggedIn: Boolean(getStoredSession()) });
+    const session = getStoredSession();
+    this.setData({
+      loggedIn: Boolean(session),
+      phoneVerified: session?.user.phoneVerified === true,
+    });
     void this.loadMapConfig();
     try {
       if (!options.slug) throw new Error("缺少服务参数");
@@ -67,13 +77,24 @@ Page({
       this.fail(error);
     }
   },
+  onShow() {
+    const session = getStoredSession();
+    this.setData({
+      loggedIn: Boolean(session),
+      phoneVerified: session?.user.phoneVerified === true,
+    });
+  },
   async login() {
     if (this.data.loginBusy || this.data.loggedIn) return;
     this.setData({ loginBusy: true, loginError: "" });
     try {
-      await loginWithWechat();
-      this.setData({ loggedIn: true });
+      const session = await loginWithWechat();
+      this.setData({
+        loggedIn: true,
+        phoneVerified: session.user.phoneVerified === true,
+      });
       wx.showToast({ title: "登录成功", icon: "success" });
+      if (needsPhoneVerification(session)) goToPhoneVerification();
     } catch (error) {
       this.setData({
         loginError: error instanceof Error ? error.message : "微信登录失败",
@@ -241,9 +262,18 @@ Page({
     }
     this.setData({ busy: true, error: "" });
     try {
-      if (!getStoredSession()) {
-        await loginWithWechat();
-        this.setData({ loggedIn: true, loginError: "" });
+      let session = getStoredSession();
+      if (!session) {
+        session = await loginWithWechat();
+        this.setData({
+          loggedIn: true,
+          phoneVerified: session.user.phoneVerified === true,
+          loginError: "",
+        });
+      }
+      if (needsPhoneVerification(session)) {
+        goToPhoneVerification();
+        return;
       }
       if (!this.data.reservationId) {
         const hold = await api<BookingHold>("/booking-holds", "POST", {

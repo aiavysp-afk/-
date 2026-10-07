@@ -706,6 +706,34 @@ export const WechatMiniappLoginRequestSchema = z.object({
   code: z.string().trim().min(1).max(128),
 });
 
+export const WechatPhoneVerificationRequestSchema = z.object({
+  code: z.string().trim().min(1).max(128),
+});
+
+export const WechatPhoneVerificationResultSchema = z.object({
+  phoneVerified: z.literal(true),
+  maskedPhone: z.string().regex(/^1\d{2}\*{4}\d{4}$/),
+});
+
+export const SmsPhoneVerificationRequestSchema = z
+  .object({
+    phone: z.string().regex(/^1[3-9]\d{9}$/),
+  })
+  .strict();
+
+export const SmsPhoneVerificationConfirmSchema = z
+  .object({
+    phone: z.string().regex(/^1[3-9]\d{9}$/),
+    code: z.string().regex(/^\d{4,6}$/),
+  })
+  .strict();
+
+export const SmsPhoneVerificationRequestResultSchema = z.object({
+  status: z.enum(["ACCEPTED", "UNKNOWN"]),
+  expiresAt: IsoDateTimeSchema,
+  retryAfterSeconds: z.number().int().positive(),
+});
+
 export const UserRoleSchema = z.enum([
   "CUSTOMER",
   "THERAPIST",
@@ -725,6 +753,7 @@ export const AuthMembershipSchema = z.object({
 export const AuthUserSchema = z.object({
   id: z.string(),
   displayName: z.string(),
+  phoneVerified: z.boolean(),
   memberships: z.array(AuthMembershipSchema),
 });
 
@@ -866,6 +895,21 @@ export type SafetyIncidentCustomerView = z.infer<
 export type PublicConfig = z.infer<typeof PublicConfigSchema>;
 export type WechatMiniappLoginRequest = z.infer<
   typeof WechatMiniappLoginRequestSchema
+>;
+export type WechatPhoneVerificationRequest = z.infer<
+  typeof WechatPhoneVerificationRequestSchema
+>;
+export type WechatPhoneVerificationResult = z.infer<
+  typeof WechatPhoneVerificationResultSchema
+>;
+export type SmsPhoneVerificationRequest = z.infer<
+  typeof SmsPhoneVerificationRequestSchema
+>;
+export type SmsPhoneVerificationConfirm = z.infer<
+  typeof SmsPhoneVerificationConfirmSchema
+>;
+export type SmsPhoneVerificationRequestResult = z.infer<
+  typeof SmsPhoneVerificationRequestResultSchema
 >;
 export type MfaRecoveryStatus = z.infer<typeof MfaRecoveryStatusSchema>;
 export type MfaRecoveryRejectionCode = z.infer<

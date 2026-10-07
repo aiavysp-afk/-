@@ -6,6 +6,7 @@
     "pages/orders/index",
     "pages/profile/index",
     "pages/booking/index",
+    "pages/phone-verification/index",
     "pages/admin-login/index",
     "pages/mfa-recovery/index"
   ],

@@ -56,6 +56,10 @@ const EnvSchema = z.object({
   SMS_PROVIDER: z.enum(["none", "mock", "aliyun"]).default("mock"),
   MAP_PROVIDER: z.enum(["mock", "amap"]).default("mock"),
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
+  // Independent fallback gate for login/phone-binding verification codes.
+  PHONE_VERIFICATION_SMS_ENABLED: z
+    .enum(["false", "true"])
+    .default("false"),
   // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
   SAFETY_NOTIFICATION_DISPATCH_ENABLED: z
     .enum(["false", "true"])
@@ -69,6 +73,7 @@ const EnvSchema = z.object({
   ALIYUN_SMS_SECURITY_TOKEN: z.string().default(""),
   ALIYUN_SMS_SIGN_NAME: z.string().default(""),
   ALIYUN_SMS_TEMPLATE_CODE: z.string().default(""),
+  ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: z.string().default(""),
   MAP_GEOCODING_ENABLED: z.enum(["false", "true"]).default("false"),
   SERVICE_AREA_ADCODE_ALLOWLIST: z.string().default(""),
   AMAP_MINIAPP_KEY: z.string().default(""),
@@ -225,6 +230,7 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     if (
       env.SMS_PROVIDER === "none" &&
       (env.SMS_SEND_ENABLED === "true" ||
+        env.PHONE_VERIFICATION_SMS_ENABLED === "true" ||
         env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true" ||
         env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED === "true")
     )
@@ -266,12 +272,22 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
       ] as const) {
         if (!env[key].trim() || /[\r\n]/.test(env[key])) invalid.push(key);
       }
-      if (!/^SMS_[A-Za-z0-9]+$/.test(env.ALIYUN_SMS_TEMPLATE_CODE))
-        invalid.push("ALIYUN_SMS_TEMPLATE_CODE");
+    }
+    if (env.PHONE_VERIFICATION_SMS_ENABLED === "true") {
+      if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
+      if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
+      if (
+        !/^SMS_[A-Za-z0-9]+$/.test(
+          env.ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE,
+        )
+      )
+        invalid.push("ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE");
     }
     if (env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true") {
       if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
       if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
+      if (!/^SMS_[A-Za-z0-9]+$/.test(env.ALIYUN_SMS_TEMPLATE_CODE))
+        invalid.push("ALIYUN_SMS_TEMPLATE_CODE");
       if (env.SAFETY_DUTY_CONFIRMED !== "true")
         invalid.push("SAFETY_DUTY_CONFIRMED");
     }

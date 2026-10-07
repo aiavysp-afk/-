@@ -1,21 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
-const customer_service_1 = require("../../utils/customer-service");
 const tab_bar_1 = require("../../utils/tab-bar");
-const CUSTOMER_SERVICE_FALLBACK = {
-    provider: "wecom",
-    available: true,
-    corpId: "ww715e0d876d9f3cb4",
-    url: "https://work.weixin.qq.com/kfid/kfca6852bf5e57656af",
-};
 Page({
     data: {
         services: [],
         loading: false,
         error: "",
         serviceCity: "郑州市",
-        customerService: CUSTOMER_SERVICE_FALLBACK,
     },
     async onShow() {
         (0, tab_bar_1.syncCustomTabBar)(this, 0);
@@ -44,16 +36,12 @@ Page({
         }
     },
     async loadPublicConfig() {
-        this.setData({ customerService: CUSTOMER_SERVICE_FALLBACK });
         try {
             const config = await (0, api_1.api)("/config/public");
-            this.setData({
-                serviceCity: config.serviceCity,
-                customerService: config.customerService,
-            });
+            this.setData({ serviceCity: config.serviceCity });
         }
         catch {
-            // The verified public customer-service fallback remains usable during API maintenance.
+            // The city fallback remains visible while the public API is unavailable.
         }
     },
     chooseAddress() {
@@ -69,8 +57,5 @@ Page({
         wx.navigateTo({
             url: `/pages/booking/index?slug=${encodeURIComponent(slug)}`,
         });
-    },
-    callSupport() {
-        (0, customer_service_1.openWecomCustomerService)(this.data.customerService);
     },
 });

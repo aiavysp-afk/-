@@ -1,19 +1,36 @@
 <view class="page">
-  <view class="hero">
-    <view class="nav">
-      <view class="brand"><text>中</text><view><text class="brand-name">中原到家</text><text class="brand-sub">生活养护服务</text></view></view>
-      <button bindtap="callSupport">客服</button>
-    </view>
-    <view class="location" bindtap="chooseAddress"><text class="pin">⌖</text><view><text class="location-label">服务范围</text><text class="location-value">{{serviceCity}}全域</text></view><text>›</text></view>
-    <view class="hero-copy"><text class="eyebrow">WELLNESS AT HOME</text><text class="title serif">让专业的放松，</text><text class="title serif">如约抵达</text><text class="desc">正规上门按摩 · 透明价格 · 平台审核</text><button bindtap="bookNow">立即预约 <text>→</text></button></view>
-    <view class="zen-art"><view class="sun"/><view class="leaf l1"/><view class="leaf l2"/><view class="stone s1"/><view class="stone s2"/></view>
+  <view class="topbar">
+    <view class="brand"><view class="brand-mark">中</view><view><text>中原到家</text><text>正规上门养护服务</text></view></view>
+    <button class="top-support" open-type="contact" show-message-card session-from="home-header"><text>◌</text><text>客服</text></button>
   </view>
-  <view class="service-area"><text>郑州全域服务</text><view>具体地址与可约时段以下单页实时结果为准</view></view>
-  <view class="promises"><view><text>净</text><view class="promise-name">规范洁净</view><view class="promise-desc">用品一客一换</view></view><view><text>审</text><view class="promise-name">平台审核</view><view class="promise-desc">资料后台核验</view></view><view><text>明</text><view class="promise-name">价格透明</view><view class="promise-desc">下单前明细确认</view></view><view><text>护</text><view class="promise-name">双向安全</view><view class="promise-desc">异常及时留痕</view></view></view>
-  <view class="section-head"><view><text class="serif">精选服务</text><view class="section-desc">为忙碌生活留一段松弛</view></view><navigator url="/pages/services/index" open-type="switchTab">全部服务 ›</navigator></view>
+  <view class="hero">
+    <view class="hero-content">
+      <view class="location" bindtap="chooseAddress"><text class="pin">⌖</text><text>{{serviceCity}}全域服务</text><text>›</text></view>
+      <text class="hero-kicker">CARE · RELAX · HOME</text>
+      <text class="hero-title">让专业放松</text><text class="hero-title">如约到家</text>
+      <text class="hero-desc">按摩舒缓 · SPA放松 · 足部养护</text>
+      <button class="hero-action" bindtap="bookNow">立即预约 <text>›</text></button>
+    </view>
+    <view class="hero-art"><view class="halo"/><view class="massage-line line-a"/><view class="massage-line line-b"/><view class="massage-stone stone-a"/><view class="massage-stone stone-b"/><view class="leaf leaf-a"/><view class="leaf leaf-b"/></view>
+  </view>
+  <view class="quick-grid">
+    <navigator url="/pages/services/index" open-type="switchTab"><view class="quick-icon mint">✦</view><text>选服务</text></navigator>
+    <navigator url="/pages/therapists/index" open-type="switchTab"><view class="quick-icon peach">人</view><text>看审核</text></navigator>
+    <navigator url="/pages/orders/index" open-type="switchTab"><view class="quick-icon lime">▤</view><text>查订单</text></navigator>
+    <button open-type="contact" show-message-card session-from="home-quick"><view class="quick-icon blue">•••</view><text>在线客服</text></button>
+  </view>
+  <view class="assurance">
+    <view><text class="assurance-icon">✓</text><text>平台核验</text></view><view><text class="assurance-icon">¥</text><text>价格透明</text></view><view><text class="assurance-icon">盾</text><text>服务留痕</text></view><view><text class="assurance-icon">洁</text><text>规范洁净</text></view>
+  </view>
+  <view class="section-head"><view><text class="section-title">精选服务</text><text class="section-desc">为忙碌生活留一段松弛</text></view><navigator url="/pages/services/index" open-type="switchTab">更多 ›</navigator></view>
   <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
-  <view wx:if="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="loadServices">重试</button></view>
-  <scroll-view wx:if="{{services.length}}" class="service-scroll" scroll-x enhanced show-scrollbar="{{false}}"><view class="service-row"><view wx:for="{{services}}" wx:key="id" class="service-card {{item.tone}}" data-slug="{{item.slug}}" bindtap="bookService"><view class="service-art"><view class="ring"/><view class="bowl"/><text>{{item.badge || '安心服务'}}</text></view><view class="service-body"><text class="service-name serif">{{item.name}}</text><text class="service-sub">{{item.subtitle}}</text><view class="service-meta"><text>{{item.duration}}</text><view><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">起</text></view></view></view></view></view></scroll-view>
-  <view class="team-note"><text class="serif">服务人员按真实排班安排</text><view>平台不展示未经授权的姓名、证件或实时位置；进入预约页查看可约时段。</view><navigator url="/pages/therapists/index" open-type="switchTab">了解审核标准 ›</navigator></view>
-  <view class="boundary"><text class="seal">正</text><view><text class="boundary-title">正规服务边界</text><text>中原到家仅提供非医疗养生放松服务，拒绝任何违法违规或超出公示范围的要求。</text></view></view><view class="safe-bottom"/>
+  <view wx:if="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="loadServices">重新加载</button></view>
+  <view wx:if="{{services.length}}" class="service-list">
+    <view wx:for="{{services}}" wx:key="id" class="service-card" data-slug="{{item.slug}}" bindtap="bookService">
+      <view class="service-visual {{item.tone}}"><view class="visual-orbit"/><view class="visual-stone"/><text>{{item.badge || '安心到家'}}</text></view>
+      <view class="service-main"><view class="service-heading"><text>{{item.name}}</text><text>可预约</text></view><text class="service-sub">{{item.subtitle}}</text><view class="service-bottom"><view><text>{{item.duration}}</text><text><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">起</text></text></view><button>去下单</button></view></view>
+    </view>
+  </view>
+  <view class="boundary"><view class="boundary-badge">正</view><view><text>正规服务边界</text><text>仅提供公示的非医疗养生放松服务，拒绝任何违法违规要求。</text></view></view>
+  <view class="safe-bottom" />
 </view>

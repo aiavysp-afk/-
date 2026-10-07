@@ -24,6 +24,34 @@ test("production miniapp targets the new mtsc API", () => {
   );
 });
 
+test("first login exposes native phone authorization with an isolated SMS fallback", () => {
+  const app = JSON.parse(
+    readFileSync(new URL("../apps/miniapp/app.json", import.meta.url), "utf8"),
+  );
+  const page = readFileSync(
+    new URL(
+      "../apps/miniapp/pages/phone-verification/index.wxml",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const auth = readFileSync(
+    new URL("../apps/miniapp/utils/auth.js", import.meta.url),
+    "utf8",
+  );
+  const home = readFileSync(
+    new URL("../apps/miniapp/pages/home/index.wxml", import.meta.url),
+    "utf8",
+  );
+  assert.ok(app.pages.includes("pages/phone-verification/index"));
+  assert.match(page, /open-type="getPhoneNumber"/);
+  assert.match(page, /bindtap="requestSmsCode"/);
+  assert.match(page, /bindtap="confirmSmsCode"/);
+  assert.match(auth, /auth\/sms-phone\/request/);
+  assert.match(auth, /auth\/sms-phone\/confirm/);
+  assert.match(home, /open-type="contact"/);
+});
+
 test("service, WeChat login and order submission stay on the customer flow", async () => {
   const calls = [];
   const storage = new Map();
@@ -68,8 +96,9 @@ test("service, WeChat login and order submission stay on the customer flow", asy
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           user: {
             id: "customer-1",
-            role: "CUSTOMER",
             displayName: "\u5fae\u4fe1\u7528\u6237",
+            phoneVerified: true,
+            memberships: [],
           },
         },
         "/booking-holds": {

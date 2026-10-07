@@ -16,6 +16,8 @@ describe("AuthService", () => {
             id: "user-1",
             status: "ACTIVE",
             displayName: "微信用户",
+            phoneEncrypted: null,
+            phoneVerifiedAt: null,
             memberships: [],
           },
         }),
@@ -61,5 +63,46 @@ describe("AuthService", () => {
     );
     expect(JSON.stringify(result)).not.toContain("openid-from-wechat");
     expect(JSON.stringify(result)).not.toContain("identity-hash");
+    expect(result.user.phoneVerified).toBe(false);
+  });
+
+  it("stores an encrypted WeChat phone number without writing the plaintext to audit metadata", async () => {
+    const auditCreate = vi.fn().mockResolvedValue({ id: "audit-1" });
+    const prisma = {
+      user: { update: vi.fn().mockResolvedValue({ id: "user-1" }) },
+      auditLog: { create: auditCreate },
+      $transaction: vi.fn().mockResolvedValue([]),
+    } as unknown as PrismaService;
+    const crypto = {
+      encrypt: vi.fn().mockReturnValue("encrypted-phone"),
+    } as unknown as AuthCryptoService;
+    const wechat = {
+      exchangePhoneCode: vi
+        .fn()
+        .mockResolvedValue({ phoneNumber: "13800138000" }),
+    } as unknown as WechatMiniappClient;
+    const auth = new AuthService(
+      prisma,
+      crypto,
+      wechat,
+      new ConfigService({}) as ConfigService<AppEnv, true>,
+    );
+    const result = await auth.verifyWechatPhone(
+      {
+        sessionId: "session-1",
+        userId: "user-1",
+        displayName: "微信用户",
+        memberships: [],
+      },
+      "phone-code",
+    );
+    expect(result).toEqual({
+      phoneVerified: true,
+      maskedPhone: "138****8000",
+    });
+    expect(crypto.encrypt).toHaveBeenCalledWith("13800138000");
+    expect(JSON.stringify(auditCreate.mock.calls)).not.toContain(
+      "13800138000",
+    );
   });
 });

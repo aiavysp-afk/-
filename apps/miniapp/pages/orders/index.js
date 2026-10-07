@@ -29,6 +29,7 @@ Page({
         busy: "",
         error: "",
         loggedIn: false,
+        phoneVerified: false,
         showEmptyOrders: false,
     },
     async onShow() {
@@ -37,7 +38,12 @@ Page({
     },
     async login() {
         try {
-            await (0, auth_1.loginWithWechat)();
+            const session = await (0, auth_1.loginWithWechat)();
+            if ((0, auth_1.needsPhoneVerification)(session)) {
+                this.setData({ loggedIn: true, phoneVerified: false });
+                (0, auth_1.goToPhoneVerification)();
+                return;
+            }
             await this.load();
         }
         catch (error) {
@@ -50,9 +56,12 @@ Page({
         });
     },
     async load() {
-        const loggedIn = !!(0, auth_1.getStoredSession)();
+        const session = (0, auth_1.getStoredSession)();
+        const loggedIn = Boolean(session);
+        const phoneVerified = (session === null || session === void 0 ? void 0 : session.user.phoneVerified) === true;
         this.setData({
             loggedIn,
+            phoneVerified,
             loading: loggedIn,
             error: "",
             orders: [],
@@ -60,6 +69,10 @@ Page({
         });
         if (!loggedIn)
             return;
+        if (!phoneVerified) {
+            this.setData({ error: "请先完成手机号验证后查看订单" });
+            return;
+        }
         try {
             const orders = await (0, api_1.api)("/orders");
             const rows = await Promise.all(orders.map(async (order) => {
@@ -120,6 +133,9 @@ Page({
                 showEmptyOrders: loggedIn && !this.data.error && this.data.orders.length === 0,
             });
         }
+    },
+    verifyPhone() {
+        (0, auth_1.goToPhoneVerification)();
     },
     async action(e) {
         var _a;

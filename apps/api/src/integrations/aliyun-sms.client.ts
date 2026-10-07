@@ -59,6 +59,46 @@ export class AliyunSmsClient {
     parameters: Record<string, string>;
     trackingId: string;
   }): Promise<SmsSubmission> {
+    return this.sendWithTemplate(
+      input,
+      this.config.get("ALIYUN_SMS_TEMPLATE_CODE", { infer: true }),
+    );
+  }
+
+  // Login/phone-binding fallback only. The template is selected from a dedicated
+  // environment variable so it cannot be accidentally reused for safety alerts.
+  async submitPhoneVerification(input: {
+    phone: string;
+    code: string;
+    trackingId: string;
+  }): Promise<SmsSubmission> {
+    if (
+      this.config.get("PHONE_VERIFICATION_SMS_ENABLED", { infer: true }) !==
+      "true"
+    )
+      throw new ServiceUnavailableException("短信手机号验证门禁未开启");
+    if (!/^\d{4,6}$/.test(input.code))
+      throw new BadRequestException("短信验证码参数无效");
+    return this.sendWithTemplate(
+      {
+        phone: input.phone,
+        parameters: { code: input.code },
+        trackingId: input.trackingId,
+      },
+      this.config.get("ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE", {
+        infer: true,
+      }),
+    );
+  }
+
+  private async sendWithTemplate(
+    input: {
+      phone: string;
+      parameters: Record<string, string>;
+      trackingId: string;
+    },
+    template: string,
+  ): Promise<SmsSubmission> {
     if (
       this.config.get("SMS_PROVIDER", { infer: true }) !== "aliyun" ||
       this.config.get("SMS_SEND_ENABLED", { infer: true }) !== "true"
@@ -79,9 +119,6 @@ export class AliyunSmsClient {
       infer: true,
     });
     const signName = this.config.get("ALIYUN_SMS_SIGN_NAME", { infer: true });
-    const template = this.config.get("ALIYUN_SMS_TEMPLATE_CODE", {
-      infer: true,
-    });
     if (
       !accessKeyId.trim() ||
       !accessKeySecret.trim() ||

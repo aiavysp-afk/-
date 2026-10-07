@@ -4,6 +4,8 @@ declare function Page<T extends object>(
 ): void;
 declare function Component<T extends object>(options: T): void;
 declare function getApp<T extends object>(): T;
+declare function setInterval(handler: () => void, timeout?: number): number;
+declare function clearInterval(handle: number): void;
 declare const wx: {
   getLocation(options: {
     type: "gcj02";
@@ -42,6 +44,7 @@ declare const wx: {
     fail(error: { errMsg: string }): void;
   }): void;
   navigateTo(options: { url: string }): void;
+  navigateBack(options?: { delta?: number }): void;
   switchTab(options: { url: string }): void;
   showModal(options: {
     title: string;

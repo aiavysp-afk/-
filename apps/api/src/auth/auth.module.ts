@@ -12,8 +12,11 @@ import { BrowserLoginService } from "./browser-login.service.js";
 import { BrowserLoginController } from "./browser-login.controller.js";
 import { MfaRecoveryController } from "./mfa-recovery.controller.js";
 import { MfaRecoveryService } from "./mfa-recovery.service.js";
+import { IntegrationsModule } from "../integrations/integrations.module.js";
+import { PhoneVerificationSmsService } from "./phone-verification-sms.service.js";
 
 @Module({
+  imports: [IntegrationsModule],
   controllers: [
     AuthController,
     AuditController,
@@ -30,6 +33,7 @@ import { MfaRecoveryService } from "./mfa-recovery.service.js";
     WechatMiniappClient,
     SessionAuthGuard,
     AccessControlService,
+    PhoneVerificationSmsService,
   ],
   exports: [
     AuthService,

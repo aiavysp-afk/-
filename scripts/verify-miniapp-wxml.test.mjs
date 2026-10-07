@@ -84,7 +84,7 @@ async function host(callback, request, session) {
 const session = {
   accessToken: "synthetic-token",
   expiresAt: "2099-01-01T00:00:00Z",
-  user: { id: "fixture-user" },
+  user: { id: "fixture-user", phoneVerified: true },
 };
 test("compiled orders empty state is hidden until a successful authenticated empty response", async () => {
   await host(

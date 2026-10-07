@@ -1,7 +1,9 @@
 import {
   clearStoredSession,
+  goToPhoneVerification,
   getStoredSession,
   loginWithWechat,
+  needsPhoneVerification,
 } from "../../utils/auth";
 import { api } from "../../utils/api";
 import type { OrderView, PublicConfig } from "@zydj/contracts";
@@ -30,6 +32,7 @@ const PUBLIC_CONTACT_FALLBACK = {
 Page({
   data: {
     loggedIn: false,
+    phoneVerified: false,
     loggingIn: false,
     displayName: "微信用户",
     stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
@@ -41,10 +44,20 @@ Page({
   onLoad() {
     const session = getStoredSession();
     if (session)
-      this.setData({ loggedIn: true, displayName: session.user.displayName });
+      this.setData({
+        loggedIn: true,
+        phoneVerified: session.user.phoneVerified === true,
+        displayName: session.user.displayName,
+      });
   },
   async onShow() {
     syncCustomTabBar(this, 4);
+    const session = getStoredSession();
+    this.setData({
+      loggedIn: Boolean(session),
+      phoneVerified: session?.user.phoneVerified === true,
+      displayName: session?.user.displayName ?? "微信用户",
+    });
     // Public, compile-time safety channels remain available during API maintenance.
     // Any successful server response is authoritative and replaces this fallback.
     this.setData({
@@ -60,7 +73,7 @@ Page({
     } catch {
       /* Unconfigured/unreachable is shown explicitly by the tap handler. */
     }
-    if (getStoredSession()) await this.loadStats();
+    if (session) await this.loadStats();
   },
   async loadStats() {
     try {
@@ -101,11 +114,16 @@ Page({
       const session = await loginWithWechat();
       this.setData({
         loggedIn: true,
+        phoneVerified: session.user.phoneVerified === true,
         loggingIn: false,
         displayName: session.user.displayName,
       });
-      await this.loadStats();
       wx.showToast({ title: "登录成功", icon: "success" });
+      if (needsPhoneVerification(session)) {
+        goToPhoneVerification();
+        return;
+      }
+      await this.loadStats();
     } catch (error) {
       this.setData({ loggingIn: false });
       wx.showToast({
@@ -113,6 +131,9 @@ Page({
         icon: "none",
       });
     }
+  },
+  verifyPhone() {
+    goToPhoneVerification();
   },
   openAdminLogin() {
     wx.navigateTo({ url: "/pages/admin-login/index" });
@@ -130,6 +151,7 @@ Page({
     clearStoredSession();
     this.setData({
       loggedIn: false,
+      phoneVerified: false,
       displayName: "微信用户",
       stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
     });

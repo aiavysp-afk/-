@@ -71,4 +71,66 @@ describe("WeChat first-factor backend exchange", () => {
       });
     }
   });
+
+  it("exchanges a one-time phone code through the official API", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ access_token: "short-lived-token", expires_in: 7200 }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            phone_info: {
+              purePhoneNumber: "13800138000",
+              watermark: { appid: "wx-test" },
+            },
+          }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    const result = await client().exchangePhoneCode("phone-code");
+    expect(result).toEqual({ phoneNumber: "13800138000" });
+    const phoneRequest = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(phoneRequest[0].origin + phoneRequest[0].pathname).toBe(
+      "https://api.weixin.qq.com/wxa/business/getuserphonenumber",
+    );
+    expect(phoneRequest[1].body).toBe(JSON.stringify({ code: "phone-code" }));
+  });
+
+  it("uses a fixed local phone in mock mode without contacting WeChat", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    await expect(client("mock").exchangePhoneCode("code")).resolves.toEqual({
+      phoneNumber: "13800138000",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed phone results and mismatched watermark appids", async () => {
+    for (const phoneBody of [
+      { phone_info: { purePhoneNumber: "123" } },
+      {
+        phone_info: {
+          purePhoneNumber: "13800138000",
+          watermark: { appid: "wx-other" },
+        },
+      },
+    ]) {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ access_token: "token", expires_in: 7200 }),
+          ),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify(phoneBody)));
+      vi.stubGlobal("fetch", fetcher);
+      await expect(client().exchangePhoneCode("code")).rejects.toMatchObject({
+        status: 401,
+      });
+    }
+  });
 });

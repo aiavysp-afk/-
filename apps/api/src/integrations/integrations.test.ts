@@ -11,11 +11,13 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
     validateEnv({
       SMS_PROVIDER: "aliyun",
       SMS_SEND_ENABLED: "true",
+      PHONE_VERIFICATION_SMS_ENABLED: "true",
       SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "true",
       ALIYUN_SMS_ACCESS_KEY_ID: "test-id",
       ALIYUN_SMS_ACCESS_KEY_SECRET: "test-secret",
       ALIYUN_SMS_SIGN_NAME: "测试签名",
       ALIYUN_SMS_TEMPLATE_CODE: "SMS_test123",
+      ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: "SMS_phone123",
       MAP_PROVIDER: "amap",
       MAP_GEOCODING_ENABLED: "true",
       SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
@@ -146,6 +148,40 @@ describe("SMS internal submission", () => {
     expect(options.headers.authorization).toMatch(/^ACS3-HMAC-SHA256 /);
     expect(options.signal).toBeInstanceOf(AbortSignal);
     expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it("uses the isolated phone-verification template and exact code variable", async () => {
+    fetcher.mockResolvedValue(
+      json({ Code: "OK", RequestId: "phone-request", BizId: "phone-biz" }),
+    );
+    await expect(
+      new AliyunSmsClient(config()).submitPhoneVerification({
+        phone: "13800138000",
+        code: "123456",
+        trackingId: "phone-tracking",
+      }),
+    ).resolves.toEqual({
+      status: "ACCEPTED",
+      requestId: "phone-request",
+      bizId: "phone-biz",
+    });
+    const [url] = fetcher.mock.calls[0]!;
+    const target = new URL(url);
+    expect(target.searchParams.get("TemplateCode")).toBe("SMS_phone123");
+    expect(JSON.parse(target.searchParams.get("TemplateParam")!)).toEqual({
+      code: "123456",
+    });
+  });
+  it("keeps the phone-verification gate independent from general SMS sending", async () => {
+    await expect(
+      new AliyunSmsClient(
+        config({ PHONE_VERIFICATION_SMS_ENABLED: "false" }),
+      ).submitPhoneVerification({
+        phone: "13800138000",
+        code: "123456",
+        trackingId: "phone-tracking",
+      }),
+    ).rejects.toThrow("手机号验证门禁");
+    expect(fetcher).not.toHaveBeenCalled();
   });
   it("recognizes provider rejection without returning raw error text", async () => {
     fetcher.mockResolvedValue(

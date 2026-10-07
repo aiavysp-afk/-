@@ -1,7 +1,9 @@
 <view class="page">
-  <scroll-view scroll-x class="filters"><view class="filter-row"><text wx:for="{{categories}}" wx:key="*this" class="{{active===index?'active':''}}" data-index="{{index}}" bindtap="select">{{item}}</text></view></scroll-view>
-  <view class="intro"><text class="eyebrow">正规、透明、可追溯</text><text class="intro-title serif">为你挑选适合此刻的放松</text><text class="intro-desc">所有项目均为非医疗养生放松服务</text></view>
-  <text wx:if="{{loading}}">正在读取服务目录…</text><view wx:if="{{error}}"><text>{{error}}</text><button bindtap="load">重试</button></view>
-  <view class="list"><view wx:for="{{services}}" wx:key="id" class="card" data-slug="{{item.slug}}" bindtap="book"><view class="art a{{index}}"><text>0{{index+1}}</text></view><view><text class="card-name serif">{{item.name}}</text><text class="card-desc">{{item.subtitle}}</text><text>{{item.durationMinutes}} 分钟</text><view class="price"><text>¥</text>{{item.price}}</view><text>查看详情与预约 →</text></view></view></view>
-  <text wx:if="{{showEmptyServices}}">暂无已上架项目</text>
+  <view class="header"><view><text>服务</text><text>选择适合此刻的放松</text></view><button open-type="contact" show-message-card session-from="services">客服</button></view>
+  <view class="hero"><view><text>正规上门服务</text><text>透明价格 · 实时可约</text><text>所有项目均为非医疗养生放松服务</text></view><view class="hero-art"><view/><view/></view></view>
+  <scroll-view scroll-x class="filters" show-scrollbar="{{false}}"><view class="filter-row"><text wx:for="{{categories}}" wx:key="*this" class="{{active===index?'active':''}}" data-index="{{index}}" bindtap="select">{{item}}</text></view></scroll-view>
+  <text wx:if="{{loading}}" class="state">正在读取服务目录…</text><view wx:if="{{error}}" class="state error"><text>{{error}}</text><button bindtap="load">重新加载</button></view>
+  <view class="list"><view wx:for="{{services}}" wx:key="id" class="card" data-slug="{{item.slug}}" bindtap="book"><view class="art a{{index}}"><view class="orbit"/><view class="stone"/><text>0{{index+1}}</text></view><view class="card-body"><view class="card-head"><text>{{item.name}}</text><text>可预约</text></view><text class="card-desc">{{item.subtitle}}</text><view class="meta"><text>{{item.durationMinutes}} 分钟</text><text><text class="currency">¥</text><text class="price">{{item.price}}</text><text>起</text></text></view><view class="card-action"><text>查看详情与可约时段</text><text>去下单 ›</text></view></view></view></view>
+  <view wx:if="{{showEmptyServices}}" class="empty"><text>✦</text><text>暂无已上架项目</text><text>请稍后刷新服务目录</text></view>
+  <view class="safe-bottom" />
 </view>

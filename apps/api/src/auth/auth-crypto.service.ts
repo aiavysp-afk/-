@@ -40,6 +40,10 @@ export class AuthCryptoService {
     return this.hash("wechat-miniapp-identity", `${appId}:${subject}`);
   }
 
+  hashPhoneVerification(purpose: string, value: string) {
+    return this.hash(`phone-verification:${purpose}`, value);
+  }
+
   encrypt(value: string) {
     const iv = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", this.encryptionKey, iv);
