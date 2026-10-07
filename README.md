@@ -1,5 +1,7 @@
 # 中原到家
 
+最新管理后台部署：2026-10-07 已将经营概览、订单调度、技师管理、服务项目、排班中心、退款复核、安全值班、服务区域、权限审计、账户安全和系统设置部署到服务器独立私有验收环境；服务器商城闭环与 Codex 内浏览器逐页验收通过。真实支付、短信、地图和公网经营开关仍保持关闭，完整证据见[2026-10-07 管理后台部署验收记录](docs/DEPLOYMENT_ACCEPTANCE_20261007.md)。
+
 最新安全增量：[安全通知 Outbox](docs/SAFETY_NOTIFICATION_IMPLEMENTATION.md)已增加阿里云 `QuerySendDetails` 只读送达查询、独立回执门禁、48 次有限退避、送达/失败/未知状态和后台积压/死信摘要；第 20 批迁移及服务器私有验收通过。自动发送、回执查询和真人主备演练均保持关闭，代码验收不等于真实短信送达或经营上线。
 
 最新安全开发：[安全事件主备值班闭环](docs/SAFETY_DUTY_IMPLEMENTATION.md)与[安全通知 Outbox](docs/SAFETY_NOTIFICATION_IMPLEMENTATION.md)已完成值班表、唯一未关闭事件、主岗确认、超时备岗升级、确认人关闭，以及短信通知的数据库租约、并发单领、退避、死信、人工复核和后台可观测性；真实 PostgreSQL 专项验证通过。真实自动发送和真人主备短信演练仍未完成，`SAFETY_NOTIFICATION_DISPATCH_ENABLED` 与 `SAFETY_DUTY_CONFIRMED` 均保持 `false`，不能据此公开经营。
