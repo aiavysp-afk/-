@@ -29,5 +29,11 @@
     ]
   },
   "style": "v2",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于选择上门服务地址并计算技师到达距离"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation"],
   "sitemapLocation": "sitemap.json"
 }

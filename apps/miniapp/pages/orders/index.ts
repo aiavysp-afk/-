@@ -1,5 +1,6 @@
 import type {
   CustomerOrderConfirmationResult,
+  CustomerTechnicianLocation,
   OrderView,
   PaymentIntent,
   RefundView,
@@ -17,6 +18,9 @@ type Row = OrderView & {
   safetyIncidents: Array<SafetyIncidentCustomerView & { statusLabel: string }>;
   safetyAvailable: boolean;
   confirmAvailable: boolean;
+  technicianLocation: CustomerTechnicianLocation;
+  technicianLocationLabel: string;
+  technicianLocationAvailable: boolean;
 };
 const safetyCategories: Array<{
   label: string;
@@ -32,6 +36,13 @@ const safetyStatuses: Record<string, string> = {
   ESCALATED: "主岗超时，已转备岗",
   ACKNOWLEDGED: "值班人员已确认",
   CLOSED: "已关闭并留痕",
+};
+const technicianLocationStatuses: Record<string, string> = {
+  UNASSIGNED: "尚未指派技师",
+  HIDDEN: "技师出发后可查看位置状态",
+  UNAVAILABLE: "技师尚未上报位置",
+  STALE: "技师位置已超过 5 分钟未更新",
+  AVAILABLE: "技师位置已更新",
 };
 Page({
   data: {
@@ -73,12 +84,20 @@ Page({
       const orders = await api<OrderView[]>("/orders");
       const rows = await Promise.all(
         orders.map(async (order) => {
-          const [refunds, safetyIncidents] = await Promise.all([
-            api<RefundView[]>(`/orders/${order.id}/refunds`),
-            api<SafetyIncidentCustomerView[]>(
-              `/orders/${order.id}/safety-incidents`,
-            ),
-          ]);
+          const [refunds, safetyIncidents, technicianLocation] =
+            await Promise.all([
+              api<RefundView[]>(`/orders/${order.id}/refunds`),
+              api<SafetyIncidentCustomerView[]>(
+                `/orders/${order.id}/safety-incidents`,
+              ),
+              api<CustomerTechnicianLocation>(
+                `/orders/${order.id}/technician-location`,
+              ).catch(() => ({
+                orderId: order.id,
+                status: "UNAVAILABLE" as const,
+                location: null,
+              })),
+            ]);
           return {
             ...order,
             price: money(order.payableFen),
@@ -109,6 +128,11 @@ Page({
               ].includes(order.status) &&
               !safetyIncidents.some((incident) => incident.status !== "CLOSED"),
             confirmAvailable: order.status === "AWAITING_CONFIRMATION",
+            technicianLocation,
+            technicianLocationLabel:
+              technicianLocationStatuses[technicianLocation.status] ??
+              "技师位置状态待更新",
+            technicianLocationAvailable: Boolean(technicianLocation.location),
           };
         }),
       );
@@ -313,6 +337,18 @@ Page({
             complete: () => resolve(),
           }),
         );
+      } else if (action === "technician-location") {
+        const order = this.data.orders.find((row: Row) => row.id === id);
+        const location = order?.technicianLocation.location;
+        if (!location)
+          throw new Error(order?.technicianLocationLabel ?? "技师位置暂不可用");
+        wx.openLocation({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          name: "技师位置",
+          address: order?.technicianLocationLabel,
+          scale: 16,
+        });
       }
       await this.load();
     } catch (error) {

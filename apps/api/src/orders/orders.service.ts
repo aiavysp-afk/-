@@ -14,6 +14,7 @@ import {
 } from "@prisma/client";
 import type {
   CustomerOrderConfirmationResult,
+  CustomerTechnicianLocation,
   OrderCreate,
   OrderQuote,
   OrderView,
@@ -144,6 +145,9 @@ export class OrdersService {
             discountFen,
             payableFen,
             addressEncrypted,
+            addressLatitude: input.address.latitude,
+            addressLongitude: input.address.longitude,
+            addressCoordinateSystem: input.address.coordinateSystem,
             policyVersion: POLICY_VERSION,
             paymentExpiresAt,
             idempotencyKey,
@@ -226,6 +230,50 @@ export class OrdersService {
       throw new ForbiddenException("不能查看其他用户的订单");
     }
     return this.toView(order);
+  }
+
+  async getTechnicianLocation(
+    principal: AuthPrincipal,
+    id: string,
+    now = new Date(),
+  ): Promise<CustomerTechnicianLocation> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        customerId: true,
+        therapistId: true,
+        status: true,
+        therapist: {
+          select: { technicianLocation: true },
+        },
+      },
+    });
+    if (!order) throw new NotFoundException("订单不存在");
+    if (order.customerId !== principal.userId)
+      throw new ForbiddenException("不能查看其他用户的技师位置");
+    if (!order.therapistId)
+      return { orderId: order.id, status: "UNASSIGNED", location: null };
+    if (
+      order.status !== OrderStatus.EN_ROUTE &&
+      order.status !== OrderStatus.ARRIVED
+    )
+      return { orderId: order.id, status: "HIDDEN", location: null };
+    const location = order.therapist?.technicianLocation;
+    if (!location)
+      return { orderId: order.id, status: "UNAVAILABLE", location: null };
+    const value = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      coordinateSystem: "GCJ-02" as const,
+      ...(location.accuracyMeters === null
+        ? {}
+        : { accuracyMeters: location.accuracyMeters }),
+      reportedAt: location.reportedAt.toISOString(),
+    };
+    if (now.getTime() - location.reportedAt.getTime() > 5 * 60_000)
+      return { orderId: order.id, status: "STALE", location: value };
+    return { orderId: order.id, status: "AVAILABLE", location: value };
   }
 
   async cancelOwn(principal: AuthPrincipal, id: string) {
@@ -419,6 +467,9 @@ export class OrdersService {
       contactName: address.contactName,
       phone: address.phone,
       detail: address.detail,
+      latitude: address.latitude,
+      longitude: address.longitude,
+      coordinateSystem: address.coordinateSystem,
     });
   }
 

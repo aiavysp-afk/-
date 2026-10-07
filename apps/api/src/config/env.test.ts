@@ -11,8 +11,8 @@ const productionAuth = {
   ALIYUN_SMS_ACCESS_KEY_SECRET: "test-sms-access-key-secret",
   ALIYUN_SMS_SIGN_NAME: "测试签名",
   ALIYUN_SMS_TEMPLATE_CODE: "SMS_testtemplate",
-  TENCENT_MAP_KEY: "test-map-key",
-  TENCENT_MAP_SIGNING_SECRET: "test-map-signing-secret",
+  AMAP_MINIAPP_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  AMAP_WEB_SERVICE_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 } as const;
 
 describe("production safety gate", () => {
@@ -28,7 +28,7 @@ describe("production safety gate", () => {
       WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
       WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       SAFETY_CONTACT_MODE: "wecom",
       CUSTOMER_SERVICE_PROVIDER: "wecom",
       WECOM_CORP_ID: "ww1234567890abcdef",
@@ -58,7 +58,7 @@ describe("production safety gate", () => {
   it("keeps chargeable integration calls independently disabled", () => {
     const env = validateEnv({
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
     });
     expect(env.SMS_SEND_ENABLED).toBe("false");
     expect(env.SAFETY_NOTIFICATION_DISPATCH_ENABLED).toBe("false");
@@ -69,18 +69,18 @@ describe("production safety gate", () => {
     expect(() => validateEnv({ MAP_GEOCODING_ENABLED: "yes" })).toThrow();
     expect(() =>
       validateEnv({
-        MAP_PROVIDER: "tencent",
+        MAP_PROVIDER: "amap",
         MAP_GEOCODING_ENABLED: "true",
-        TENCENT_MAP_KEY: "test-map-key",
-        TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+        AMAP_MINIAPP_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        AMAP_WEB_SERVICE_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       }),
     ).toThrow("SERVICE_AREA_ADCODE_ALLOWLIST");
     expect(
       validateEnv({
-        MAP_PROVIDER: "tencent",
+        MAP_PROVIDER: "amap",
         MAP_GEOCODING_ENABLED: "true",
-        TENCENT_MAP_KEY: "test-map-key",
-        TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+        AMAP_MINIAPP_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        AMAP_WEB_SERVICE_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         SERVICE_AREA_ADCODE_ALLOWLIST: "410102,410105",
       }).SERVICE_AREA_ADCODE_ALLOWLIST,
     ).toBe("410102,410105");
@@ -105,7 +105,7 @@ describe("production safety gate", () => {
       WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
       WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
       WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       SAFETY_HOTLINE: "400-000-0000",
       SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "true",
     };
@@ -129,7 +129,7 @@ describe("production safety gate", () => {
       WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
       WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       SAFETY_HOTLINE: "400-000-0000",
       SAFETY_NOTIFICATION_DISPATCH_ENABLED: "true",
     };
@@ -149,15 +149,15 @@ describe("production safety gate", () => {
     const raw = {
       NODE_ENV: "production",
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
     };
     for (const field of [
       "ALIYUN_SMS_ACCESS_KEY_ID",
       "ALIYUN_SMS_ACCESS_KEY_SECRET",
       "ALIYUN_SMS_SIGN_NAME",
       "ALIYUN_SMS_TEMPLATE_CODE",
-      "TENCENT_MAP_KEY",
-      "TENCENT_MAP_SIGNING_SECRET",
+      "AMAP_MINIAPP_KEY",
+      "AMAP_WEB_SERVICE_KEY",
     ])
       expect(() => validateEnv(raw)).toThrow(field);
   });
@@ -207,7 +207,7 @@ describe("production safety gate", () => {
         NODE_ENV: "production",
         PAYMENT_PROVIDER: "wechat",
         SMS_PROVIDER: "aliyun",
-        MAP_PROVIDER: "tencent",
+        MAP_PROVIDER: "amap",
         SAFETY_HOTLINE: "400-000-0000",
       });
 
@@ -233,7 +233,7 @@ describe("production safety gate", () => {
       WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_placeholder",
       WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/wechat/wechat-pay-public-key.pem",
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       SAFETY_HOTLINE: "400-000-0000",
     });
 
@@ -256,7 +256,7 @@ describe("production safety gate", () => {
       WECHAT_PLATFORM_SERIAL_NO: "PUB_KEY_ID_existing-server",
       WECHAT_PLATFORM_CERT_PATH: "/secure/wechat/wechat-pay-public-key.pem",
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       SAFETY_HOTLINE: "400-000-0000",
     });
 
@@ -283,7 +283,7 @@ describe("production safety gate", () => {
         WECHAT_PLATFORM_SERIAL_NO: "PUB_KEY_ID_existing-server",
         WECHAT_PLATFORM_CERT_PATH: "/secure/wechat/wechat-pay-public-key.pem",
         SMS_PROVIDER: "aliyun",
-        MAP_PROVIDER: "tencent",
+        MAP_PROVIDER: "amap",
         SAFETY_HOTLINE: "400-000-0000",
       });
 
@@ -305,7 +305,7 @@ describe("production safety gate", () => {
         WECHAT_PAY_PLATFORM_CERT_PATH:
           "/secure/wechat/platform-certificate.pem",
         SMS_PROVIDER: "aliyun",
-        MAP_PROVIDER: "tencent",
+        MAP_PROVIDER: "amap",
         SAFETY_HOTLINE: "400-000-0000",
       });
 
@@ -324,7 +324,7 @@ describe("production safety gate", () => {
       WECHAT_PLATFORM_SERIAL_NO: "platform-certificate-serial",
       WECHAT_PLATFORM_CERT_PATH: "/secure/wechat/platform-certificate.pem",
       SMS_PROVIDER: "aliyun",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       SAFETY_HOTLINE: "400-000-0000",
     });
 

@@ -15,6 +15,13 @@ const safetyStatuses = {
     ACKNOWLEDGED: "值班人员已确认",
     CLOSED: "已关闭并留痕",
 };
+const technicianLocationStatuses = {
+    UNASSIGNED: "尚未指派技师",
+    HIDDEN: "技师出发后可查看位置状态",
+    UNAVAILABLE: "技师尚未上报位置",
+    STALE: "技师位置已超过 5 分钟未更新",
+    AVAILABLE: "技师位置已更新",
+};
 Page({
     data: {
         orders: [],
@@ -56,9 +63,15 @@ Page({
         try {
             const orders = await (0, api_1.api)("/orders");
             const rows = await Promise.all(orders.map(async (order) => {
-                const [refunds, safetyIncidents] = await Promise.all([
+                var _a;
+                const [refunds, safetyIncidents, technicianLocation] = await Promise.all([
                     (0, api_1.api)(`/orders/${order.id}/refunds`),
                     (0, api_1.api)(`/orders/${order.id}/safety-incidents`),
+                    (0, api_1.api)(`/orders/${order.id}/technician-location`).catch(() => ({
+                        orderId: order.id,
+                        status: "UNAVAILABLE",
+                        location: null,
+                    })),
                 ]);
                 return {
                     ...order,
@@ -91,6 +104,9 @@ Page({
                     ].includes(order.status) &&
                         !safetyIncidents.some((incident) => incident.status !== "CLOSED"),
                     confirmAvailable: order.status === "AWAITING_CONFIRMATION",
+                    technicianLocation,
+                    technicianLocationLabel: (_a = technicianLocationStatuses[technicianLocation.status]) !== null && _a !== void 0 ? _a : "技师位置状态待更新",
+                    technicianLocationAvailable: Boolean(technicianLocation.location),
                 };
             }));
             this.setData({ orders: rows });
@@ -106,6 +122,7 @@ Page({
         }
     },
     async action(e) {
+        var _a;
         if (this.data.busy)
             return;
         const { id, action } = e.currentTarget.dataset;
@@ -255,6 +272,19 @@ Page({
                     showCancel: false,
                     complete: () => resolve(),
                 }));
+            }
+            else if (action === "technician-location") {
+                const order = this.data.orders.find((row) => row.id === id);
+                const location = order === null || order === void 0 ? void 0 : order.technicianLocation.location;
+                if (!location)
+                    throw new Error((_a = order === null || order === void 0 ? void 0 : order.technicianLocationLabel) !== null && _a !== void 0 ? _a : "技师位置暂不可用");
+                wx.openLocation({
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    name: "技师位置",
+                    address: order === null || order === void 0 ? void 0 : order.technicianLocationLabel,
+                    scale: 16,
+                });
             }
             await this.load();
         }

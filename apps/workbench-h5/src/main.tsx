@@ -4,6 +4,7 @@ import type {
   AuthSession,
   TechnicianEarnings,
   TechnicianOrderAction,
+  TechnicianRoute,
   TechnicianWorkbench,
   TechnicianWorkbenchOrder,
 } from "@zydj/contracts";
@@ -13,6 +14,8 @@ import {
   ChevronRight,
   Clock3,
   Home,
+  MapPin,
+  Navigation,
   RefreshCw,
   ShieldAlert,
   UserRound,
@@ -20,6 +23,11 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { dialEmergencyDuty, emergencyPhoneFromConfig } from "./support";
+import {
+  buildAmapNavigationUrl,
+  formatRoute,
+  getBrowserGcj02Location,
+} from "./map";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -127,6 +135,9 @@ function App() {
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [savingOrderId, setSavingOrderId] = useState("");
+  const [routeByOrder, setRouteByOrder] = useState<
+    Record<string, TechnicianRoute>
+  >({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [view, setView] = useState<WorkbenchView>("today");
@@ -251,6 +262,45 @@ function App() {
     }
   }
 
+  async function reportAndRoute(order: TechnicianWorkbenchOrder) {
+    if (!order.destination) {
+      setError("该订单缺少 GCJ-02 上门坐标，请联系调度处理。");
+      return;
+    }
+    setSavingOrderId(order.id);
+    setError("");
+    setMessage("");
+    try {
+      const location = await getBrowserGcj02Location();
+      await apiRequest(
+        "/technician/workbench/location",
+        { method: "POST", body: JSON.stringify(location) },
+        token,
+      );
+      const response = await apiRequest<{ data: TechnicianRoute }>(
+        `/technician/workbench/orders/${order.id}/route`,
+        {},
+        token,
+      );
+      setRouteByOrder((current) => ({ ...current, [order.id]: response.data }));
+      setMessage("当前位置已上报，高德驾车距离和预计时长已更新。");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "位置上报或路线计算失败",
+      );
+    } finally {
+      setSavingOrderId("");
+    }
+  }
+
+  function openAmapNavigation(order: TechnicianWorkbenchOrder) {
+    if (!order.destination) {
+      setError("该订单缺少可导航的上门坐标。");
+      return;
+    }
+    window.location.assign(buildAmapNavigationUrl(order.destination));
+  }
+
   const nextOrder = useMemo(
     () =>
       workbench?.orders.find(
@@ -322,6 +372,9 @@ function App() {
                 savingOrderId={savingOrderId}
                 onRefresh={refresh}
                 onAdvance={advanceOrder}
+                routeByOrder={routeByOrder}
+                onReportAndRoute={reportAndRoute}
+                onOpenNavigation={openAmapNavigation}
                 onNavigate={setView}
               />
             )}
@@ -330,6 +383,9 @@ function App() {
                 workbench={workbench}
                 savingOrderId={savingOrderId}
                 onAdvance={advanceOrder}
+                routeByOrder={routeByOrder}
+                onReportAndRoute={reportAndRoute}
+                onOpenNavigation={openAmapNavigation}
               />
             )}
             {view === "shifts" && <ShiftsView workbench={workbench} />}
@@ -402,6 +458,9 @@ function TodayView({
   savingOrderId,
   onRefresh,
   onAdvance,
+  routeByOrder,
+  onReportAndRoute,
+  onOpenNavigation,
   onNavigate,
 }: {
   workbench: TechnicianWorkbench;
@@ -411,6 +470,9 @@ function TodayView({
   savingOrderId: string;
   onRefresh: () => void;
   onAdvance: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  routeByOrder: Record<string, TechnicianRoute>;
+  onReportAndRoute: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;
   onNavigate: (view: WorkbenchView) => void;
 }) {
   return (
@@ -445,7 +507,7 @@ function TodayView({
       <section className="section-head">
         <div>
           <h2>下一单</h2>
-          <p>客户地址与联系能力尚未在此切片开放</p>
+          <p>已授权技师可查看本人订单的上门地址，不展示客户电话</p>
         </div>
         <button onClick={onRefresh} disabled={loading}>
           刷新
@@ -456,6 +518,9 @@ function TodayView({
           order={nextOrder}
           busy={savingOrderId === nextOrder.id}
           onAdvance={onAdvance}
+          route={routeByOrder[nextOrder.id]}
+          onReportAndRoute={onReportAndRoute}
+          onOpenNavigation={onOpenNavigation}
         />
       ) : (
         <div className="empty-state">今天暂无待服务订单</div>
@@ -581,17 +646,23 @@ function OrdersView({
   workbench,
   savingOrderId,
   onAdvance,
+  routeByOrder,
+  onReportAndRoute,
+  onOpenNavigation,
 }: {
   workbench: TechnicianWorkbench;
   savingOrderId: string;
   onAdvance: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  routeByOrder: Record<string, TechnicianRoute>;
+  onReportAndRoute: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;
 }) {
   return (
     <section className="view-page">
       <div className="view-summary">
         <span>今日全部订单</span>
         <strong>{workbench.orders.length}</strong>
-        <small>只显示服务快照和时间，不展示客户电话或详细地址</small>
+        <small>只显示本人订单、服务时间与上门地址，不展示客户电话</small>
       </div>
       <div className="order-card-list">
         {workbench.orders.map((order) => (
@@ -600,6 +671,9 @@ function OrdersView({
             order={order}
             busy={savingOrderId === order.id}
             onAdvance={onAdvance}
+            route={routeByOrder[order.id]}
+            onReportAndRoute={onReportAndRoute}
+            onOpenNavigation={onOpenNavigation}
           />
         ))}
         {workbench.orders.length === 0 && (
@@ -663,7 +737,9 @@ function ProfileView({
         <ShieldAlert size={20} />
         <div>
           <strong>隐私与权限边界</strong>
-          <p>仅能查看本人排班与本人订单；当前版本不展示客户电话和详细地址。</p>
+          <p>
+            仅能查看本人排班与本人订单；上门地址仅供履约导航，不展示客户电话。
+          </p>
         </div>
       </div>
       <button className="logout-wide" onClick={() => void onLogout()}>
@@ -677,10 +753,16 @@ function NextOrder({
   order,
   busy,
   onAdvance,
+  route,
+  onReportAndRoute,
+  onOpenNavigation,
 }: {
   order: TechnicianWorkbenchOrder;
   busy: boolean;
   onAdvance: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  route?: TechnicianRoute;
+  onReportAndRoute: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;
 }) {
   const operation = actionByStatus[order.status];
   return (
@@ -694,15 +776,27 @@ function NextOrder({
         {order.serviceName} <em>{order.durationMinutes} 分钟</em>
       </h3>
       <div className="privacy-notice">
-        <Clock3 size={16} />
+        <MapPin size={16} />
         <div>
-          <b>
-            {formatTime(order.appointmentStart)}–
-            {formatTime(order.appointmentEnd)}
-          </b>
-          <small>本阶段不在技师端展示客户电话或详细地址</small>
+          <b>{order.destination?.addressLabel ?? "上门坐标待补齐"}</b>
+          <small>GCJ-02 坐标 · 不展示客户电话</small>
         </div>
       </div>
+      {order.destination && (
+        <div className="map-actions">
+          <button disabled={busy} onClick={() => void onReportAndRoute(order)}>
+            <MapPin size={15} />
+            {busy ? "定位中…" : "上报位置并计算路线"}
+          </button>
+          <button className="primary" onClick={() => onOpenNavigation(order)}>
+            <Navigation size={15} />
+            一键高德导航
+          </button>
+          {route && (
+            <p>{formatRoute(route.distanceMeters, route.durationSeconds)}</p>
+          )}
+        </div>
+      )}
       {operation && (
         <div className="fulfillment-actions">
           <p>每次操作都会写入订单事件和审计记录，状态不可跳级。</p>

@@ -514,7 +514,7 @@ paths:
   /v1/locations/address-verifications:
     post:
       summary: 为当前用户的有效预约占位核验服务地址
-      description: 服务端固定城市并执行持久化配额；拒绝低精度或服务行政区白名单外的地址。返回的短期凭证绑定用户、预约、地址摘要及占位到期时间，不返回坐标或地址原文。
+      description: 服务端用高德逆解析 GCJ-02 坐标并执行持久化配额；拒绝服务行政区白名单外的地址。返回的短期凭证绑定用户、预约、地址摘要、坐标及占位到期时间。
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -659,6 +659,29 @@ paths:
         "401": { description: 未登录或会话失效 }
         "403": { description: 不能查看其他用户订单 }
         "404": { description: 订单不存在 }
+  /v1/orders/{id}/technician-location:
+    get:
+      summary: 查看本人订单的技师位置状态
+      description: 仅在订单已出发或已到达阶段返回最近一次 GCJ-02 位置；超过 5 分钟标记为 STALE，其他阶段不披露坐标。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 技师位置状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    { $ref: "#/components/schemas/CustomerTechnicianLocation" }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 不能查看其他用户订单 }
+        "404": { description: 订单不存在 }
   /v1/orders/{id}/cancel:
     post:
       summary: 取消当前用户自己的待支付订单
@@ -675,6 +698,57 @@ paths:
         "403": { description: 不能取消其他用户订单 }
         "404": { description: 订单不存在 }
         "409": { description: 当前订单状态不允许取消 }
+  /v1/technician/workbench/location:
+    post:
+      summary: 技师上报本人当前位置
+      description: 浏览器定位先转换为 GCJ-02；仅已授权技师可上报，后续路线计算只接受 5 分钟内的位置。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TechnicianLocationReport" }
+      responses:
+        "201":
+          description: 位置已记录
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    {
+                      $ref: "#/components/schemas/TechnicianLocationReportResult",
+                    }
+        "400": { description: 坐标参数无效 }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 当前身份不是已授权技师 }
+  /v1/technician/workbench/orders/{orderId}/route:
+    get:
+      summary: 计算技师到本人订单上门地址的驾车路线
+      description: 仅已指派技师和 ASSIGNED/EN_ROUTE/ARRIVED 状态可用；服务端用高德 Web 服务 Key 返回距离与预计时长，不返回 Key 或原始渠道错误体。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 高德驾车距离和预计时长
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/TechnicianRoute" }
+        "401": { description: 未登录或会话失效 }
+        "403": { description: 订单未指派给当前技师 }
+        "404": { description: 订单不存在 }
+        "409": { description: 状态不允许、地址坐标缺失或位置已过期 }
+        "429": { description: 调用过于频繁或高德配额超限 }
+        "502": { description: 高德响应或网络异常 }
+        "503": { description: 地图门禁、Key 或平台配置未就绪 }
   /v1/orders/{id}/payment-intent:
     post:
       summary: 为当前用户的待支付订单创建支付意图
@@ -1548,11 +1622,63 @@ components:
     ServiceAddress:
       type: object
       additionalProperties: false
-      required: [contactName, phone, detail]
+      required:
+        [contactName, phone, detail, latitude, longitude, coordinateSystem]
       properties:
         contactName: { type: string, minLength: 2, maxLength: 40 }
         phone: { type: string, pattern: "^1\\d{10}$" }
         detail: { type: string, minLength: 5, maxLength: 200 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, enum: [GCJ-02] }
+    Gcj02Coordinate:
+      type: object
+      additionalProperties: false
+      required: [latitude, longitude, coordinateSystem]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, enum: [GCJ-02] }
+    TechnicianLocationReport:
+      allOf:
+        - { $ref: "#/components/schemas/Gcj02Coordinate" }
+        - type: object
+          properties:
+            accuracyMeters: { type: number, minimum: 0, maximum: 10000 }
+    TechnicianLocationReportResult:
+      allOf:
+        - { $ref: "#/components/schemas/TechnicianLocationReport" }
+        - type: object
+          required: [reportedAt]
+          properties:
+            reportedAt: { type: string, format: date-time }
+    TechnicianRoute:
+      type: object
+      required: [orderId, distanceMeters, durationSeconds, origin, destination]
+      properties:
+        orderId: { type: string }
+        distanceMeters: { type: integer, minimum: 0 }
+        durationSeconds: { type: integer, minimum: 0 }
+        origin: { $ref: "#/components/schemas/Gcj02Coordinate" }
+        destination:
+          allOf:
+            - { $ref: "#/components/schemas/Gcj02Coordinate" }
+            - type: object
+              required: [addressLabel]
+              properties:
+                addressLabel: { type: string, minLength: 5, maxLength: 200 }
+    CustomerTechnicianLocation:
+      type: object
+      required: [orderId, status, location]
+      properties:
+        orderId: { type: string }
+        status:
+          type: string
+          enum: [UNASSIGNED, HIDDEN, UNAVAILABLE, STALE, AVAILABLE]
+        location:
+          oneOf:
+            - { $ref: "#/components/schemas/TechnicianLocationReportResult" }
+            - { type: "null" }
     AddressSuggestion:
       type: object
       required:
@@ -1578,17 +1704,32 @@ components:
     AddressVerificationCreate:
       type: object
       additionalProperties: false
-      required: [reservationId, detail]
+      required: [reservationId, detail, latitude, longitude, coordinateSystem]
       properties:
         reservationId: { type: string, minLength: 1, maxLength: 128 }
         detail: { type: string, minLength: 5, maxLength: 200 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, enum: [GCJ-02] }
     AddressVerification:
       type: object
-      required: [id, reservationId, adcode, expiresAt]
+      required:
+        [
+          id,
+          reservationId,
+          adcode,
+          latitude,
+          longitude,
+          coordinateSystem,
+          expiresAt,
+        ]
       properties:
         id: { type: string }
         reservationId: { type: string }
         adcode: { type: string, pattern: "^\\d{6}$" }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, enum: [GCJ-02] }
         expiresAt: { type: string, format: date-time }
     OrderCreate:
       type: object

@@ -158,6 +158,7 @@ model User {
   acknowledgedIncidents   SafetyIncident[]         @relation("SafetyIncidentAcknowledger")
   closedSafetyIncidents   SafetyIncident[]         @relation("SafetyIncidentCloser")
   addressVerifications    AddressVerification[]
+  technicianLocation      TechnicianLocation?
 }
 
 model ExternalIdentity {
@@ -227,16 +228,19 @@ model MapRequestRateLimit {
 }
 
 model AddressVerification {
-  id            String                 @id @default(cuid())
-  userId        String
-  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reservationId String                 @unique
-  reservation   AppointmentReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
-  detailHash    String
-  adcode        String
-  expiresAt     DateTime
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  id               String                 @id @default(cuid())
+  userId           String
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservationId    String                 @unique
+  reservation      AppointmentReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  detailHash       String
+  adcode           String
+  latitude         Float
+  longitude        Float
+  coordinateSystem String                 @default("GCJ-02")
+  expiresAt        DateTime
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   @@index([userId, expiresAt])
 }
@@ -356,37 +360,55 @@ model AppointmentReservation {
 }
 
 model Order {
-  id                 String                  @id @default(cuid())
-  orderNo            String                  @unique
-  organizationId     String
-  organization       Organization            @relation(fields: [organizationId], references: [id])
-  customerId         String
-  customer           User                    @relation("CustomerOrders", fields: [customerId], references: [id])
-  therapistId        String?
-  therapist          User?                   @relation("TherapistOrders", fields: [therapistId], references: [id])
-  reservationId      String?                 @unique
-  reservation        AppointmentReservation? @relation(fields: [reservationId], references: [id])
-  status             OrderStatus
-  appointmentStart   DateTime
-  appointmentEnd     DateTime
-  serviceAmountFen   BigInt
-  travelFeeFen       BigInt
-  discountFen        BigInt                  @default(0)
-  payableFen         BigInt
-  addressEncrypted   String
-  policyVersion      String
-  paymentExpiresAt   DateTime?
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
-  items              OrderItem[]
-  events             OrderEvent[]
-  payment            Payment?
-  idempotencyKey     String
-  requestFingerprint String
-  safetyIncidents    SafetyIncident[]
+  id                      String                  @id @default(cuid())
+  orderNo                 String                  @unique
+  organizationId          String
+  organization            Organization            @relation(fields: [organizationId], references: [id])
+  customerId              String
+  customer                User                    @relation("CustomerOrders", fields: [customerId], references: [id])
+  therapistId             String?
+  therapist               User?                   @relation("TherapistOrders", fields: [therapistId], references: [id])
+  reservationId           String?                 @unique
+  reservation             AppointmentReservation? @relation(fields: [reservationId], references: [id])
+  status                  OrderStatus
+  appointmentStart        DateTime
+  appointmentEnd          DateTime
+  serviceAmountFen        BigInt
+  travelFeeFen            BigInt
+  discountFen             BigInt                  @default(0)
+  payableFen              BigInt
+  addressEncrypted        String
+  addressLatitude         Float?
+  addressLongitude        Float?
+  addressCoordinateSystem String?
+  policyVersion           String
+  paymentExpiresAt        DateTime?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  items                   OrderItem[]
+  events                  OrderEvent[]
+  payment                 Payment?
+  idempotencyKey          String
+  requestFingerprint      String
+  safetyIncidents         SafetyIncident[]
 
   @@unique([customerId, idempotencyKey])
   @@index([organizationId, status, appointmentStart])
+}
+
+model TechnicianLocation {
+  id               String   @id @default(cuid())
+  technicianId     String   @unique
+  technician       User     @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  latitude         Float
+  longitude        Float
+  coordinateSystem String   @default("GCJ-02")
+  accuracyMeters   Float?
+  reportedAt       DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([reportedAt])
 }
 
 model SafetyDutyRoster {

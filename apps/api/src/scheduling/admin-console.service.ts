@@ -161,10 +161,10 @@ export class AdminConsoleService {
       fullyConfigured,
       mapProvider: this.config.get("MAP_PROVIDER", { infer: true }),
       verificationEnabled:
-        this.config.get("MAP_PROVIDER", { infer: true }) === "tencent" &&
+        this.config.get("MAP_PROVIDER", { infer: true }) === "amap" &&
         this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) === "true",
       notice:
-        "业务目标为郑州全域；地图地址核验只有在腾讯地图凭据、签名密钥和门禁全部配置后才会启用。",
+        "业务目标为郑州全域；地图地址核验只有在高德小程序 Key、Web 服务 Key 和独立门禁全部配置后才会启用。",
     };
   }
 

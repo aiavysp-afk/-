@@ -14,13 +14,13 @@ import { createHash, createHmac } from "node:crypto";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import type { AppEnv } from "../config/env.js";
 import { PrismaService } from "../database/prisma.service.js";
-import { TencentMapClient } from "../integrations/tencent-map.client.js";
+import { AmapClient } from "../integrations/amap.client.js";
 
 @Injectable()
 export class LocationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly maps: TencentMapClient,
+    private readonly maps: AmapClient,
     private readonly config: ConfigService<AppEnv, true>,
   ) {}
 
@@ -32,7 +32,7 @@ export class LocationsService {
 
   private assertEnabled() {
     if (
-      this.config.get("MAP_PROVIDER", { infer: true }) !== "tencent" ||
+      this.config.get("MAP_PROVIDER", { infer: true }) !== "amap" ||
       this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) !== "true"
     )
       throw new ServiceUnavailableException("地址搜索与核验尚未开放");
@@ -48,12 +48,20 @@ export class LocationsService {
     );
   }
 
-  private detailHash(userId: string, reservationId: string, detail: string) {
+  private detailHash(
+    userId: string,
+    reservationId: string,
+    detail: string,
+    latitude: number,
+    longitude: number,
+  ) {
     return createHmac(
       "sha256",
       this.config.get("AUTH_SESSION_PEPPER", { infer: true }),
     )
-      .update(`${userId}\0${reservationId}\0${detail.trim()}`)
+      .update(
+        `${userId}\0${reservationId}\0${detail.trim()}\0${latitude.toFixed(6)}\0${longitude.toFixed(6)}\0GCJ-02`,
+      )
       .digest("hex");
   }
 
@@ -98,7 +106,13 @@ export class LocationsService {
 
   async verify(
     principal: AuthPrincipal,
-    input: { reservationId: string; detail: string },
+    input: {
+      reservationId: string;
+      detail: string;
+      latitude: number;
+      longitude: number;
+      coordinateSystem: "GCJ-02";
+    },
     now = new Date(),
   ) {
     this.assertEnabled();
@@ -118,6 +132,8 @@ export class LocationsService {
       principal.userId,
       reservation.id,
       input.detail,
+      input.latitude,
+      input.longitude,
     );
     const allowed = this.allowedAdcodes();
     const existing = await this.prisma.addressVerification.findUnique({
@@ -127,6 +143,9 @@ export class LocationsService {
       existing?.userId === principal.userId &&
       existing.detailHash === detailHash &&
       existing.expiresAt > now &&
+      existing.latitude === input.latitude &&
+      existing.longitude === input.longitude &&
+      existing.coordinateSystem === "GCJ-02" &&
       allowed.has(existing.adcode)
     )
       return this.toVerification(existing);
@@ -147,14 +166,10 @@ export class LocationsService {
     );
     await this.take("verification-global-minute", "all", 120, 60_000, now);
     await this.take("verification-global-day", "all", 2_000, 86_400_000, now);
-    const result = await this.maps.geocode({
-      address: input.detail,
-      city: this.config.get("SERVICE_CITY", { infer: true }),
+    const result = await this.maps.reverseGeocode({
+      latitude: input.latitude,
+      longitude: input.longitude,
     });
-    if (result.requiresManualConfirmation)
-      throw new UnprocessableEntityException(
-        "地址精度不足，请补充楼栋门牌后重新核验",
-      );
     if (!allowed.has(result.adcode))
       throw new UnprocessableEntityException("该地址暂不在已配置服务范围内");
 
@@ -165,12 +180,18 @@ export class LocationsService {
         reservationId: reservation.id,
         detailHash,
         adcode: result.adcode,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        coordinateSystem: "GCJ-02",
         expiresAt: reservation.expiresAt,
       },
       update: {
         userId: principal.userId,
         detailHash,
         adcode: result.adcode,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        coordinateSystem: "GCJ-02",
         expiresAt: reservation.expiresAt,
       },
     });
@@ -187,7 +208,7 @@ export class LocationsService {
     now: Date,
   ) {
     if (
-      this.config.get("MAP_PROVIDER", { infer: true }) !== "tencent" ||
+      this.config.get("MAP_PROVIDER", { infer: true }) !== "amap" ||
       this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) !== "true"
     )
       return;
@@ -200,6 +221,8 @@ export class LocationsService {
       principal.userId,
       input.reservationId,
       input.address.detail,
+      input.address.latitude,
+      input.address.longitude,
     );
     if (
       !row ||
@@ -207,6 +230,9 @@ export class LocationsService {
       row.reservationId !== input.reservationId ||
       row.detailHash !== expectedHash ||
       row.expiresAt <= now ||
+      row.latitude !== input.address.latitude ||
+      row.longitude !== input.address.longitude ||
+      row.coordinateSystem !== input.address.coordinateSystem ||
       !this.allowedAdcodes().has(row.adcode)
     )
       throw new UnprocessableEntityException("服务地址核验已失效，请重新核验");
@@ -216,12 +242,18 @@ export class LocationsService {
     id: string;
     reservationId: string;
     adcode: string;
+    latitude: number;
+    longitude: number;
+    coordinateSystem: string;
     expiresAt: Date;
   }) {
     return {
       id: row.id,
       reservationId: row.reservationId,
       adcode: row.adcode,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      coordinateSystem: "GCJ-02" as const,
       expiresAt: row.expiresAt.toISOString(),
     };
   }

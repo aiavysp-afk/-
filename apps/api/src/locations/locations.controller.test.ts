@@ -113,6 +113,9 @@ describe("Locations HTTP boundary", () => {
       payload: {
         reservationId: "reservation-1",
         detail: "郑州市中原区测试路1号",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
         adcode: "110101",
       },
     });
@@ -124,6 +127,9 @@ describe("Locations HTTP boundary", () => {
       payload: {
         reservationId: "reservation-1",
         detail: "郑州市中原区测试路1号",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
       },
     });
     expect(valid.statusCode).toBe(201);
@@ -131,6 +137,9 @@ describe("Locations HTTP boundary", () => {
     expect(service.verify).toHaveBeenCalledWith(principal, {
       reservationId: "reservation-1",
       detail: "郑州市中原区测试路1号",
+      latitude: 34.75,
+      longitude: 113.65,
+      coordinateSystem: "GCJ-02",
     });
   });
 });

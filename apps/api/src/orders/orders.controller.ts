@@ -72,6 +72,14 @@ export class OrdersController {
     return { data: await this.orders.getOwn(principal, id) };
   }
 
+  @Get(":id/technician-location")
+  async technicianLocation(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("id") id: string,
+  ) {
+    return { data: await this.orders.getTechnicianLocation(principal, id) };
+  }
+
   @Post(":id/cancel")
   async cancel(
     @CurrentPrincipal() principal: AuthPrincipal,

@@ -1,20 +1,29 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { OrderStatus, UserRole } from "@prisma/client";
 import type {
   TechnicianEarnings,
   TechnicianOrderAction,
   TechnicianOrderActionResult,
+  TechnicianLocationReport,
+  TechnicianLocationReportResult,
+  TechnicianRoute,
   TechnicianWorkbench,
 } from "@zydj/contracts";
+import { createHash } from "node:crypto";
 import { AccessControlService } from "../auth/access-control.service.js";
+import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
+import { AmapClient } from "../integrations/amap.client.js";
 import {
   OrderStateMachine,
   type OrderTransitionEvent,
@@ -66,6 +75,8 @@ export class TechnicianWorkbenchService {
     private readonly prisma: PrismaService,
     private readonly access: AccessControlService,
     private readonly stateMachine: OrderStateMachine,
+    @Optional() private readonly maps?: AmapClient,
+    @Optional() private readonly crypto?: AuthCryptoService,
   ) {}
 
   async get(
@@ -144,6 +155,7 @@ export class TechnicianWorkbenchService {
           appointmentStart: order.appointmentStart.toISOString(),
           appointmentEnd: order.appointmentEnd.toISOString(),
           status: order.status,
+          destination: this.destination(order),
         };
       }),
       shifts: weeklyShifts.map((shift) => ({
@@ -341,6 +353,154 @@ export class TechnicianWorkbenchService {
         idempotentReplay: false,
       };
     });
+  }
+
+  async reportLocation(
+    principal: AuthPrincipal,
+    input: TechnicianLocationReport,
+    now = new Date(),
+  ): Promise<TechnicianLocationReportResult> {
+    const organizationIds = this.therapistOrganizations(principal);
+    for (const organizationId of organizationIds)
+      this.access.assertPermission(principal, "orders.read", organizationId);
+    const location = await this.prisma.technicianLocation.upsert({
+      where: { technicianId: principal.userId },
+      create: {
+        technicianId: principal.userId,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        coordinateSystem: "GCJ-02",
+        accuracyMeters: input.accuracyMeters,
+        reportedAt: now,
+      },
+      update: {
+        latitude: input.latitude,
+        longitude: input.longitude,
+        coordinateSystem: "GCJ-02",
+        accuracyMeters: input.accuracyMeters,
+        reportedAt: now,
+      },
+    });
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      coordinateSystem: "GCJ-02",
+      ...(location.accuracyMeters === null
+        ? {}
+        : { accuracyMeters: location.accuracyMeters }),
+      reportedAt: location.reportedAt.toISOString(),
+    };
+  }
+
+  async route(
+    principal: AuthPrincipal,
+    orderId: string,
+    now = new Date(),
+  ): Promise<TechnicianRoute> {
+    this.therapistOrganizations(principal);
+    if (!this.maps)
+      throw new ServiceUnavailableException("高德路线服务尚未就绪");
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        organizationId: true,
+        therapistId: true,
+        status: true,
+        addressEncrypted: true,
+        addressLatitude: true,
+        addressLongitude: true,
+        addressCoordinateSystem: true,
+      },
+    });
+    if (!order) throw new NotFoundException("履约订单不存在");
+    if (order.therapistId !== principal.userId)
+      throw new ForbiddenException("不能计算未指派给本人的订单路线");
+    this.access.assertPermission(
+      principal,
+      "orders.read",
+      order.organizationId,
+    );
+    if (
+      order.status !== OrderStatus.ASSIGNED &&
+      order.status !== OrderStatus.EN_ROUTE &&
+      order.status !== OrderStatus.ARRIVED
+    )
+      throw new ConflictException("当前订单状态不允许计算驾车路线");
+    const destination = this.destination(order);
+    if (!destination)
+      throw new ConflictException("该订单没有可用的 GCJ-02 上门坐标");
+    const current = await this.prisma.technicianLocation.findUnique({
+      where: { technicianId: principal.userId },
+    });
+    if (!current || now.getTime() - current.reportedAt.getTime() > 5 * 60_000)
+      throw new ConflictException("请先上报当前位置，再计算驾车路线");
+    await this.takeRouteBudget(principal.userId, now);
+    const origin = {
+      latitude: current.latitude,
+      longitude: current.longitude,
+      coordinateSystem: "GCJ-02" as const,
+    };
+    const result = await this.maps.driving({ origin, destination });
+    return { orderId: order.id, ...result, origin, destination };
+  }
+
+  private async takeRouteBudget(userId: string, now: Date) {
+    const windowMs = 60_000;
+    const bucket = Math.floor(now.getTime() / windowMs);
+    const key = createHash("sha256")
+      .update(`map:technician-route:${userId}:${bucket}`)
+      .digest("hex");
+    const row = await this.prisma.mapRequestRateLimit.upsert({
+      where: { key },
+      create: { key, count: 1, expiresAt: new Date((bucket + 2) * windowMs) },
+      update: { count: { increment: 1 } },
+    });
+    if (row.count > 10)
+      throw new HttpException("路线计算过于频繁，请稍后重试", 429);
+  }
+
+  private therapistOrganizations(principal: AuthPrincipal) {
+    const ids = principal.memberships
+      .filter((membership) => membership.role === UserRole.THERAPIST)
+      .map((membership) => membership.organizationId);
+    if (!ids.length) throw new ForbiddenException("当前身份不是已授权技师");
+    return ids;
+  }
+
+  private destination(order: {
+    addressEncrypted?: string;
+    addressLatitude?: number | null;
+    addressLongitude?: number | null;
+    addressCoordinateSystem?: string | null;
+  }) {
+    if (
+      !this.crypto ||
+      order.addressLatitude === null ||
+      order.addressLatitude === undefined ||
+      order.addressLongitude === null ||
+      order.addressLongitude === undefined ||
+      order.addressCoordinateSystem !== "GCJ-02" ||
+      !order.addressEncrypted
+    )
+      return null;
+    try {
+      const parsed = JSON.parse(
+        this.crypto.decrypt(order.addressEncrypted),
+      ) as {
+        detail?: unknown;
+      };
+      if (typeof parsed.detail !== "string" || parsed.detail.length < 5)
+        return null;
+      return {
+        latitude: order.addressLatitude,
+        longitude: order.addressLongitude,
+        coordinateSystem: "GCJ-02" as const,
+        addressLabel: parsed.detail.slice(0, 200),
+      };
+    } catch {
+      throw new InternalServerErrorException("订单地址无法解密");
+    }
   }
 
   private shanghaiPeriods(now: Date) {

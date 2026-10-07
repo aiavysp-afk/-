@@ -1,10 +1,9 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
-import { createHash } from "node:crypto";
 import { validateEnv, type AppEnv } from "../config/env.js";
 import { signAliyunRpc, encodeRpc } from "./aliyun-signature.js";
 import { AliyunSmsClient } from "./aliyun-sms.client.js";
-import { TencentMapClient, signTencentGeocode } from "./tencent-map.client.js";
+import { AmapClient } from "./amap.client.js";
 import { readIntegrationJson } from "./integration-http.js";
 
 const config = (overrides: Record<string, string | undefined> = {}) =>
@@ -17,11 +16,11 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
       ALIYUN_SMS_ACCESS_KEY_SECRET: "test-secret",
       ALIYUN_SMS_SIGN_NAME: "测试签名",
       ALIYUN_SMS_TEMPLATE_CODE: "SMS_test123",
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       MAP_GEOCODING_ENABLED: "true",
       SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
-      TENCENT_MAP_KEY: "test-map-key",
-      TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+      AMAP_MINIAPP_KEY: "a".repeat(32),
+      AMAP_WEB_SERVICE_KEY: "b".repeat(32),
       ...overrides,
     }),
   );
@@ -35,15 +34,6 @@ const deliveryQuery = {
   bizId: "test-biz^1",
   sendDate: "20261005",
   trackingId: "test-tracking",
-};
-const location = {
-  status: 0,
-  result: {
-    location: { lat: 34.75, lng: 113.65 },
-    ad_info: { adcode: "410102" },
-    reliability: 8,
-    level: 9,
-  },
 };
 const json = (value: unknown) =>
   new Response(JSON.stringify(value), {
@@ -105,21 +95,6 @@ describe("channel signatures", () => {
         params: {},
       }),
     ).toThrow();
-  });
-  it("signs raw Tencent values while encoding the transmitted address exactly once", () => {
-    const query = signTencentGeocode(
-      { key: "test-key", address: "郑州市中原路1号&A座", region: "郑州" },
-      "test-secret",
-    );
-    const expected = createHash("md5")
-      .update(
-        "/ws/geocoder/v1/?address=郑州市中原路1号&A座&key=test-key&region=郑州test-secret",
-      )
-      .digest("hex");
-    const parsed = new URLSearchParams(query);
-    expect(parsed.get("sig")).toBe(expected);
-    expect(parsed.get("address")).toBe("郑州市中原路1号&A座");
-    expect(parsed.size).toBe(4);
   });
 });
 
@@ -285,34 +260,26 @@ describe("SMS internal submission", () => {
   });
 });
 
-describe("Tencent geocoding primitive", () => {
-  it("supports signed server-side address suggestions restricted to the selected city", async () => {
+describe("Amap integration primitives", () => {
+  it("supports fixed-host POI suggestions restricted to the selected city", async () => {
     fetcher.mockResolvedValue(
       json({
-        status: 0,
-        data: [
+        status: "1",
+        info: "OK",
+        infocode: "10000",
+        tips: [
           {
             id: "test-poi",
-            title: "测试楼宇",
+            name: "测试楼宇",
             address: "测试地址",
-            city: "郑州市",
-            adcode: 410102,
-            type: 0,
-            location: { lat: 34.75, lng: 113.65 },
-          },
-          {
-            id: "test-bus",
-            title: "测试线路",
-            address: "测试地址",
-            city: "郑州市",
-            adcode: 410102,
-            type: 3,
-            location: { lat: 34.75, lng: 113.65 },
+            district: "郑州市中原区",
+            adcode: "410102",
+            location: "113.65,34.75",
           },
         ],
       }),
     );
-    const result = await new TencentMapClient(config()).suggest({
+    const result = await new AmapClient(config()).suggest({
       keyword: "中原",
       city: "郑州市",
     });
@@ -320,43 +287,27 @@ describe("Tencent geocoding primitive", () => {
     expect(result[0]?.adcode).toBe("410102");
     const [url] = fetcher.mock.calls[0]!;
     const target = new URL(url);
-    expect(target.pathname).toBe("/ws/place/v1/suggestion");
-    expect(target.searchParams.get("region_fix")).toBe("1");
-    expect(target.searchParams.get("output")).toBe("json");
-    expect(target.searchParams.get("policy")).toBe("1");
-    expect(target.searchParams.has("callback")).toBe(false);
+    expect(target.hostname).toBe("restapi.amap.com");
+    expect(target.pathname).toBe("/v3/assistant/inputtips");
+    expect(target.searchParams.get("citylimit")).toBe("true");
+    expect(target.searchParams.get("datatype")).toBe("poi");
   });
-  it("rejects invalid suggestion input and oversized provider results", async () => {
-    const client = new TencentMapClient(config());
+  it("rejects invalid suggestion input", async () => {
+    const client = new AmapClient(config());
     await expect(
       client.suggest({ keyword: "", city: "郑州市" }),
     ).rejects.toThrow("无效");
     expect(fetcher).not.toHaveBeenCalled();
-    fetcher.mockResolvedValue(
-      json({
-        status: 0,
-        data: Array.from({ length: 11 }, () => ({
-          id: "test-poi",
-          title: "test",
-          address: "test",
-          city: "郑州市",
-          adcode: 410102,
-          type: 0,
-          location: { lat: 34.75, lng: 113.65 },
-        })),
-      }),
-    );
-    await expect(
-      client.suggest({ keyword: "中原", city: "郑州市" }),
-    ).rejects.toThrow("响应无效");
   });
   it("blocks calls when the runtime gate is off", async () => {
     await expect(
-      new TencentMapClient(config({ MAP_GEOCODING_ENABLED: "false" })).geocode({
-        address: "郑州市中原路1号",
-        city: "郑州市",
-      }),
-    ).rejects.toThrow("门禁");
+      new AmapClient(config({ MAP_GEOCODING_ENABLED: "false" })).reverseGeocode(
+        {
+          latitude: 34.75,
+          longitude: 113.65,
+        },
+      ),
+    ).rejects.toThrow("尚未开启");
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -364,78 +315,92 @@ describe("Tencent geocoding primitive", () => {
     expect(() => config({ MAP_PROVIDER: "mock" })).toThrow("MAP_PROVIDER");
   });
 
-  it("blocks missing SK and invalid city/address", async () => {
-    expect(() => config({ TENCENT_MAP_SIGNING_SECRET: "" })).toThrow(
-      "TENCENT_MAP_SIGNING_SECRET",
+  it("blocks missing Web Service key and invalid coordinates", async () => {
+    expect(() => config({ AMAP_WEB_SERVICE_KEY: "" })).toThrow(
+      "AMAP_WEB_SERVICE_KEY",
     );
     await expect(
-      new TencentMapClient(config()).geocode({
-        address: "郑州市中原路1号",
-        city: "",
+      new AmapClient(config()).reverseGeocode({
+        latitude: 190,
+        longitude: 113.65,
       }),
-    ).rejects.toThrow("无效");
+    ).rejects.toThrow("坐标无效");
     expect(fetcher).not.toHaveBeenCalled();
   });
-  it("uses signed fixed-host requests and returns only normalized GCJ-02 coordinates", async () => {
-    fetcher.mockResolvedValue(json(location));
+  it("reverse-geocodes GCJ-02 coordinates on the fixed Amap host", async () => {
+    fetcher.mockResolvedValue(
+      json({
+        status: "1",
+        info: "OK",
+        infocode: "10000",
+        regeocode: {
+          formatted_address: "河南省郑州市中原区测试路1号",
+          addressComponent: { adcode: "410102", city: "郑州市" },
+        },
+      }),
+    );
     expect(
-      await new TencentMapClient(config()).geocode({
-        address: "郑州市中原路1号&A座",
-        city: "郑州市",
+      await new AmapClient(config()).reverseGeocode({
+        latitude: 34.75,
+        longitude: 113.65,
       }),
     ).toEqual({
+      formattedAddress: "河南省郑州市中原区测试路1号",
       latitude: 34.75,
       longitude: 113.65,
       adcode: "410102",
       coordinateSystem: "GCJ-02",
-      reliability: 8,
-      level: 9,
-      requiresManualConfirmation: false,
     });
     const [url, options] = fetcher.mock.calls[0]!;
-    expect(new URL(url).hostname).toBe("apis.map.qq.com");
-    expect(new URL(url).searchParams.get("region")).toBe("郑州市");
-    expect(new URL(url).searchParams.has("sig")).toBe(true);
-    expect(options.headers["x-legacy-url-decode"]).toBe("no");
+    expect(new URL(url).hostname).toBe("restapi.amap.com");
+    expect(new URL(url).pathname).toBe("/v3/geocode/regeo");
+    expect(new URL(url).searchParams.get("location")).toBe(
+      "113.650000,34.750000",
+    );
     expect(options.redirect).toBe("error");
   });
-  it("flags low-precision results instead of silently qualifying a service address", async () => {
-    fetcher.mockResolvedValue(
-      json({ ...location, result: { ...location.result, level: 7 } }),
-    );
-    expect(
-      (
-        await new TencentMapClient(config()).geocode({
-          address: "郑州市中原路1号",
-          city: "郑州市",
-        })
-      ).requiresManualConfirmation,
-    ).toBe(true);
-  });
-  it.each([
-    null,
-    { status: 112, message: "private-provider-error" },
-    {
-      ...location,
-      result: { ...location.result, location: { lat: 190, lng: 113 } },
-    },
-  ])("rejects malformed/failing provider result %j", async (payload) => {
-    fetcher.mockResolvedValue(json(payload));
-    await expect(
-      new TencentMapClient(config()).geocode({
-        address: "郑州市中原路1号",
-        city: "郑州市",
+  it("returns driving distance/duration and maps quota errors", async () => {
+    fetcher.mockResolvedValueOnce(
+      json({
+        status: "1",
+        info: "OK",
+        infocode: "10000",
+        route: { paths: [{ distance: "5200", duration: "900" }] },
       }),
-    ).rejects.toThrow("响应无效");
+    );
+    await expect(
+      new AmapClient(config()).driving({
+        origin: { latitude: 34.75, longitude: 113.65 },
+        destination: { latitude: 34.8, longitude: 113.7 },
+      }),
+    ).resolves.toEqual({ distanceMeters: 5200, durationSeconds: 900 });
+    fetcher.mockResolvedValueOnce(
+      json({ status: "0", info: "LIMIT", infocode: "10003" }),
+    );
+    await expect(
+      new AmapClient(config()).driving({
+        origin: { latitude: 34.75, longitude: 113.65 },
+        destination: { latitude: 34.8, longitude: 113.7 },
+      }),
+    ).rejects.toThrow("已达上限");
+    fetcher.mockResolvedValueOnce(
+      json({ status: "0", info: "PLATFORM", infocode: "10009" }),
+    );
+    await expect(
+      new AmapClient(config()).driving({
+        origin: { latitude: 34.75, longitude: 113.65 },
+        destination: { latitude: 34.8, longitude: 113.7 },
+      }),
+    ).rejects.toThrow("Key 平台配置不匹配");
   });
   it("sanitizes transport errors and never retries automatically", async () => {
-    fetcher.mockRejectedValue(new Error("test-map-secret private-address"));
+    fetcher.mockRejectedValue(new Error("private-key private-address"));
     await expect(
-      new TencentMapClient(config()).geocode({
-        address: "郑州市中原路1号",
-        city: "郑州市",
+      new AmapClient(config()).reverseGeocode({
+        latitude: 34.75,
+        longitude: 113.65,
       }),
-    ).rejects.toThrow("地图渠道暂时不可用");
+    ).rejects.toThrow("高德地图服务暂时不可用");
     expect(fetcher).toHaveBeenCalledOnce();
   });
 });

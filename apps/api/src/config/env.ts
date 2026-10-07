@@ -54,7 +54,7 @@ const EnvSchema = z.object({
   WECHAT_PAY_REFUND_ENABLED: z.enum(["false", "true"]).default("false"),
   WECHAT_PAY_REFUND_NOTIFY_URL: z.string().default(""),
   SMS_PROVIDER: z.enum(["mock", "aliyun"]).default("mock"),
-  MAP_PROVIDER: z.enum(["mock", "tencent"]).default("mock"),
+  MAP_PROVIDER: z.enum(["mock", "amap"]).default("mock"),
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
   // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
   SAFETY_NOTIFICATION_DISPATCH_ENABLED: z
@@ -71,8 +71,8 @@ const EnvSchema = z.object({
   ALIYUN_SMS_TEMPLATE_CODE: z.string().default(""),
   MAP_GEOCODING_ENABLED: z.enum(["false", "true"]).default("false"),
   SERVICE_AREA_ADCODE_ALLOWLIST: z.string().default(""),
-  TENCENT_MAP_KEY: z.string().default(""),
-  TENCENT_MAP_SIGNING_SECRET: z.string().default(""),
+  AMAP_MINIAPP_KEY: z.string().default(""),
+  AMAP_WEB_SERVICE_KEY: z.string().default(""),
   SAFETY_HOTLINE: z.string().default(""),
   SAFETY_EMERGENCY_PHONE: z.string().default(""),
   CUSTOMER_SERVICE_PROVIDER: z.enum(["none", "wecom"]).default("none"),
@@ -182,10 +182,10 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     );
   if (env.MAP_GEOCODING_ENABLED === "true") {
     const invalid: string[] = [];
-    if (env.MAP_PROVIDER !== "tencent") invalid.push("MAP_PROVIDER");
-    if (!env.TENCENT_MAP_KEY.trim()) invalid.push("TENCENT_MAP_KEY");
-    if (!env.TENCENT_MAP_SIGNING_SECRET.trim())
-      invalid.push("TENCENT_MAP_SIGNING_SECRET");
+    if (env.MAP_PROVIDER !== "amap") invalid.push("MAP_PROVIDER");
+    for (const key of ["AMAP_MINIAPP_KEY", "AMAP_WEB_SERVICE_KEY"] as const) {
+      if (!/^[A-Fa-f0-9]{32}$/.test(env[key])) invalid.push(key);
+    }
     if (!serviceAreaAdcodes.length)
       invalid.push("SERVICE_AREA_ADCODE_ALLOWLIST");
     if (invalid.length)
@@ -273,12 +273,9 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
       env.SMS_PROVIDER !== "aliyun"
     )
       invalid.push("SMS_PROVIDER");
-    if (env.MAP_PROVIDER === "tencent") {
-      for (const key of [
-        "TENCENT_MAP_KEY",
-        "TENCENT_MAP_SIGNING_SECRET",
-      ] as const) {
-        if (!env[key].trim() || /[\r\n]/.test(env[key])) invalid.push(key);
+    if (env.MAP_PROVIDER === "amap") {
+      for (const key of ["AMAP_MINIAPP_KEY", "AMAP_WEB_SERVICE_KEY"] as const) {
+        if (!/^[A-Fa-f0-9]{32}$/.test(env[key])) invalid.push(key);
       }
     }
 

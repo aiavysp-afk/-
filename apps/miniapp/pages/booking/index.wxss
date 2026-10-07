@@ -52,6 +52,13 @@ checkbox-group {
   gap: 16rpx;
   margin-top: -8rpx;
 }
+.coordinate-ok {
+  color: #245b4d;
+  background: #e5efeb;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  font-size: 23rpx;
+}
 .address-search text {
   font-size: 22rpx;
   color: #66736f;
@@ -62,7 +69,7 @@ checkbox-group {
   color: #245b4d;
   font-size: 26rpx;
   margin: 0;
-  flex-shrink: 0;
+  flex: 1;
 }
 .suggestions {
   display: flex;

@@ -23,6 +23,9 @@ const input: OrderCreate = {
     contactName: "林女士",
     phone: "13800000000",
     detail: "郑州市金水区示例路 1 号",
+    latitude: 34.75,
+    longitude: 113.65,
+    coordinateSystem: "GCJ-02",
   },
 };
 

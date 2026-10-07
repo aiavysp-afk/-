@@ -274,6 +274,9 @@ describe("order contracts", () => {
           contactName: "林女士",
           phone: "13800000000",
           detail: "郑州市金水区示例路 1 号",
+          latitude: 34.75,
+          longitude: 113.65,
+          coordinateSystem: "GCJ-02",
         },
       }).reservationId,
     ).toBe("hold-1");
@@ -284,6 +287,9 @@ describe("order contracts", () => {
           contactName: "林女士",
           phone: "13800000000",
           detail: "郑州市金水区示例路 1 号",
+          latitude: 34.75,
+          longitude: 113.65,
+          coordinateSystem: "GCJ-02",
         },
         payableFen: 1,
       }),
@@ -320,15 +326,24 @@ describe("address verification contracts", () => {
       AddressVerificationCreateSchema.parse({
         reservationId: "hold-1",
         detail: "郑州市中原区测试路 1 号 A 座",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
       }),
     ).toEqual({
       reservationId: "hold-1",
       detail: "郑州市中原区测试路 1 号 A 座",
+      latitude: 34.75,
+      longitude: 113.65,
+      coordinateSystem: "GCJ-02",
     });
     expect(() =>
       AddressVerificationCreateSchema.parse({
         reservationId: "hold-1",
         detail: "郑州市中原区测试路 1 号 A 座",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
         adcode: "110101",
       }),
     ).toThrow();
@@ -337,6 +352,9 @@ describe("address verification contracts", () => {
         id: "verification-1",
         reservationId: "hold-1",
         adcode: "410102",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
         expiresAt: "2026-10-05T10:10:00.000Z",
       }).adcode,
     ).toBe("410102");
@@ -351,6 +369,9 @@ describe("address verification contracts", () => {
           contactName: "林女士",
           phone: "13800000000",
           detail: "郑州市中原区测试路 1 号 A 座",
+          latitude: 34.75,
+          longitude: 113.65,
+          coordinateSystem: "GCJ-02",
         },
       }).addressVerificationId,
     ).toBe("verification-1");
@@ -362,6 +383,9 @@ describe("address verification contracts", () => {
           contactName: "林女士",
           phone: "13800000000",
           detail: "郑州市中原区测试路 1 号 A 座",
+          latitude: 34.75,
+          longitude: 113.65,
+          coordinateSystem: "GCJ-02",
         },
         adcode: "410102",
       }),

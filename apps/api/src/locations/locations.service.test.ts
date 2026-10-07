@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { validateEnv, type AppEnv } from "../config/env.js";
 import type { PrismaService } from "../database/prisma.service.js";
-import type { TencentMapClient } from "../integrations/tencent-map.client.js";
+import type { AmapClient } from "../integrations/amap.client.js";
 import { LocationsService } from "./locations.service.js";
 
 const principal: AuthPrincipal = {
@@ -12,6 +12,11 @@ const principal: AuthPrincipal = {
   userId: "customer-1",
   displayName: "Customer",
   memberships: [],
+};
+const coordinate = {
+  latitude: 34.75,
+  longitude: 113.65,
+  coordinateSystem: "GCJ-02" as const,
 };
 
 function harness(overrides: Record<string, string> = {}) {
@@ -58,25 +63,21 @@ function harness(overrides: Record<string, string> = {}) {
         coordinateSystem: "GCJ-02",
       },
     ]),
-    geocode: vi.fn().mockResolvedValue({
-      latitude: 34.75,
-      longitude: 113.65,
+    reverseGeocode: vi.fn().mockResolvedValue({
+      ...coordinate,
       adcode: "410102",
-      coordinateSystem: "GCJ-02",
-      reliability: 8,
-      level: 9,
-      requiresManualConfirmation: false,
+      formattedAddress: "河南省郑州市中原区测试路1号",
     }),
   };
-  const maps = mapsMock as unknown as TencentMapClient;
+  const maps = mapsMock as unknown as AmapClient;
   const config = new ConfigService<AppEnv, true>(
     validateEnv({
-      MAP_PROVIDER: "tencent",
+      MAP_PROVIDER: "amap",
       MAP_GEOCODING_ENABLED: "true",
       SERVICE_CITY: "郑州市",
       SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
-      TENCENT_MAP_KEY: "test-map-key",
-      TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+      AMAP_MINIAPP_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      AMAP_WEB_SERVICE_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ...overrides,
     }),
   );
@@ -114,6 +115,7 @@ describe("LocationsService", () => {
         {
           reservationId: "reservation-1",
           detail: "郑州市中原区测试路1号A座",
+          ...coordinate,
         },
         now,
       ),
@@ -121,21 +123,21 @@ describe("LocationsService", () => {
       id: "verification-1",
       reservationId: "reservation-1",
       adcode: "410102",
+      ...coordinate,
       expiresAt: "2026-10-05T10:10:00.000Z",
     });
-    expect(mapsMock.geocode).toHaveBeenCalledWith({
-      address: "郑州市中原区测试路1号A座",
-      city: "郑州市",
+    expect(mapsMock.reverseGeocode).toHaveBeenCalledWith({
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
     });
     const create =
       prismaMock.addressVerification.upsert.mock.calls[0]![0].create;
     expect(create.detailHash).toMatch(/^[0-9a-f]{64}$/);
     expect(create).not.toHaveProperty("detail");
-    expect(create).not.toHaveProperty("latitude");
-    expect(create).not.toHaveProperty("longitude");
+    expect(create).toMatchObject(coordinate);
   });
 
-  it("rejects other users, low precision and out-of-area addresses before issuing a usable proof", async () => {
+  it("rejects other users and out-of-area coordinates before issuing a usable proof", async () => {
     const foreign = harness();
     foreign.prismaMock.appointmentReservation.findUnique.mockResolvedValue({
       id: "reservation-1",
@@ -147,43 +149,16 @@ describe("LocationsService", () => {
       foreign.service.verify(principal, {
         reservationId: "reservation-1",
         detail: "郑州市中原区测试路1号A座",
+        ...coordinate,
       }),
     ).rejects.toThrow("其他用户");
-    expect(foreign.mapsMock.geocode).not.toHaveBeenCalled();
-
-    const imprecise = harness();
-    imprecise.mapsMock.geocode.mockResolvedValue({
-      latitude: 34.75,
-      longitude: 113.65,
-      adcode: "410102",
-      coordinateSystem: "GCJ-02",
-      reliability: 3,
-      level: 7,
-      requiresManualConfirmation: true,
-    });
-    await expect(
-      imprecise.service.verify(
-        principal,
-        {
-          reservationId: "reservation-1",
-          detail: "郑州市中原区测试路1号A座",
-        },
-        new Date("2026-10-05T10:00:00.000Z"),
-      ),
-    ).rejects.toThrow("精度不足");
-    expect(
-      imprecise.prismaMock.addressVerification.upsert,
-    ).not.toHaveBeenCalled();
+    expect(foreign.mapsMock.reverseGeocode).not.toHaveBeenCalled();
 
     const outside = harness();
-    outside.mapsMock.geocode.mockResolvedValue({
-      latitude: 39.9,
-      longitude: 116.4,
+    outside.mapsMock.reverseGeocode.mockResolvedValue({
+      ...coordinate,
       adcode: "110101",
-      coordinateSystem: "GCJ-02",
-      reliability: 9,
-      level: 10,
-      requiresManualConfirmation: false,
+      formattedAddress: "河南省郑州市边界外测试点",
     });
     await expect(
       outside.service.verify(
@@ -191,6 +166,7 @@ describe("LocationsService", () => {
         {
           reservationId: "reservation-1",
           detail: "北京市东城区测试地址1号",
+          ...coordinate,
         },
         new Date("2026-10-05T10:00:00.000Z"),
       ),
@@ -205,6 +181,7 @@ describe("LocationsService", () => {
       {
         reservationId: "reservation-1",
         detail: "郑州市中原区测试路1号A座",
+        ...coordinate,
       },
       now,
     );
@@ -225,6 +202,7 @@ describe("LocationsService", () => {
         contactName: "林女士",
         phone: "13800138000",
         detail: "郑州市中原区测试路1号A座",
+        ...coordinate,
       },
     };
     await expect(

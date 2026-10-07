@@ -61,13 +61,21 @@ export class PublicController {
           sms: this.config.get("SMS_PROVIDER", { infer: true }),
           map: this.config.get("MAP_PROVIDER", { infer: true }),
         },
+        map: {
+          coordinateSystem: "GCJ-02",
+          miniappKey:
+            this.config.get("MAP_PROVIDER", { infer: true }) === "amap" &&
+            this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) === "true"
+              ? this.config.get("AMAP_MINIAPP_KEY", { infer: true })
+              : "",
+        },
         features: {
           addressSuggestionAvailable:
-            this.config.get("MAP_PROVIDER", { infer: true }) === "tencent" &&
+            this.config.get("MAP_PROVIDER", { infer: true }) === "amap" &&
             this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) ===
               "true",
           addressVerificationRequired:
-            this.config.get("MAP_PROVIDER", { infer: true }) === "tencent" &&
+            this.config.get("MAP_PROVIDER", { infer: true }) === "amap" &&
             this.config.get("MAP_GEOCODING_ENABLED", { infer: true }) ===
               "true",
         },

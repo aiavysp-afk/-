@@ -5,6 +5,24 @@ declare function Page<T extends object>(
 declare function Component<T extends object>(options: T): void;
 declare function getApp<T extends object>(): T;
 declare const wx: {
+  getLocation(options: {
+    type: "gcj02";
+    isHighAccuracy?: boolean;
+    highAccuracyExpireTime?: number;
+    success(result: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+    }): void;
+    fail(error: { errMsg: string }): void;
+  }): void;
+  openLocation(options: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+    scale?: number;
+  }): void;
   openCustomerServiceChat?(options: {
     corpId: string;
     extInfo: { url: string };

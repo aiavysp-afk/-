@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
+const amap_1 = require("../../utils/amap");
 Page({
     data: {
         service: null,
@@ -12,6 +13,11 @@ Page({
         contactName: "",
         phone: "",
         detail: "",
+        latitude: null,
+        longitude: null,
+        coordinateSystem: "GCJ-02",
+        amapMiniappKey: "",
+        locationBusy: false,
         addressSuggestionAvailable: false,
         addressVerificationRequired: false,
         addressVerificationId: "",
@@ -52,6 +58,7 @@ Page({
                 addressSuggestionAvailable: config.features.addressSuggestionAvailable,
                 addressVerificationRequired: config.features.addressVerificationRequired,
                 serviceCity: config.serviceCity,
+                amapMiniappKey: config.map.miniappKey,
             });
         }
         catch {
@@ -99,9 +106,37 @@ Page({
             this.setData({
                 [field]: e.detail.value,
                 ...(field === "detail"
-                    ? { suggestions: [], addressVerificationId: "" }
+                    ? {
+                        suggestions: [],
+                        addressVerificationId: "",
+                        latitude: null,
+                        longitude: null,
+                    }
                     : {}),
             });
+    },
+    async locateAddress() {
+        if (this.data.locationBusy || this.data.orderSubmissionAttempted)
+            return;
+        this.setData({ locationBusy: true, error: "", suggestions: [] });
+        try {
+            const point = await (0, amap_1.getGcj02Location)();
+            const address = await (0, amap_1.reverseGeocode)(this.data.amapMiniappKey, point);
+            this.setData({
+                detail: address.detail,
+                latitude: point.latitude,
+                longitude: point.longitude,
+                coordinateSystem: "GCJ-02",
+                addressVerificationId: "",
+            });
+            wx.showToast({ title: "已定位并转为中文地址", icon: "success" });
+        }
+        catch (error) {
+            this.fail(error);
+        }
+        finally {
+            this.setData({ locationBusy: false });
+        }
     },
     async searchAddress() {
         if (this.data.suggestionBusy ||
@@ -115,9 +150,7 @@ Page({
         }
         this.setData({ suggestionBusy: true, error: "", suggestions: [] });
         try {
-            if (!(0, auth_1.getStoredSession)())
-                await (0, auth_1.loginWithWechat)();
-            const suggestions = await (0, api_1.api)(`/locations/address-suggestions?keyword=${encodeURIComponent(keyword)}`);
+            const suggestions = await (0, amap_1.suggestAddress)(this.data.amapMiniappKey, keyword, this.data.serviceCity);
             this.setData({ suggestions });
             if (!suggestions.length)
                 this.fail(new Error("当前服务城市内未找到匹配地址，请继续手填"));
@@ -138,7 +171,14 @@ Page({
         const detail = `${suggestion.title} ${suggestion.address}`
             .trim()
             .slice(0, 200);
-        this.setData({ detail, suggestions: [], addressVerificationId: "" });
+        this.setData({
+            detail,
+            latitude: suggestion.latitude,
+            longitude: suggestion.longitude,
+            coordinateSystem: "GCJ-02",
+            suggestions: [],
+            addressVerificationId: "",
+        });
     },
     consentChanged(e) {
         this.setData({ consent: e.detail.value.includes("agree") });
@@ -154,6 +194,10 @@ Page({
             !/^1\d{10}$/.test(this.data.phone) ||
             this.data.detail.trim().length < 5) {
             this.fail(new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"));
+            return;
+        }
+        if (this.data.latitude === null || this.data.longitude === null) {
+            this.fail(new Error("请先使用定位或高德地址搜索选择上门坐标"));
             return;
         }
         this.setData({ busy: true, error: "" });
@@ -173,6 +217,9 @@ Page({
                 const verification = await (0, api_1.api)("/locations/address-verifications", "POST", {
                     reservationId: this.data.reservationId,
                     detail: this.data.detail.trim(),
+                    latitude: this.data.latitude,
+                    longitude: this.data.longitude,
+                    coordinateSystem: "GCJ-02",
                 });
                 this.setData({ addressVerificationId: verification.id });
             }
@@ -191,6 +238,9 @@ Page({
                     contactName: this.data.contactName.trim(),
                     phone: this.data.phone,
                     detail: this.data.detail.trim(),
+                    latitude: this.data.latitude,
+                    longitude: this.data.longitude,
+                    coordinateSystem: "GCJ-02",
                 },
                 ...(this.data.addressVerificationId
                     ? { addressVerificationId: this.data.addressVerificationId }
@@ -217,6 +267,8 @@ Page({
             contactName: "",
             phone: "",
             detail: "",
+            latitude: null,
+            longitude: null,
             suggestions: [],
             addressVerificationId: "",
             orderSubmissionAttempted: false,

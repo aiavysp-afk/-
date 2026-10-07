@@ -67,6 +67,20 @@
 .error {
   color: #a3403b;
 }
+.location-status {
+  margin: 16rpx 0;
+  padding: 18rpx;
+  border-radius: 14rpx;
+  background: #eaf2ee;
+  color: #245b4d;
+  font-size: 24rpx;
+}
+.location-status button {
+  margin-top: 10rpx;
+  background: #245b4d;
+  color: #fff;
+  font-size: 24rpx;
+}
 .safety-action {
   background: #8f3f38;
   color: #fff;

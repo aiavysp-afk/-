@@ -103,6 +103,14 @@ export const IdempotencyKeySchema = z
   .max(128)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
+export const Gcj02CoordinateSchema = z
+  .object({
+    latitude: z.number().finite().min(-90).max(90),
+    longitude: z.number().finite().min(-180).max(180),
+    coordinateSystem: z.literal("GCJ-02"),
+  })
+  .strict();
+
 export const ServiceAddressSchema = z
   .object({
     contactName: z.string().trim().min(2).max(40),
@@ -111,6 +119,9 @@ export const ServiceAddressSchema = z
       .trim()
       .regex(/^1\d{10}$/),
     detail: z.string().trim().min(5).max(200),
+    latitude: Gcj02CoordinateSchema.shape.latitude,
+    longitude: Gcj02CoordinateSchema.shape.longitude,
+    coordinateSystem: Gcj02CoordinateSchema.shape.coordinateSystem,
   })
   .strict();
 
@@ -135,6 +146,9 @@ export const AddressVerificationCreateSchema = z
   .object({
     reservationId: z.string().trim().min(1).max(128),
     detail: z.string().trim().min(5).max(200),
+    latitude: Gcj02CoordinateSchema.shape.latitude,
+    longitude: Gcj02CoordinateSchema.shape.longitude,
+    coordinateSystem: Gcj02CoordinateSchema.shape.coordinateSystem,
   })
   .strict();
 
@@ -142,6 +156,9 @@ export const AddressVerificationSchema = z.object({
   id: z.string(),
   reservationId: z.string(),
   adcode: z.string().regex(/^\d{6}$/),
+  latitude: Gcj02CoordinateSchema.shape.latitude,
+  longitude: Gcj02CoordinateSchema.shape.longitude,
+  coordinateSystem: Gcj02CoordinateSchema.shape.coordinateSystem,
   expiresAt: IsoDateTimeSchema,
 });
 
@@ -230,6 +247,34 @@ export const TechnicianWorkbenchOrderSchema = z.object({
   appointmentStart: IsoDateTimeSchema,
   appointmentEnd: IsoDateTimeSchema,
   status: OrderStatusSchema,
+  destination: Gcj02CoordinateSchema.extend({
+    addressLabel: z.string().min(5).max(200),
+  }).nullable(),
+});
+
+export const TechnicianLocationReportSchema = Gcj02CoordinateSchema.extend({
+  accuracyMeters: z.number().finite().nonnegative().max(10_000).optional(),
+});
+
+export const TechnicianLocationReportResultSchema =
+  TechnicianLocationReportSchema.extend({
+    reportedAt: IsoDateTimeSchema,
+  });
+
+export const TechnicianRouteSchema = z.object({
+  orderId: z.string(),
+  distanceMeters: z.number().int().nonnegative(),
+  durationSeconds: z.number().int().nonnegative(),
+  origin: Gcj02CoordinateSchema,
+  destination: Gcj02CoordinateSchema.extend({
+    addressLabel: z.string().min(5).max(200),
+  }),
+});
+
+export const CustomerTechnicianLocationSchema = z.object({
+  orderId: z.string(),
+  status: z.enum(["UNASSIGNED", "HIDDEN", "UNAVAILABLE", "STALE", "AVAILABLE"]),
+  location: TechnicianLocationReportResultSchema.nullable(),
 });
 
 export const TechnicianWorkbenchShiftSchema = z.object({
@@ -381,7 +426,7 @@ export const AdminServiceAreaSchema = z.object({
   targetAdcodes: z.array(z.string().regex(/^\d{6}$/)),
   configuredAdcodes: z.array(z.string().regex(/^\d{6}$/)),
   fullyConfigured: z.boolean(),
-  mapProvider: z.enum(["mock", "tencent"]),
+  mapProvider: z.enum(["mock", "amap"]),
   verificationEnabled: z.boolean(),
   notice: z.string(),
 });
@@ -401,7 +446,7 @@ export const AdminReadinessSchema = z.object({
     refundEnabled: z.boolean(),
   }),
   map: z.object({
-    provider: z.enum(["mock", "tencent"]),
+    provider: z.enum(["mock", "amap"]),
     geocodingEnabled: z.boolean(),
     coverageConfigured: z.boolean(),
   }),
@@ -491,7 +536,11 @@ export const PublicConfigSchema = z.object({
   integrations: z.object({
     payment: z.enum(["mock", "wechat"]),
     sms: z.enum(["mock", "aliyun"]),
-    map: z.enum(["mock", "tencent"]),
+    map: z.enum(["mock", "amap"]),
+  }),
+  map: z.object({
+    coordinateSystem: z.literal("GCJ-02"),
+    miniappKey: z.string(),
   }),
   features: z.object({
     addressSuggestionAvailable: z.boolean(),
@@ -726,6 +775,7 @@ export type AvailabilitySlot = z.infer<typeof AvailabilitySlotSchema>;
 export type ShiftCreate = z.infer<typeof ShiftCreateSchema>;
 export type BookingHoldCreate = z.infer<typeof BookingHoldCreateSchema>;
 export type BookingHold = z.infer<typeof BookingHoldSchema>;
+export type Gcj02Coordinate = z.infer<typeof Gcj02CoordinateSchema>;
 export type ServiceAddress = z.infer<typeof ServiceAddressSchema>;
 export type AddressSuggestion = z.infer<typeof AddressSuggestionSchema>;
 export type AddressVerification = z.infer<typeof AddressVerificationSchema>;
@@ -744,6 +794,16 @@ export type TechnicianWorkbenchOrder = z.infer<
 >;
 export type TechnicianWorkbenchShift = z.infer<
   typeof TechnicianWorkbenchShiftSchema
+>;
+export type TechnicianLocationReport = z.infer<
+  typeof TechnicianLocationReportSchema
+>;
+export type TechnicianLocationReportResult = z.infer<
+  typeof TechnicianLocationReportResultSchema
+>;
+export type TechnicianRoute = z.infer<typeof TechnicianRouteSchema>;
+export type CustomerTechnicianLocation = z.infer<
+  typeof CustomerTechnicianLocationSchema
 >;
 export type TechnicianEarnings = z.infer<typeof TechnicianEarningsSchema>;
 export type TechnicianEarningsItem = z.infer<

@@ -7,7 +7,10 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { TechnicianOrderActionSchema } from "@zydj/contracts";
+import {
+  TechnicianLocationReportSchema,
+  TechnicianOrderActionSchema,
+} from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
@@ -26,6 +29,26 @@ export class TechnicianWorkbenchController {
   @Get("earnings")
   async getEarnings(@CurrentPrincipal() principal: AuthPrincipal) {
     return { data: await this.workbench.getEarnings(principal) };
+  }
+
+  @Post("location")
+  async reportLocation(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianLocationReportSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("技师位置参数无效");
+    return {
+      data: await this.workbench.reportLocation(principal, parsed.data),
+    };
+  }
+
+  @Get("orders/:orderId/route")
+  async route(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("orderId") orderId: string,
+  ) {
+    return { data: await this.workbench.route(principal, orderId) };
   }
 
   @Post("orders/:orderId/actions")

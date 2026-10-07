@@ -10,6 +10,11 @@ import type {
 } from "@zydj/contracts";
 import { api, money, newKey, shanghaiTime } from "../../utils/api";
 import { getStoredSession, loginWithWechat } from "../../utils/auth";
+import {
+  getGcj02Location,
+  reverseGeocode,
+  suggestAddress,
+} from "../../utils/amap";
 Page({
   data: {
     service: null as ServiceItem | null,
@@ -20,6 +25,11 @@ Page({
     contactName: "",
     phone: "",
     detail: "",
+    latitude: null as number | null,
+    longitude: null as number | null,
+    coordinateSystem: "GCJ-02" as const,
+    amapMiniappKey: "",
+    locationBusy: false,
     addressSuggestionAvailable: false,
     addressVerificationRequired: false,
     addressVerificationId: "",
@@ -61,6 +71,7 @@ Page({
         addressVerificationRequired:
           config.features.addressVerificationRequired,
         serviceCity: config.serviceCity,
+        amapMiniappKey: config.map.miniappKey,
       });
     } catch {
       // Address search is an optional enhancement; manual entry remains usable.
@@ -111,9 +122,34 @@ Page({
       this.setData({
         [field]: e.detail.value,
         ...(field === "detail"
-          ? { suggestions: [], addressVerificationId: "" }
+          ? {
+              suggestions: [],
+              addressVerificationId: "",
+              latitude: null,
+              longitude: null,
+            }
           : {}),
       });
+  },
+  async locateAddress() {
+    if (this.data.locationBusy || this.data.orderSubmissionAttempted) return;
+    this.setData({ locationBusy: true, error: "", suggestions: [] });
+    try {
+      const point = await getGcj02Location();
+      const address = await reverseGeocode(this.data.amapMiniappKey, point);
+      this.setData({
+        detail: address.detail,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        coordinateSystem: "GCJ-02",
+        addressVerificationId: "",
+      });
+      wx.showToast({ title: "已定位并转为中文地址", icon: "success" });
+    } catch (error) {
+      this.fail(error);
+    } finally {
+      this.setData({ locationBusy: false });
+    }
   },
   async searchAddress() {
     if (
@@ -129,9 +165,10 @@ Page({
     }
     this.setData({ suggestionBusy: true, error: "", suggestions: [] });
     try {
-      if (!getStoredSession()) await loginWithWechat();
-      const suggestions = await api<AddressSuggestion[]>(
-        `/locations/address-suggestions?keyword=${encodeURIComponent(keyword)}`,
+      const suggestions = await suggestAddress(
+        this.data.amapMiniappKey,
+        keyword,
+        this.data.serviceCity,
       );
       this.setData({ suggestions });
       if (!suggestions.length)
@@ -150,7 +187,14 @@ Page({
     const detail = `${suggestion.title} ${suggestion.address}`
       .trim()
       .slice(0, 200);
-    this.setData({ detail, suggestions: [], addressVerificationId: "" });
+    this.setData({
+      detail,
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude,
+      coordinateSystem: "GCJ-02",
+      suggestions: [],
+      addressVerificationId: "",
+    });
   },
   consentChanged(e: { detail: { value: string[] } }) {
     this.setData({ consent: e.detail.value.includes("agree") });
@@ -170,6 +214,10 @@ Page({
       this.fail(
         new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"),
       );
+      return;
+    }
+    if (this.data.latitude === null || this.data.longitude === null) {
+      this.fail(new Error("请先使用定位或高德地址搜索选择上门坐标"));
       return;
     }
     this.setData({ busy: true, error: "" });
@@ -193,6 +241,9 @@ Page({
           {
             reservationId: this.data.reservationId,
             detail: this.data.detail.trim(),
+            latitude: this.data.latitude,
+            longitude: this.data.longitude,
+            coordinateSystem: "GCJ-02",
           },
         );
         this.setData({ addressVerificationId: verification.id });
@@ -215,6 +266,9 @@ Page({
             contactName: this.data.contactName.trim(),
             phone: this.data.phone,
             detail: this.data.detail.trim(),
+            latitude: this.data.latitude,
+            longitude: this.data.longitude,
+            coordinateSystem: "GCJ-02",
           },
           ...(this.data.addressVerificationId
             ? { addressVerificationId: this.data.addressVerificationId }
@@ -241,6 +295,8 @@ Page({
       contactName: "",
       phone: "",
       detail: "",
+      latitude: null,
+      longitude: null,
       suggestions: [],
       addressVerificationId: "",
       orderSubmissionAttempted: false,

@@ -11,10 +11,10 @@ describe("public configuration", () => {
         new ConfigService<AppEnv, true>(
           validateEnv({
             SERVICE_CITY: "郑州市",
-            MAP_PROVIDER: "tencent",
+            MAP_PROVIDER: "amap",
             MAP_GEOCODING_ENABLED: enabled,
-            TENCENT_MAP_KEY: "test-map-key",
-            TENCENT_MAP_SIGNING_SECRET: "test-map-secret",
+            AMAP_MINIAPP_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            AMAP_WEB_SERVICE_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             SERVICE_AREA_ADCODE_ALLOWLIST: "410102",
           }),
         ),

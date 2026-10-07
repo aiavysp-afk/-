@@ -90,7 +90,6 @@ if (
   env.AUTH_PROVIDER !== "mock" ||
   env.PAYMENT_PROVIDER !== "mock" ||
   env.SMS_PROVIDER !== "mock" ||
-  env.MAP_PROVIDER !== "mock" ||
   env.API_HOST !== "127.0.0.1" ||
   env.API_PORT !== "3210" ||
   [
@@ -99,12 +98,21 @@ if (
     "WECHAT_PAY_RECOVERY_ENABLED",
     "SAFETY_DUTY_CONFIRMED",
     "SMS_SEND_ENABLED",
-    "MAP_GEOCODING_ENABLED",
     "SAFETY_NOTIFICATION_DISPATCH_ENABLED",
     "SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED",
   ].some((k) => env[k] !== "false")
 )
   throw Error("Private gate changed; refusing deployment");
+const privateMapReady =
+  (env.MAP_PROVIDER === "mock" && env.MAP_GEOCODING_ENABLED === "false") ||
+  (env.MAP_PROVIDER === "amap" &&
+    ["false", "true"].includes(env.MAP_GEOCODING_ENABLED) &&
+    /^[A-Fa-f0-9]{32}$/.test(env.AMAP_MINIAPP_KEY ?? "") &&
+    /^[A-Fa-f0-9]{32}$/.test(env.AMAP_WEB_SERVICE_KEY ?? ""));
+if (!privateMapReady)
+  throw Error(
+    "Private map configuration is neither closed mock nor complete Amap",
+  );
 const target = new URL(env.DATABASE_URL);
 if (
   target.hostname !== "127.0.0.1" ||

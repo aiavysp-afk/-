@@ -26,8 +26,6 @@
 
 最新人工反馈（2026-10-04）：联系渠道专项临时预览已生成，用户随后明确回传“电话已经接通”，仅记为商家电话接通子项通过（用户回传，非代理现场观察）。小程序按钮触发、设备/微信版本、号码核验、另一设备和失败回退仍未确认，企业微信正确账号/真人接通也未回传；详见[专项验收记录](MINIAPP_WECHAT_ACCEPTANCE.md)。本轮不修改环境变量或值班确认门禁，单次接通不等于完整安全响应验收。下文“未拨号/未真机验收”为对应历史阶段或代理行为，不覆盖本次用户反馈。
 
-2026-10-04：本轮实现渠道基础适配器、生产凭据门禁、小程序企业微信客服与商家紧急拨号、H5紧急拨号。用户已确认短信签名/模板审核通过和腾讯地图企业账号，并选择企业微信客服及单独的紧急值班手机号。账号存在不代表已配置完整凭据或已完成真人验收。
-
 ## 最新客服归属确认增量（优先于下文历史回执）
 
 原服务器两份环境文件的WECHAT_KF_URL及20260910企业微信部署脚本保存了同一官方客服链接；旧CorpID为空，两份旧源码归档107个文本项也没有企业ID记录。官方链接HTTP200但页面不公开企业ID，因此这些检查只能证明旧配置存在、格式正确和网页可访问，不能独立证明归属/绑定/真人接通。
@@ -78,9 +76,8 @@ docs/DEPLOYMENT_ACCEPTANCE_20261004.md
 ## 已实现边界
 
 - 阿里云 SMS：固定 HTTPS 中国站 SendSms，ACS3-HMAC-SHA256、随机 nonce、可选 STS；单收件人、固定配置模板/签名、模板变量校验。8秒超时、禁止跳转、64KiB流式响应上限、失败诊断不带手机号/密钥。返回 ACCEPTED/REJECTED/UNKNOWN，ACCEPTED只表示渠道受理，不表示送达。超时/异常不自动重发。
-- 腾讯地图：服务端 SK 签名，地址解析及用户给出的 suggestion 地址提示，固定 HTTPS 域名、同城 region_fix=1/上门服务 policy=1、限10条建议，只返回普通POI和GCJ-02坐标。签名使用原始排序参数，传输单独URL编码。无JSONP、无前端SK、无任意URL代理。
-- 地图地址提示与下单核验已通过受控 HTTP 接口接到预约页：必须登录，客户端不能指定城市或行政区。提示接口接收 2–32 字关键词；核验接口只接受当前用户有效预约占位和完整地址。服务端拒绝低精度解析及 `SERVICE_AREA_ADCODE_ALLOWLIST` 之外的行政区，并签发与用户、预约、地址摘要、行政区和占位到期时间绑定的短期凭证；下单事务再次核对。新表不保存地址原文或坐标，只保存服务器 HMAC 摘要。PostgreSQL 对每用户/全局的分钟与日预算原子计数，关闭门禁时在写库和外呼前拒绝；小程序仍要求人工核对门牌号。
-- SMS 适配器仍不直接开放发送代理或自动发送任务。真实调用开关 SMS_SEND_ENABLED/MAP_GEOCODING_ENABLED 默认 false；provider 改成 aliyun/tencent 时生产还必须通过完整凭据检查。
+- 高德地图地址提示与下单核验已接到预约页：小程序使用平台 Key 获取 GCJ-02 定位、逆解析和 POI 提示；服务端使用 Web 服务 Key 再次逆解析并核对 `SERVICE_AREA_ADCODE_ALLOWLIST`。短期凭证绑定用户、预约、地址摘要、坐标、行政区和占位到期时间；订单加密保存地址并独立保存 GCJ-02 经纬度。PostgreSQL 对每用户/全局的分钟与日预算原子计数，关闭门禁时在写库和外呼前拒绝。
+- SMS 适配器仍不直接开放发送代理或自动发送任务。真实调用开关 `SMS_SEND_ENABLED` / `MAP_GEOCODING_ENABLED` 默认 false；SMS 选择 aliyun、地图选择 amap 时，生产仍必须通过完整凭据检查。
 - 企业微信客服：严格校验 work.weixin.qq.com 的 kfid/kf 路径与 CorpID；公开配置仅返回公开标识，不需要企业微信 API secret/token。小程序“我的”页预加载配置，用户点击时同步调用 wx.openCustomerServiceChat，保留用户手势；未配置、客户端不支持和原生接口失败均明确提示，不声明客服在线或求助受理。
 - 紧急值班电话：用户提供的号码只写服务器受控配置，不硬编码到代码、示例或文档。小程序使用 wx.makePhoneCall；H5替换无响应的SOS按钮为商家紧急值班拨号，tel URI仅接受大陆手机格式。拨号入口不自动报案、不记录“已受理”，也不是当地应急机关入口。没有实际拨号测试。
 - 客服和安全值班分离：SAFETY_CONTACT_MODE=wecom 时必须有有效客服公开标识、单独紧急电话及 SAFETY_DUTY_CONFIRMED=true 才能过生产门禁。确认位默认 false，只能在值班主备岗、响应/升级流程、无法接通兜底和真人演练完成后由负责人确认，不能为了启动而随意修改。
@@ -93,7 +90,6 @@ docs/DEPLOYMENT_ACCEPTANCE_20261004.md
 | ALIYUN_SMS_SECURITY_TOKEN                               | 可选STS临时token，需受控刷新                                                       |
 | ALIYUN_SMS_SIGN_NAME / ALIYUN_SMS_TEMPLATE_CODE         | 审核通过且用途与业务事件匹配；旧模板用途未核验，不自动沿用                         |
 | SMS_SEND_ENABLED                                        | false；持久化派发/额度/送达回执验收后才允许启用                                    |
-| TENCENT_MAP_KEY / TENCENT_MAP_SIGNING_SECRET            | WebService专用Key和SN校验SK，服务器注入                                            |
 | MAP_GEOCODING_ENABLED                                   | false；服务城市/隐私授权、限流/配额和真实渠道验收后启用                            |
 | SERVICE_CITY                                            | 郑州市；服务端固定查询城市，前端不能传入或覆盖                                     |
 | SERVICE_AREA_ADCODE_ALLOWLIST                           | 逗号分隔的六位行政区代码；经营负责人核定，空值时地图门禁拒绝启动                   |
@@ -107,12 +103,6 @@ docs/DEPLOYMENT_ACCEPTANCE_20261004.md
 | SAFETY_HOTLINE                                          | 旧电话模式兼容变量；wecom模式不需要把客服URL塞进此字段                             |
 
 ## 当前服务器与待验收项
-
-生产 pending 和私有验收配置已分别受控备份，保留原密码、pepper、加密密钥与三个微信资金开关false；只新增客服选择、用户指定紧急号码和关闭的渠道开关。生产 pending 仍不启用公开服务。旧系统签名和模板字段存在，完整访问凭据及腾讯Key/SK未找到。
-
-用户提供的企业微信CorpID及从旧服务器找回的实际客服链接已写入生产pending和私有验收受控配置，用户明确确认同企业/账号/绑定后设置独立客服确认位；私有入口开放，微信真机/实际接通尚未验收。短信RAM凭据、模板用途和腾讯地图Key/SK需通过服务器安全配置提供，不发到聊天。值班确认位仍false。公网继续维护503；生产库16批迁移不变、不导入旧数据。
-
-安全短信 Outbox、有限重试和送达回执查询已实现，但服务器仍缺完整短信凭据与真人值班资料，发送/回执门禁保持关闭。地图地址提示与预约绑定的服务区核验代码已完成；服务器仍缺腾讯 Key/SK，行政区白名单也尚未由经营负责人核定，因此地图门禁保持关闭且不会产生真实调用。客服目前只是用户主动入口，不是自动应急告警在线状态检测。这些仍阻止公开经营。
 
 ## 测试与官方协议依据
 
@@ -138,9 +128,6 @@ docs/DEPLOYMENT_ACCEPTANCE_20261004.md
 
 - [阿里云ACS3签名规范及官方测试向量](https://www.alibabacloud.com/help/en/sdk/product-overview/v3-request-structure-and-signature)
 - [SendSms参数、受理与无幂等提醒](https://help.aliyun.com/zh/sms/developer-reference/api-dysmsapi-2017-05-25-sendsms)
-- [腾讯地图服务端签名与URL编码](https://lbs.qq.com/faq/serverFaq/webServiceKey)
-- [腾讯官方地址解析协议参考](https://github.com/TencentLBS/tencentmap-webservice-skill/blob/main/references/api-geocoder.md)
-- [腾讯官方地址提示协议参考](https://github.com/TencentLBS/tencentmap-webservice-skill/blob/main/references/api-search.md)
 - [微信原生客服API](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/service-chat/wx.openCustomerServiceChat.html)和[企微生成客服链接](https://developer.work.weixin.qq.com/document/path/94665)：本轮官方页面读取受限，代码仅做替身/结构验收，不能宣称真实官方接入已通过。
 
 ## 改动文件
@@ -172,7 +159,6 @@ apps/api/src/integrations/aliyun-sms.client.ts
 apps/api/src/integrations/integration-http.ts
 apps/api/src/integrations/integrations.module.ts
 apps/api/src/integrations/integrations.test.ts
-apps/api/src/integrations/tencent-map.client.ts
 apps/api/src/public/customer-service.config.test.ts
 apps/api/src/public/customer-service.config.ts
 apps/api/src/public/public.controller.ts

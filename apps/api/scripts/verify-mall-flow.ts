@@ -28,6 +28,19 @@ process.env.DATABASE_URL = databaseUrl;
 process.env.NODE_ENV = "test";
 process.env.AUTH_PROVIDER = "mock";
 process.env.PAYMENT_PROVIDER = "mock";
+const runRealAmapFlow = process.env.RUN_REAL_AMAP_FLOW === "true";
+if (runRealAmapFlow) {
+  if (
+    !/^[A-Fa-f0-9]{32}$/.test(process.env.AMAP_MINIAPP_KEY ?? "") ||
+    !/^[A-Fa-f0-9]{32}$/.test(process.env.AMAP_WEB_SERVICE_KEY ?? "")
+  )
+    throw new Error("Real Amap self-test requires both controlled Amap keys");
+  process.env.MAP_PROVIDER = "amap";
+  process.env.MAP_GEOCODING_ENABLED = "true";
+} else {
+  process.env.MAP_PROVIDER = "mock";
+  process.env.MAP_GEOCODING_ENABLED = "false";
+}
 // This legacy workflow isolates business tests; MFA enforcement has its own real HTTP verifier.
 process.env.STAFF_MFA_REQUIRED = "false";
 process.env.WECHAT_PAY_REFUND_ENABLED = "false";
@@ -195,7 +208,7 @@ try {
   );
   assert.equal(serviceArea.targetAdcodes.length, 15);
   assert.equal(serviceArea.fullyConfigured, true);
-  assert.equal(serviceArea.verificationEnabled, false);
+  assert.equal(serviceArea.verificationEnabled, runRealAmapFlow);
   const readiness = await call(
     `/admin/organizations/${organizationId}/readiness`,
     admin.token,
@@ -203,7 +216,7 @@ try {
   assert.equal(readiness.environment, "test");
   assert.equal(readiness.payment.provider, "mock");
   assert.equal(readiness.map.coverageConfigured, true);
-  assert.equal(readiness.map.geocodingEnabled, false);
+  assert.equal(readiness.map.geocodingEnabled, runRealAmapFlow);
   assert.doesNotMatch(JSON.stringify(readiness), /secret|token|privateKey/i);
   await call(
     `/admin/organizations/${organizationId}/technicians`,
@@ -270,13 +283,48 @@ try {
     ).payableFen,
     19880,
   );
+  const address = {
+    contactName: "测试客户",
+    phone: "13800000000",
+    detail: "郑州市二七广场附近自动化测试地址",
+    latitude: 34.7466,
+    longitude: 113.6254,
+    coordinateSystem: "GCJ-02" as const,
+  };
+  let addressVerificationId: string | undefined;
+  if (runRealAmapFlow) {
+    const suggestions = await call(
+      "/locations/address-suggestions?keyword=%E4%BA%8C%E4%B8%83%E5%B9%BF%E5%9C%BA",
+      customer.token,
+    );
+    assert.ok(
+      suggestions.some(
+        (row: any) =>
+          row.coordinateSystem === "GCJ-02" &&
+          Number.isFinite(row.latitude) &&
+          Number.isFinite(row.longitude),
+      ),
+    );
+    const verification = await call(
+      "/locations/address-verifications",
+      customer.token,
+      {
+        reservationId: hold.id,
+        detail: address.detail,
+        latitude: address.latitude,
+        longitude: address.longitude,
+        coordinateSystem: "GCJ-02",
+      },
+      undefined,
+      201,
+    );
+    addressVerificationId = verification.id;
+    assert.equal(verification.coordinateSystem, "GCJ-02");
+  }
   const orderBody = {
     reservationId: hold.id,
-    address: {
-      contactName: "测试客户",
-      phone: "13800000000",
-      detail: "仅本地自动化测试地址",
-    },
+    address,
+    ...(addressVerificationId ? { addressVerificationId } : {}),
   };
   await call(
     "/orders",
@@ -448,6 +496,9 @@ try {
       addressEncrypted: crypto.encrypt(
         JSON.stringify({ detail: "仅本地履约测试地址" }),
       ),
+      addressLatitude: 34.7466,
+      addressLongitude: 113.6254,
+      addressCoordinateSystem: "GCJ-02",
       policyVersion: "local-workflow-test",
       idempotencyKey: `${prefix}-workflow-order`,
       requestFingerprint: prefix,
@@ -463,8 +514,36 @@ try {
   });
   const technicianToday = await call("/technician/workbench", therapist.token);
   assert.ok(
-    technicianToday.orders.some((row: any) => row.id === workflowOrder.id),
+    technicianToday.orders.some(
+      (row: any) =>
+        row.id === workflowOrder.id &&
+        row.destination?.coordinateSystem === "GCJ-02",
+    ),
   );
+  await call(
+    "/technician/workbench/location",
+    therapist.token,
+    {
+      latitude: 34.7501,
+      longitude: 113.6501,
+      coordinateSystem: "GCJ-02",
+      accuracyMeters: 10,
+    },
+    undefined,
+    201,
+  );
+  if (runRealAmapFlow) {
+    const route = await call(
+      `/technician/workbench/orders/${workflowOrder.id}/route`,
+      therapist.token,
+    );
+    assert.equal(route.destination.coordinateSystem, "GCJ-02");
+    assert.ok(route.distanceMeters > 0);
+    assert.ok(route.durationSeconds > 0);
+    checks.push(
+      "real Amap POI, reverse geocoding, address proof and driving route",
+    );
+  }
   const actionPath = `/technician/workbench/orders/${workflowOrder.id}/actions`;
   await call(actionPath, customer.token, { action: "DEPART" }, undefined, 403);
   await call(
@@ -480,6 +559,12 @@ try {
   ]);
   assert.ok(departures.some((result: any) => result.idempotentReplay));
   assert.ok(departures.some((result: any) => !result.idempotentReplay));
+  const customerLocation = await call(
+    `/orders/${workflowOrder.id}/technician-location`,
+    stranger.token,
+  );
+  assert.equal(customerLocation.status, "AVAILABLE");
+  assert.equal(customerLocation.location.coordinateSystem, "GCJ-02");
   await call(actionPath, therapist.token, { action: "ARRIVE" }, undefined, 201);
   await call(
     actionPath,
@@ -1013,6 +1098,9 @@ try {
       contactName: "测试客户",
       phone: "13800000000",
       detail: "小程序运行逻辑测试地址",
+      latitude: 34.75,
+      longitude: 113.65,
+      coordinateSystem: "GCJ-02",
       consent: true,
     });
     await booking.create();
