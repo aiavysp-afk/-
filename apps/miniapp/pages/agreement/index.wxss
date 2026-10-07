@@ -1,0 +1,82 @@
+.agreement-page {
+  min-height: 100vh;
+  background: linear-gradient(155deg, #faf6ed, #eef5f0);
+  padding: env(safe-area-inset-top) 28rpx 70rpx;
+  box-sizing: border-box;
+}
+.agreement-nav {
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #173c33;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+.agreement-nav > text,
+.agreement-nav > view {
+  width: 100rpx;
+}
+.agreement-nav > text:nth-child(2) {
+  width: auto;
+}
+.agreement-back {
+  font: 54rpx/70rpx Georgia;
+}
+.agreement-hero {
+  padding: 46rpx 28rpx 38rpx;
+  text-align: center;
+}
+.agreement-hero text {
+  display: block;
+}
+.agreement-hero text:first-child {
+  font:
+    600 40rpx "STSong",
+    "Songti SC",
+    serif;
+  letter-spacing: 10rpx;
+  color: #173c33;
+}
+.agreement-hero text:last-child {
+  font-size: 19rpx;
+  letter-spacing: 3rpx;
+  color: #9d7e42;
+  margin-top: 12rpx;
+}
+.agreement-card {
+  background: #ffffffeb;
+  border: 1rpx solid #fff;
+  border-radius: 30rpx;
+  padding: 10rpx 30rpx;
+  box-shadow: 0 20rpx 60rpx #21473a12;
+}
+.agreement-section {
+  padding: 30rpx 0;
+  border-bottom: 1rpx solid #ece9e0;
+}
+.agreement-section:last-child {
+  border-bottom: 0;
+}
+.section-title,
+.section-body {
+  display: block;
+}
+.section-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #173c33;
+}
+.section-body {
+  font-size: 22rpx;
+  line-height: 1.85;
+  color: #66766f;
+  margin-top: 15rpx;
+}
+.agreement-date {
+  display: block;
+  text-align: center;
+  color: #9aa49f;
+  font-size: 18rpx;
+  margin-top: 28rpx;
+}

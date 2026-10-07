@@ -23,7 +23,6 @@ Page({
     data: {
         loggedIn: false,
         phoneVerified: false,
-        loggingIn: false,
         displayName: "微信用户",
         stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
         customerService: PUBLIC_CONTACT_FALLBACK.customerService,
@@ -91,32 +90,8 @@ Page({
     callEmergency() {
         (0, customer_service_1.callEmergencyDuty)(this.data.emergencyContact);
     },
-    async login() {
-        if (this.data.loggingIn)
-            return;
-        this.setData({ loggingIn: true });
-        try {
-            const session = await (0, auth_1.loginWithWechat)();
-            this.setData({
-                loggedIn: true,
-                phoneVerified: session.user.phoneVerified === true,
-                loggingIn: false,
-                displayName: session.user.displayName,
-            });
-            wx.showToast({ title: "登录成功", icon: "success" });
-            if ((0, auth_1.needsPhoneVerification)(session)) {
-                (0, auth_1.goToPhoneVerification)();
-                return;
-            }
-            await this.loadStats();
-        }
-        catch (error) {
-            this.setData({ loggingIn: false });
-            wx.showToast({
-                title: error instanceof Error ? error.message : "登录失败",
-                icon: "none",
-            });
-        }
+    openLogin() {
+        (0, auth_1.goToPhoneVerification)();
     },
     verifyPhone() {
         (0, auth_1.goToPhoneVerification)();

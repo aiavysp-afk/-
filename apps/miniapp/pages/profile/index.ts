@@ -2,8 +2,6 @@ import {
   clearStoredSession,
   goToPhoneVerification,
   getStoredSession,
-  loginWithWechat,
-  needsPhoneVerification,
 } from "../../utils/auth";
 import { api } from "../../utils/api";
 import type { OrderView, PublicConfig } from "@zydj/contracts";
@@ -33,7 +31,6 @@ Page({
   data: {
     loggedIn: false,
     phoneVerified: false,
-    loggingIn: false,
     displayName: "微信用户",
     stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
     customerService:
@@ -107,30 +104,8 @@ Page({
   callEmergency() {
     callEmergencyDuty(this.data.emergencyContact);
   },
-  async login() {
-    if (this.data.loggingIn) return;
-    this.setData({ loggingIn: true });
-    try {
-      const session = await loginWithWechat();
-      this.setData({
-        loggedIn: true,
-        phoneVerified: session.user.phoneVerified === true,
-        loggingIn: false,
-        displayName: session.user.displayName,
-      });
-      wx.showToast({ title: "登录成功", icon: "success" });
-      if (needsPhoneVerification(session)) {
-        goToPhoneVerification();
-        return;
-      }
-      await this.loadStats();
-    } catch (error) {
-      this.setData({ loggingIn: false });
-      wx.showToast({
-        title: error instanceof Error ? error.message : "登录失败",
-        icon: "none",
-      });
-    }
+  openLogin() {
+    goToPhoneVerification();
   },
   verifyPhone() {
     goToPhoneVerification();

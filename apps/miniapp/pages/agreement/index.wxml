@@ -1,0 +1,11 @@
+<view class="agreement-page">
+  <view class="agreement-nav"><text class="agreement-back" bindtap="back">‹</text><text>{{title}}</text><view /></view>
+  <view class="agreement-hero"><text>中原到家</text><text>正规上门服务 · 平台规则说明</text></view>
+  <view class="agreement-card">
+    <view wx:for="{{sections}}" wx:key="title" class="agreement-section">
+      <text class="section-title">{{index + 1}}. {{item.title}}</text>
+      <text class="section-body">{{item.body}}</text>
+    </view>
+  </view>
+  <text class="agreement-date">更新日期：2026年10月8日</text>
+</view>
