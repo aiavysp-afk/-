@@ -39,6 +39,14 @@
   background: #efe8db;
   padding: 24rpx;
 }
+.login-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+}
+.login-card text {
+  margin-bottom: 12rpx;
+}
 .error {
   color: #a3403b;
 }

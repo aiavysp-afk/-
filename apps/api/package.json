@@ -18,6 +18,7 @@
     "test:wechat-db": "tsx scripts/verify-wechat-payments.ts",
     "test:safety": "tsx scripts/verify-safety-duty.ts",
     "test:safety-notifications": "tsx scripts/verify-safety-notifications.ts",
+    "bootstrap:public-booking": "tsx scripts/bootstrap-production-booking.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"

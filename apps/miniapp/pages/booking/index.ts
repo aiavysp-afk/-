@@ -43,8 +43,12 @@ Page({
     reservationId: "",
     orderKey: "",
     quote: "",
+    loggedIn: false,
+    loginBusy: false,
+    loginError: "",
   },
   async onLoad(options: { slug?: string }) {
+    this.setData({ loggedIn: Boolean(getStoredSession()) });
     void this.loadMapConfig();
     try {
       if (!options.slug) throw new Error("缺少服务参数");
@@ -61,6 +65,21 @@ Page({
       await this.loadSlots();
     } catch (error) {
       this.fail(error);
+    }
+  },
+  async login() {
+    if (this.data.loginBusy || this.data.loggedIn) return;
+    this.setData({ loginBusy: true, loginError: "" });
+    try {
+      await loginWithWechat();
+      this.setData({ loggedIn: true });
+      wx.showToast({ title: "登录成功", icon: "success" });
+    } catch (error) {
+      this.setData({
+        loginError: error instanceof Error ? error.message : "微信登录失败",
+      });
+    } finally {
+      this.setData({ loginBusy: false });
     }
   },
   async loadMapConfig() {
@@ -222,7 +241,10 @@ Page({
     }
     this.setData({ busy: true, error: "" });
     try {
-      if (!getStoredSession()) await loginWithWechat();
+      if (!getStoredSession()) {
+        await loginWithWechat();
+        this.setData({ loggedIn: true, loginError: "" });
+      }
       if (!this.data.reservationId) {
         const hold = await api<BookingHold>("/booking-holds", "POST", {
           serviceId: service.id,

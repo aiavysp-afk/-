@@ -451,7 +451,7 @@ export const AdminReadinessSchema = z.object({
     coverageConfigured: z.boolean(),
   }),
   safety: z.object({
-    smsProvider: z.enum(["mock", "aliyun"]),
+    smsProvider: z.enum(["none", "mock", "aliyun"]),
     smsSendEnabled: z.boolean(),
     dispatchEnabled: z.boolean(),
     receiptQueryEnabled: z.boolean(),
@@ -535,7 +535,7 @@ export const PublicConfigSchema = z.object({
     .optional(),
   integrations: z.object({
     payment: z.enum(["mock", "wechat"]),
-    sms: z.enum(["mock", "aliyun"]),
+    sms: z.enum(["none", "mock", "aliyun"]),
     map: z.enum(["mock", "amap"]),
   }),
   map: z.object({

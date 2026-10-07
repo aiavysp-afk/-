@@ -117,6 +117,32 @@ describe("production safety gate", () => {
         .SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED,
     ).toBe("true");
   });
+  it("allows an explicitly disabled SMS provider only while every SMS gate is closed", () => {
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "test-merchant",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "test-serial",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
+      SMS_PROVIDER: "none",
+      MAP_PROVIDER: "amap",
+      SAFETY_HOTLINE: "18018181799",
+    } as const;
+    expect(validateEnv(raw).SMS_PROVIDER).toBe("none");
+    expect(() => validateEnv({ ...raw, SMS_SEND_ENABLED: "true" })).toThrow(
+      "SMS_PROVIDER",
+    );
+    expect(() =>
+      validateEnv({
+        ...raw,
+        SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "true",
+      }),
+    ).toThrow("SMS_PROVIDER");
+  });
   it("requires an explicit send gate and confirmed duty before automated safety dispatch", () => {
     const raw = {
       NODE_ENV: "production",

@@ -53,7 +53,7 @@ const EnvSchema = z.object({
   // Opt-in only after two-person finance review and controlled merchant acceptance.
   WECHAT_PAY_REFUND_ENABLED: z.enum(["false", "true"]).default("false"),
   WECHAT_PAY_REFUND_NOTIFY_URL: z.string().default(""),
-  SMS_PROVIDER: z.enum(["mock", "aliyun"]).default("mock"),
+  SMS_PROVIDER: z.enum(["none", "mock", "aliyun"]).default("mock"),
   MAP_PROVIDER: z.enum(["mock", "amap"]).default("mock"),
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
   // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
@@ -222,6 +222,13 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     }
     if (env.PAYMENT_PROVIDER === "mock") invalid.push("PAYMENT_PROVIDER");
     if (env.SMS_PROVIDER === "mock") invalid.push("SMS_PROVIDER");
+    if (
+      env.SMS_PROVIDER === "none" &&
+      (env.SMS_SEND_ENABLED === "true" ||
+        env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true" ||
+        env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED === "true")
+    )
+      invalid.push("SMS_PROVIDER");
     if (env.MAP_PROVIDER === "mock") invalid.push("MAP_PROVIDER");
     if (env.SAFETY_CONTACT_MODE === "phone" && !env.SAFETY_HOTLINE)
       invalid.push("SAFETY_HOTLINE");
