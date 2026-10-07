@@ -33,6 +33,8 @@ process.env.STAFF_MFA_REQUIRED = "false";
 process.env.WECHAT_PAY_REFUND_ENABLED = "false";
 process.env.WECHAT_PAY_PREPAY_ENABLED = "false";
 process.env.WECHAT_PAY_RECOVERY_ENABLED = "false";
+process.env.SERVICE_AREA_ADCODE_ALLOWLIST =
+  "410102,410103,410104,410105,410106,410108,410122,410171,410172,410173,410181,410182,410183,410184,410185";
 process.env.AUTH_SESSION_PEPPER = `test-only-${randomUUID()}`;
 process.env.DATA_ENCRYPTION_KEY_BASE64 = Buffer.alloc(32, 1).toString("base64");
 const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
@@ -115,6 +117,7 @@ try {
   const reviewer = await identity("FINANCE_APPROVER", "reviewer");
   const dispatcher = await identity("DISPATCHER", "dispatcher");
   const therapist = await identity("THERAPIST", "therapist");
+  const admin = await identity("ADMIN", "admin");
   await call("/auth/me", customer.token);
   await call("/orders", "", undefined, undefined, 401);
   await prisma.user.update({
@@ -169,6 +172,76 @@ try {
     },
     undefined,
     201,
+  );
+  const technicianBoard = await call(
+    `/admin/organizations/${organizationId}/technicians`,
+    admin.token,
+  );
+  assert.ok(
+    technicianBoard.technicians.some(
+      (row: any) => row.id === therapist.user.id,
+    ),
+  );
+  assert.equal("phone" in technicianBoard.technicians[0], false);
+  assert.equal("address" in technicianBoard.technicians[0], false);
+  const shifts = await call(
+    `/admin/scheduling/shifts?organizationId=${organizationId}&date=${date}`,
+    admin.token,
+  );
+  assert.ok(shifts.some((row: any) => row.therapistId === therapist.user.id));
+  const serviceArea = await call(
+    `/admin/organizations/${organizationId}/service-area`,
+    admin.token,
+  );
+  assert.equal(serviceArea.targetAdcodes.length, 15);
+  assert.equal(serviceArea.fullyConfigured, true);
+  assert.equal(serviceArea.verificationEnabled, false);
+  const readiness = await call(
+    `/admin/organizations/${organizationId}/readiness`,
+    admin.token,
+  );
+  assert.equal(readiness.environment, "test");
+  assert.equal(readiness.payment.provider, "mock");
+  assert.equal(readiness.map.coverageConfigured, true);
+  assert.equal(readiness.map.geocodingEnabled, false);
+  assert.doesNotMatch(JSON.stringify(readiness), /secret|token|privateKey/i);
+  await call(
+    `/admin/organizations/${organizationId}/technicians`,
+    customer.token,
+    undefined,
+    undefined,
+    403,
+  );
+  const auditLogs = await call(
+    `/admin/audit-logs?organizationId=${organizationId}`,
+    admin.token,
+  );
+  assert.ok(
+    auditLogs.some((row: any) => row.action === "THERAPIST_SHIFT_CREATED"),
+  );
+  checks.push(
+    "admin technician, shift, Zhengzhou coverage, readiness and audit views with RBAC and no secrets",
+  );
+  const technicianWorkbench = await call(
+    "/technician/workbench",
+    therapist.token,
+  );
+  assert.equal(technicianWorkbench.displayName, "therapist");
+  assert.ok(Array.isArray(technicianWorkbench.orders));
+  assert.ok(
+    technicianWorkbench.shifts.some(
+      (row: any) => row.id === shifts[0].id && row.status === "ACTIVE",
+    ),
+  );
+  await call(
+    "/technician/workbench",
+    customer.token,
+    undefined,
+    undefined,
+    403,
+  );
+  checks.push(
+    "authenticated technician workbench with weekly shifts and non-technician access guard",
   );
   const slots = await call(
     `/availability/slots?serviceId=${service.id}&date=${date}`,
@@ -294,6 +367,217 @@ try {
     1,
   );
   checks.push("concurrent mock payment intent and exactly-once success");
+
+  const dashboard = await call(
+    `/admin/organizations/${organizationId}/dashboard`,
+    dispatcher.token,
+  );
+  assert.ok(dashboard.metrics.paidTodayFen >= 19880);
+  assert.ok(dashboard.recentOrders.some((row: any) => row.id === order.id));
+  await call(
+    `/admin/organizations/${organizationId}/dashboard`,
+    customer.token,
+    undefined,
+    undefined,
+    403,
+  );
+  checks.push(
+    "organization-scoped operations dashboard and unauthorized customer guard",
+  );
+
+  const dispatchPath = `/admin/organizations/${organizationId}/dispatch`;
+  const dispatchBoard = await call(dispatchPath, dispatcher.token);
+  const dispatchOrder = dispatchBoard.orders.find(
+    (row: any) => row.id === order.id,
+  );
+  assert.equal(dispatchOrder.status, "PAID");
+  assert.ok(
+    dispatchOrder.eligibleTherapists.some(
+      (row: any) => row.id === therapist.user.id,
+    ),
+  );
+  assert.equal("address" in dispatchOrder, false);
+  assert.equal("phone" in dispatchOrder, false);
+  await call(dispatchPath, customer.token, undefined, undefined, 403);
+  const assignments = await Promise.all([
+    call(
+      `${dispatchPath}/orders/${order.id}/assign`,
+      dispatcher.token,
+      { therapistId: therapist.user.id },
+      undefined,
+      201,
+    ),
+    call(
+      `${dispatchPath}/orders/${order.id}/assign`,
+      dispatcher.token,
+      { therapistId: therapist.user.id },
+      undefined,
+      201,
+    ),
+  ]);
+  assert.equal(assignments[0].status, "ASSIGNED");
+  assert.equal(assignments[1].status, "ASSIGNED");
+  assert.equal(
+    await prisma.orderEvent.count({
+      where: { orderId: order.id, type: "THERAPIST_ASSIGNED" },
+    }),
+    1,
+  );
+  assert.equal(
+    (await call(`/orders/${order.id}`, customer.token)).status,
+    "ASSIGNED",
+  );
+  checks.push(
+    "permissioned dispatch board, shift eligibility, concurrent idempotent assignment and privacy guard",
+  );
+
+  const workflowNow = new Date();
+  const workflowOrder = await prisma.order.create({
+    data: {
+      orderNo: `WF${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+      organizationId,
+      customerId: stranger.user.id,
+      therapistId: therapist.user.id,
+      status: "ASSIGNED",
+      appointmentStart: workflowNow,
+      appointmentEnd: new Date(workflowNow.getTime() + 60 * 60_000),
+      serviceAmountFen: 19880n,
+      travelFeeFen: 0n,
+      discountFen: 0n,
+      payableFen: 19880n,
+      addressEncrypted: crypto.encrypt(
+        JSON.stringify({ detail: "仅本地履约测试地址" }),
+      ),
+      policyVersion: "local-workflow-test",
+      idempotencyKey: `${prefix}-workflow-order`,
+      requestFingerprint: prefix,
+      items: {
+        create: {
+          serviceId: service.id,
+          serviceName: service.name,
+          durationMinutes: service.durationMinutes,
+          unitPriceFen: service.priceFen,
+        },
+      },
+    },
+  });
+  const technicianToday = await call("/technician/workbench", therapist.token);
+  assert.ok(
+    technicianToday.orders.some((row: any) => row.id === workflowOrder.id),
+  );
+  const actionPath = `/technician/workbench/orders/${workflowOrder.id}/actions`;
+  await call(actionPath, customer.token, { action: "DEPART" }, undefined, 403);
+  await call(
+    actionPath,
+    therapist.token,
+    { action: "SKIP_TO_COMPLETED" },
+    undefined,
+    400,
+  );
+  const departures = await Promise.all([
+    call(actionPath, therapist.token, { action: "DEPART" }, undefined, 201),
+    call(actionPath, therapist.token, { action: "DEPART" }, undefined, 201),
+  ]);
+  assert.ok(departures.some((result: any) => result.idempotentReplay));
+  assert.ok(departures.some((result: any) => !result.idempotentReplay));
+  await call(actionPath, therapist.token, { action: "ARRIVE" }, undefined, 201);
+  await call(
+    actionPath,
+    therapist.token,
+    { action: "START_SERVICE" },
+    undefined,
+    201,
+  );
+  await call(
+    actionPath,
+    therapist.token,
+    { action: "FINISH_SERVICE" },
+    undefined,
+    201,
+  );
+  assert.equal(
+    (await prisma.order.findUniqueOrThrow({ where: { id: workflowOrder.id } }))
+      .status,
+    "AWAITING_CONFIRMATION",
+  );
+  assert.equal(
+    await prisma.orderEvent.count({
+      where: {
+        orderId: workflowOrder.id,
+        type: {
+          in: [
+            "THERAPIST_EN_ROUTE",
+            "THERAPIST_ARRIVED",
+            "SERVICE_STARTED",
+            "SERVICE_AWAITING_CONFIRMATION",
+          ],
+        },
+      },
+    }),
+    4,
+  );
+  const confirmationPath = `/orders/${workflowOrder.id}/confirm-completion`;
+  await call(confirmationPath, customer.token, {}, undefined, 403);
+  await call(
+    confirmationPath,
+    stranger.token,
+    { unexpected: true },
+    undefined,
+    400,
+  );
+  const confirmations = await Promise.all([
+    call(confirmationPath, stranger.token, {}, undefined, 201),
+    call(confirmationPath, stranger.token, {}, undefined, 201),
+  ]);
+  assert.ok(
+    confirmations.some((result: any) => result.idempotentReplay === false),
+  );
+  assert.ok(
+    confirmations.some((result: any) => result.idempotentReplay === true),
+  );
+  assert.equal(
+    (await prisma.order.findUniqueOrThrow({ where: { id: workflowOrder.id } }))
+      .status,
+    "COMPLETED",
+  );
+  assert.equal(
+    await prisma.orderEvent.count({
+      where: { orderId: workflowOrder.id, type: "CUSTOMER_CONFIRMED" },
+    }),
+    1,
+  );
+  assert.equal(
+    await prisma.auditLog.count({
+      where: {
+        resourceType: "Order",
+        resourceId: workflowOrder.id,
+        action: "CUSTOMER_CONFIRMED",
+      },
+    }),
+    1,
+  );
+  const earnings = await call(
+    "/technician/workbench/earnings",
+    therapist.token,
+  );
+  const workflowIncome = earnings.items.find(
+    (row: any) => row.orderId === workflowOrder.id,
+  );
+  assert.equal(workflowIncome.grossOrderAmountFen, 19880);
+  assert.equal(earnings.settlement.status, "POLICY_NOT_CONFIGURED");
+  assert.equal(earnings.settlement.payableFen, null);
+  assert.equal("customerId" in workflowIncome, false);
+  assert.equal("address" in workflowIncome, false);
+  await call(
+    "/technician/workbench/earnings",
+    customer.token,
+    undefined,
+    undefined,
+    403,
+  );
+  checks.push(
+    "technician fulfillment, customer-owned concurrent-idempotent completion and privacy-safe gross flow without invented settlement",
+  );
 
   const path = `/admin/organizations/${organizationId}`;
   await call(
@@ -616,6 +900,54 @@ try {
     "unpaid cancellation, forbidden post-cancel payment, logout revocation",
   );
 
+  const miniappConfirmationStart = new Date(Date.now() + 2 * 60 * 60_000);
+  const miniappConfirmationReservation =
+    await prisma.appointmentReservation.create({
+      data: {
+        organizationId,
+        serviceId: service.id,
+        therapistId: therapist.user.id,
+        customerId: customer.user.id,
+        serviceAmountFen: service.priceFen,
+        startsAt: miniappConfirmationStart,
+        endsAt: new Date(
+          miniappConfirmationStart.getTime() + service.durationMinutes * 60_000,
+        ),
+        expiresAt: new Date(Date.now() + 15 * 60_000),
+        status: "CONFIRMED",
+      },
+    });
+  const miniappConfirmationOrder = await prisma.order.create({
+    data: {
+      orderNo: `MC${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+      organizationId,
+      customerId: customer.user.id,
+      therapistId: therapist.user.id,
+      reservationId: miniappConfirmationReservation.id,
+      status: "AWAITING_CONFIRMATION",
+      appointmentStart: miniappConfirmationReservation.startsAt,
+      appointmentEnd: miniappConfirmationReservation.endsAt,
+      serviceAmountFen: service.priceFen,
+      travelFeeFen: 0n,
+      discountFen: 0n,
+      payableFen: service.priceFen,
+      addressEncrypted: crypto.encrypt(
+        JSON.stringify({ detail: "仅本地小程序确认测试地址" }),
+      ),
+      policyVersion: "local-miniapp-confirmation-test",
+      idempotencyKey: `${prefix}-miniapp-confirmation`,
+      requestFingerprint: prefix,
+      items: {
+        create: {
+          serviceId: service.id,
+          serviceName: service.name,
+          durationMinutes: service.durationMinutes,
+          unitPriceFen: service.priceFen,
+        },
+      },
+    },
+  });
+
   // Execute the compiled native miniapp pages with a wx transport shim against the same real HTTP API.
   // This verifies page logic, not WeChat rendering/device capabilities.
   const storage = new Map<string, unknown>();
@@ -689,6 +1021,24 @@ try {
     const orderPage = captured;
     await orderPage.onShow();
     assert.equal(orderPage.data.error, "");
+    const awaitingConfirmation = orderPage.data.orders.find(
+      (row: any) => row.id === miniappConfirmationOrder.id,
+    );
+    assert.equal(awaitingConfirmation.confirmAvailable, true);
+    await orderPage.action({
+      currentTarget: {
+        dataset: {
+          id: miniappConfirmationOrder.id,
+          action: "confirm-completion",
+        },
+      },
+    });
+    assert.equal(orderPage.data.error, "");
+    const completedByCustomer = orderPage.data.orders.find(
+      (row: any) => row.id === miniappConfirmationOrder.id,
+    );
+    assert.equal(completedByCustomer.status, "COMPLETED");
+    assert.equal(completedByCustomer.confirmAvailable, false);
     const pending = orderPage.data.orders.find(
       (row: any) => row.status === "PENDING_PAYMENT",
     );
@@ -711,7 +1061,7 @@ try {
       "REQUESTED",
     );
     checks.push(
-      "compiled miniapp catalog, booking, login, payment and own refund page logic against HTTP",
+      "compiled miniapp catalog, booking, login, customer completion, payment and own refund page logic against HTTP",
     );
     // Isolated SDK callbacks/transport substitutes: no wx.requestPayment is run on a real device.
     let sdkCalls = 0,

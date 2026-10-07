@@ -1,4 +1,5 @@
 import type {
+  CustomerOrderConfirmationResult,
   OrderView,
   PaymentIntent,
   RefundView,
@@ -15,6 +16,7 @@ type Row = OrderView & {
   refundAvailable: boolean;
   safetyIncidents: Array<SafetyIncidentCustomerView & { statusLabel: string }>;
   safetyAvailable: boolean;
+  confirmAvailable: boolean;
 };
 const safetyCategories: Array<{
   label: string;
@@ -106,6 +108,7 @@ Page({
                 "AWAITING_CONFIRMATION",
               ].includes(order.status) &&
               !safetyIncidents.some((incident) => incident.status !== "CLOSED"),
+            confirmAvailable: order.status === "AWAITING_CONFIRMATION",
           };
         }),
       );
@@ -246,6 +249,27 @@ Page({
         wx.setStorageSync(storageKey, key);
         await api(`/orders/${id}/refunds`, "POST", {}, String(key));
         wx.removeStorageSync(storageKey);
+      } else if (action === "confirm-completion") {
+        const order = this.data.orders.find((row: Row) => row.id === id);
+        if (!order?.confirmAvailable)
+          throw new Error("请刷新订单，确认技师已提交服务完成");
+        const confirmed = await new Promise<boolean>((resolve) =>
+          wx.showModal({
+            title: "确认服务已完成",
+            content:
+              "确认后订单将完成。若服务尚未完成或存在争议，请取消并先联系客服。",
+            confirmText: "确认完成",
+            success: (result) => resolve(result.confirm === true),
+            fail: () => resolve(false),
+          }),
+        );
+        if (!confirmed) return;
+        await api<CustomerOrderConfirmationResult>(
+          `/orders/${id}/confirm-completion`,
+          "POST",
+          {},
+        );
+        wx.showToast({ title: "服务已确认完成", icon: "success" });
       } else if (action === "safety") {
         const order = this.data.orders.find((row: Row) => row.id === id);
         if (!order?.safetyAvailable)

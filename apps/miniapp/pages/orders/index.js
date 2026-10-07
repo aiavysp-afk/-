@@ -90,6 +90,7 @@ Page({
                         "AWAITING_CONFIRMATION",
                     ].includes(order.status) &&
                         !safetyIncidents.some((incident) => incident.status !== "CLOSED"),
+                    confirmAvailable: order.status === "AWAITING_CONFIRMATION",
                 };
             }));
             this.setData({ orders: rows });
@@ -205,6 +206,22 @@ Page({
                 wx.setStorageSync(storageKey, key);
                 await (0, api_1.api)(`/orders/${id}/refunds`, "POST", {}, String(key));
                 wx.removeStorageSync(storageKey);
+            }
+            else if (action === "confirm-completion") {
+                const order = this.data.orders.find((row) => row.id === id);
+                if (!(order === null || order === void 0 ? void 0 : order.confirmAvailable))
+                    throw new Error("请刷新订单，确认技师已提交服务完成");
+                const confirmed = await new Promise((resolve) => wx.showModal({
+                    title: "确认服务已完成",
+                    content: "确认后订单将完成。若服务尚未完成或存在争议，请取消并先联系客服。",
+                    confirmText: "确认完成",
+                    success: (result) => resolve(result.confirm === true),
+                    fail: () => resolve(false),
+                }));
+                if (!confirmed)
+                    return;
+                await (0, api_1.api)(`/orders/${id}/confirm-completion`, "POST", {});
+                wx.showToast({ title: "服务已确认完成", icon: "success" });
             }
             else if (action === "safety") {
                 const order = this.data.orders.find((row) => row.id === id);

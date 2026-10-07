@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import {
+  CustomerOrderConfirmationSchema,
   IdempotencyKeySchema,
   OrderCreateSchema,
   OrderQuoteRequestSchema,
@@ -77,5 +78,16 @@ export class OrdersController {
     @Param("id") id: string,
   ) {
     return { data: await this.orders.cancelOwn(principal, id) };
+  }
+
+  @Post(":id/confirm-completion")
+  async confirmCompletion(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = CustomerOrderConfirmationSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("确认完成参数无效");
+    return { data: await this.orders.confirmCompletion(principal, id) };
   }
 }

@@ -305,6 +305,24 @@ async function main() {
         status: MembershipStatus.ACTIVE,
       },
     });
+    const therapistCode = "local-therapist-anran";
+    const therapistOpenId = `mock-${createHash("sha256").update(therapistCode).digest("hex").slice(0, 32)}`;
+    const therapistSubjectHash = crypto.hashIdentity(appId, therapistOpenId);
+    await prisma.externalIdentity.upsert({
+      where: {
+        provider_subjectHash: {
+          provider: IdentityProvider.WECHAT_MINIAPP,
+          subjectHash: therapistSubjectHash,
+        },
+      },
+      update: { userId: therapist.id },
+      create: {
+        userId: therapist.id,
+        provider: IdentityProvider.WECHAT_MINIAPP,
+        subjectHash: therapistSubjectHash,
+        subjectEncrypted: crypto.encrypt(therapistOpenId),
+      },
+    });
 
     const shanghaiNow = new Date(Date.now() + 8 * 60 * 60 * 1_000);
     const tomorrow = new Date(

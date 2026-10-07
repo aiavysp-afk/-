@@ -106,6 +106,9 @@ importers:
 
   apps/workbench-h5:
     dependencies:
+      '@zydj/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       lucide-react:
         specifier: 0.468.0
         version: 0.468.0(react@19.1.1)

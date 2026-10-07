@@ -13,6 +13,7 @@ import {
   ReservationStatus,
 } from "@prisma/client";
 import type {
+  CustomerOrderConfirmationResult,
   OrderCreate,
   OrderQuote,
   OrderView,
@@ -300,6 +301,83 @@ export class OrdersService {
       });
     });
     return this.toView(updated);
+  }
+
+  async confirmCompletion(
+    principal: AuthPrincipal,
+    id: string,
+  ): Promise<CustomerOrderConfirmationResult> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          organizationId: true,
+          customerId: true,
+          status: true,
+        },
+      });
+      if (!order) throw new NotFoundException("订单不存在");
+      if (order.customerId !== principal.userId) {
+        throw new ForbiddenException("不能确认其他用户的订单");
+      }
+      if (order.status === OrderStatus.COMPLETED) {
+        return {
+          orderId: order.id,
+          previousStatus: OrderStatus.AWAITING_CONFIRMATION,
+          status: OrderStatus.COMPLETED,
+          idempotentReplay: true,
+        };
+      }
+
+      const next = this.stateMachine.transition(
+        order.status,
+        "CUSTOMER_CONFIRMED",
+      );
+      const updated = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          customerId: principal.userId,
+          status: order.status,
+        },
+        data: { status: next },
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException("订单确认状态已变化");
+      }
+      await tx.orderEvent.create({
+        data: {
+          orderId: order.id,
+          type: "CUSTOMER_CONFIRMED",
+          actorId: principal.userId,
+          payload: {},
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: principal.userId,
+          organizationId: order.organizationId,
+          action: "CUSTOMER_CONFIRMED",
+          resourceType: "Order",
+          resourceId: order.id,
+          metadata: {},
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          aggregateId: order.id,
+          type: "ORDER_STATUS_CHANGED",
+          payload: { orderId: order.id, status: next },
+        },
+      });
+      return {
+        orderId: order.id,
+        previousStatus: order.status,
+        status: OrderStatus.COMPLETED,
+        idempotentReplay: false,
+      };
+    });
   }
 
   private async findByIdempotency(customerId: string, idempotencyKey: string) {

@@ -198,6 +198,235 @@ export const OrderViewSchema = z.object({
   createdAt: IsoDateTimeSchema,
 });
 
+export const OperationsDashboardOrderSchema = z.object({
+  id: z.string(),
+  orderNo: z.string(),
+  customerName: z.string(),
+  serviceName: z.string(),
+  appointmentStart: IsoDateTimeSchema,
+  therapistName: z.string().nullable(),
+  status: OrderStatusSchema,
+  payableFen: MoneyFenSchema,
+});
+
+export const OperationsDashboardSchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  timeZone: z.literal("Asia/Shanghai"),
+  generatedAt: IsoDateTimeSchema,
+  metrics: z.object({
+    todayOrders: z.number().int().nonnegative(),
+    activeOrders: z.number().int().nonnegative(),
+    paidTodayFen: MoneyFenSchema,
+    attentionRequired: z.number().int().nonnegative(),
+  }),
+  recentOrders: z.array(OperationsDashboardOrderSchema),
+});
+
+export const TechnicianWorkbenchOrderSchema = z.object({
+  id: z.string(),
+  orderNo: z.string(),
+  serviceName: z.string(),
+  durationMinutes: z.number().int().positive(),
+  appointmentStart: IsoDateTimeSchema,
+  appointmentEnd: IsoDateTimeSchema,
+  status: OrderStatusSchema,
+});
+
+export const TechnicianWorkbenchShiftSchema = z.object({
+  id: z.string(),
+  startsAt: IsoDateTimeSchema,
+  endsAt: IsoDateTimeSchema,
+  status: z.enum(["ACTIVE", "CANCELLED"]),
+});
+
+export const TechnicianWorkbenchSchema = z.object({
+  displayName: z.string(),
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  timeZone: z.literal("Asia/Shanghai"),
+  generatedAt: IsoDateTimeSchema,
+  metrics: z.object({
+    todayOrders: z.number().int().nonnegative(),
+    activeOrders: z.number().int().nonnegative(),
+    completedOrders: z.number().int().nonnegative(),
+    weeklyShifts: z.number().int().nonnegative(),
+  }),
+  orders: z.array(TechnicianWorkbenchOrderSchema),
+  shifts: z.array(TechnicianWorkbenchShiftSchema),
+});
+
+export const TechnicianEarningsItemSchema = z.object({
+  orderId: z.string(),
+  orderNo: z.string(),
+  serviceName: z.string(),
+  completedAt: IsoDateTimeSchema,
+  grossOrderAmountFen: MoneyFenSchema,
+});
+
+export const TechnicianEarningsSchema = z.object({
+  periodStart: IsoDateTimeSchema,
+  periodEnd: IsoDateTimeSchema,
+  timeZone: z.literal("Asia/Shanghai"),
+  generatedAt: IsoDateTimeSchema,
+  metrics: z.object({
+    completedOrders: z.number().int().nonnegative(),
+    grossOrderAmountFen: MoneyFenSchema,
+  }),
+  settlement: z.object({
+    status: z.literal("POLICY_NOT_CONFIGURED"),
+    payableFen: z.null(),
+    notice: z.string(),
+  }),
+  items: z.array(TechnicianEarningsItemSchema),
+});
+
+export const TechnicianOrderActionSchema = z
+  .object({
+    action: z.enum(["DEPART", "ARRIVE", "START_SERVICE", "FINISH_SERVICE"]),
+  })
+  .strict();
+
+export const TechnicianOrderActionResultSchema = z.object({
+  orderId: z.string(),
+  action: TechnicianOrderActionSchema.shape.action,
+  previousStatus: OrderStatusSchema,
+  status: OrderStatusSchema,
+  idempotentReplay: z.boolean(),
+});
+
+export const CustomerOrderConfirmationSchema = z.object({}).strict();
+
+export const CustomerOrderConfirmationResultSchema = z.object({
+  orderId: z.string(),
+  previousStatus: OrderStatusSchema,
+  status: z.literal("COMPLETED"),
+  idempotentReplay: z.boolean(),
+});
+
+export const DispatchTherapistSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+});
+
+export const DispatchOrderSchema = z.object({
+  id: z.string(),
+  orderNo: z.string(),
+  customerName: z.string(),
+  serviceName: z.string(),
+  durationMinutes: z.number().int().positive(),
+  appointmentStart: IsoDateTimeSchema,
+  appointmentEnd: IsoDateTimeSchema,
+  status: OrderStatusSchema,
+  payableFen: MoneyFenSchema,
+  therapist: DispatchTherapistSchema.nullable(),
+  eligibleTherapists: z.array(DispatchTherapistSchema),
+});
+
+export const DispatchBoardSchema = z.object({
+  generatedAt: IsoDateTimeSchema,
+  timeZone: z.literal("Asia/Shanghai"),
+  orders: z.array(DispatchOrderSchema),
+});
+
+export const DispatchAssignmentSchema = z
+  .object({
+    therapistId: z.string().min(1).max(128),
+  })
+  .strict();
+
+export const DispatchAssignmentResultSchema = z.object({
+  orderId: z.string(),
+  status: z.literal("ASSIGNED"),
+  therapist: DispatchTherapistSchema,
+});
+
+export const AdminTechnicianShiftSchema = z.object({
+  id: z.string(),
+  startsAt: IsoDateTimeSchema,
+  endsAt: IsoDateTimeSchema,
+  status: z.enum(["ACTIVE", "CANCELLED"]),
+});
+
+export const AdminTechnicianSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  accountStatus: z.string(),
+  availability: z.enum(["ON_SHIFT", "SCHEDULED", "OFF_DUTY"]),
+  todayShift: AdminTechnicianShiftSchema.nullable(),
+  metrics: z.object({
+    activeOrders: z.number().int().nonnegative(),
+    completedToday: z.number().int().nonnegative(),
+  }),
+});
+
+export const AdminTechnicianBoardSchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  timeZone: z.literal("Asia/Shanghai"),
+  generatedAt: IsoDateTimeSchema,
+  technicians: z.array(AdminTechnicianSchema),
+});
+
+export const AdminShiftSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  therapistId: z.string(),
+  therapistDisplayName: z.string(),
+  startsAt: IsoDateTimeSchema,
+  endsAt: IsoDateTimeSchema,
+  status: z.enum(["ACTIVE", "CANCELLED"]),
+});
+
+export const AdminServiceAreaSchema = z.object({
+  serviceCity: z.string(),
+  coveragePolicy: z.literal("ZHENGZHOU_FULL"),
+  targetAdcodes: z.array(z.string().regex(/^\d{6}$/)),
+  configuredAdcodes: z.array(z.string().regex(/^\d{6}$/)),
+  fullyConfigured: z.boolean(),
+  mapProvider: z.enum(["mock", "tencent"]),
+  verificationEnabled: z.boolean(),
+  notice: z.string(),
+});
+
+export const AdminReadinessSchema = z.object({
+  environment: z.enum(["development", "test", "production"]),
+  generatedAt: IsoDateTimeSchema,
+  auth: z.object({
+    provider: z.enum(["mock", "wechat"]),
+    staffMfaRequired: z.boolean(),
+    browserLoginEnabled: z.boolean(),
+  }),
+  payment: z.object({
+    provider: z.enum(["mock", "wechat"]),
+    prepayEnabled: z.boolean(),
+    recoveryEnabled: z.boolean(),
+    refundEnabled: z.boolean(),
+  }),
+  map: z.object({
+    provider: z.enum(["mock", "tencent"]),
+    geocodingEnabled: z.boolean(),
+    coverageConfigured: z.boolean(),
+  }),
+  safety: z.object({
+    smsProvider: z.enum(["mock", "aliyun"]),
+    smsSendEnabled: z.boolean(),
+    dispatchEnabled: z.boolean(),
+    receiptQueryEnabled: z.boolean(),
+    dutyConfirmed: z.boolean(),
+  }),
+  customerService: z.object({
+    provider: z.enum(["none", "wecom"]),
+    ownershipConfirmed: z.boolean(),
+  }),
+});
+
+export const AuditLogEntrySchema = z.object({
+  id: z.string(),
+  organizationId: z.string().nullable(),
+  action: z.string(),
+  resourceType: z.string(),
+  resourceId: z.string().nullable(),
+  createdAt: IsoDateTimeSchema,
+});
+
 export const PaymentProviderSchema = z.enum(["MOCK", "WECHAT"]);
 export const PaymentStatusSchema = z.enum([
   "PENDING",
@@ -505,6 +734,45 @@ export type OrderCreate = z.infer<typeof OrderCreateSchema>;
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 export type OrderQuote = z.infer<typeof OrderQuoteSchema>;
 export type OrderView = z.infer<typeof OrderViewSchema>;
+export type OperationsDashboard = z.infer<typeof OperationsDashboardSchema>;
+export type OperationsDashboardOrder = z.infer<
+  typeof OperationsDashboardOrderSchema
+>;
+export type TechnicianWorkbench = z.infer<typeof TechnicianWorkbenchSchema>;
+export type TechnicianWorkbenchOrder = z.infer<
+  typeof TechnicianWorkbenchOrderSchema
+>;
+export type TechnicianWorkbenchShift = z.infer<
+  typeof TechnicianWorkbenchShiftSchema
+>;
+export type TechnicianEarnings = z.infer<typeof TechnicianEarningsSchema>;
+export type TechnicianEarningsItem = z.infer<
+  typeof TechnicianEarningsItemSchema
+>;
+export type TechnicianOrderAction = z.infer<typeof TechnicianOrderActionSchema>;
+export type TechnicianOrderActionResult = z.infer<
+  typeof TechnicianOrderActionResultSchema
+>;
+export type CustomerOrderConfirmation = z.infer<
+  typeof CustomerOrderConfirmationSchema
+>;
+export type CustomerOrderConfirmationResult = z.infer<
+  typeof CustomerOrderConfirmationResultSchema
+>;
+export type DispatchTherapist = z.infer<typeof DispatchTherapistSchema>;
+export type DispatchOrder = z.infer<typeof DispatchOrderSchema>;
+export type DispatchBoard = z.infer<typeof DispatchBoardSchema>;
+export type DispatchAssignment = z.infer<typeof DispatchAssignmentSchema>;
+export type DispatchAssignmentResult = z.infer<
+  typeof DispatchAssignmentResultSchema
+>;
+export type AdminTechnicianShift = z.infer<typeof AdminTechnicianShiftSchema>;
+export type AdminTechnician = z.infer<typeof AdminTechnicianSchema>;
+export type AdminTechnicianBoard = z.infer<typeof AdminTechnicianBoardSchema>;
+export type AdminShift = z.infer<typeof AdminShiftSchema>;
+export type AdminServiceArea = z.infer<typeof AdminServiceAreaSchema>;
+export type AdminReadiness = z.infer<typeof AdminReadinessSchema>;
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 export type PaymentProvider = z.infer<typeof PaymentProviderSchema>;
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type PaymentIntent = z.infer<typeof PaymentIntentSchema>;

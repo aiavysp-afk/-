@@ -295,4 +295,142 @@ describe("OrdersService", () => {
     expect(tx.order.updateMany).not.toHaveBeenCalled();
     expect(tx.appointmentReservation.updateMany).not.toHaveBeenCalled();
   });
+
+  it("confirms service completion atomically and writes one event, audit and outbox record", async () => {
+    const awaiting = orderRecord({
+      status: OrderStatus.AWAITING_CONFIRMATION,
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(awaiting),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderEvent: { create: vi.fn().mockResolvedValue({}) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      outboxEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(
+      service.confirmCompletion(principal, awaiting.id),
+    ).resolves.toEqual({
+      orderId: awaiting.id,
+      previousStatus: OrderStatus.AWAITING_CONFIRMATION,
+      status: OrderStatus.COMPLETED,
+      idempotentReplay: false,
+    });
+    expect(tx.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: awaiting.id,
+        customerId: principal.userId,
+        status: OrderStatus.AWAITING_CONFIRMATION,
+      },
+      data: { status: OrderStatus.COMPLETED },
+    });
+    expect(tx.orderEvent.create).toHaveBeenCalledOnce();
+    expect(tx.auditLog.create).toHaveBeenCalledOnce();
+    expect(tx.outboxEvent.create).toHaveBeenCalledOnce();
+  });
+
+  it("treats a repeated customer completion confirmation as idempotent", async () => {
+    const completed = orderRecord({ status: OrderStatus.COMPLETED });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(completed),
+        updateMany: vi.fn(),
+      },
+      orderEvent: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+      outboxEvent: { create: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(
+      service.confirmCompletion(principal, completed.id),
+    ).resolves.toMatchObject({
+      status: OrderStatus.COMPLETED,
+      idempotentReplay: true,
+    });
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+    expect(tx.orderEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects completion confirmation from a different customer", async () => {
+    const awaiting = orderRecord({
+      customerId: "another-customer",
+      status: OrderStatus.AWAITING_CONFIRMATION,
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(awaiting),
+        updateMany: vi.fn(),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(
+      service.confirmCompletion(principal, awaiting.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects customer confirmation before the technician submits completion", async () => {
+    const assigned = orderRecord({ status: OrderStatus.ASSIGNED });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(assigned),
+        updateMany: vi.fn(),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(
+      service.confirmCompletion(principal, assigned.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+  });
 });

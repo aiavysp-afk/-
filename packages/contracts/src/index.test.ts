@@ -22,6 +22,7 @@ import {
   SafetyNotificationSummarySchema,
   ServiceAdminUpdateSchema,
   ShiftCreateSchema,
+  TechnicianWorkbenchSchema,
   WechatMiniappLoginRequestSchema,
   formatMoney,
 } from "./index.js";
@@ -177,6 +178,39 @@ describe("authentication contract", () => {
 });
 
 describe("scheduling contracts", () => {
+  it("keeps technician weekly shifts explicit and privacy-safe", () => {
+    const parsed = TechnicianWorkbenchSchema.parse({
+      displayName: "安然",
+      day: "2026-10-07",
+      timeZone: "Asia/Shanghai",
+      generatedAt: "2026-10-07T08:00:00.000Z",
+      metrics: {
+        todayOrders: 0,
+        activeOrders: 0,
+        completedOrders: 0,
+        weeklyShifts: 1,
+      },
+      orders: [],
+      shifts: [
+        {
+          id: "shift-1",
+          startsAt: "2026-10-08T01:00:00.000Z",
+          endsAt: "2026-10-08T10:00:00.000Z",
+          status: "ACTIVE",
+          phone: "must-be-stripped",
+        },
+      ],
+    });
+    expect(parsed.shifts).toEqual([
+      {
+        id: "shift-1",
+        startsAt: "2026-10-08T01:00:00.000Z",
+        endsAt: "2026-10-08T10:00:00.000Z",
+        status: "ACTIVE",
+      },
+    ]);
+  });
+
   it("accepts a Shanghai availability date and rejects unsupported time zones", () => {
     expect(
       AvailabilityQuerySchema.parse({

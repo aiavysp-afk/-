@@ -8,6 +8,7 @@ import {
   ClipboardList,
   HeartHandshake,
   LayoutDashboard,
+  LogOut,
   MapPinned,
   MessageCircleWarning,
   RefreshCw,
@@ -21,18 +22,39 @@ import type { LucideIcon } from "lucide-react";
 import type {
   AdminServiceItem,
   AuthSession,
+  DispatchBoard,
+  OperationsDashboard,
   ServiceItem,
 } from "@zydj/contracts";
+import { formatMoney } from "@zydj/contracts";
 import "./styles.css";
 import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
 import { SafetyWorkspace } from "./safety";
+import {
+  AuditWorkspace,
+  SchedulingWorkspace,
+  ServiceAreaWorkspace,
+  SystemWorkspace,
+  TechniciansWorkspace,
+} from "./admin-resources";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 const TOKEN_STORAGE_KEY = "zydj.admin.access-token";
 
-type Section = "dashboard" | "catalog" | "refunds" | "safety" | "security";
+type Section =
+  | "dashboard"
+  | "dispatch"
+  | "technicians"
+  | "catalog"
+  | "scheduling"
+  | "refunds"
+  | "safety"
+  | "area"
+  | "audit"
+  | "security"
+  | "settings";
 type CatalogRow = AdminServiceItem | ServiceItem;
 
 const nav: Array<{
@@ -41,67 +63,31 @@ const nav: Array<{
   section?: Section;
 }> = [
   { icon: LayoutDashboard, label: "经营概览", section: "dashboard" },
-  { icon: ClipboardList, label: "订单调度" },
-  { icon: UsersRound, label: "技师管理" },
+  { icon: ClipboardList, label: "订单调度", section: "dispatch" },
+  { icon: UsersRound, label: "技师管理", section: "technicians" },
   { icon: Sparkles, label: "服务项目", section: "catalog" },
-  { icon: CalendarDays, label: "排班中心" },
+  { icon: CalendarDays, label: "排班中心", section: "scheduling" },
   { icon: CircleDollarSign, label: "退款复核", section: "refunds" },
   { icon: MessageCircleWarning, label: "安全值班", section: "safety" },
-  { icon: MapPinned, label: "服务区域" },
-  { icon: ShieldCheck, label: "权限审计" },
+  { icon: MapPinned, label: "服务区域", section: "area" },
+  { icon: ShieldCheck, label: "权限审计", section: "audit" },
   { icon: ShieldCheck, label: "账户安全", section: "security" },
 ];
 
-const metrics = [
-  { label: "今日预约", value: "28", note: "较昨日 +12%", tone: "green" },
-  { label: "进行中", value: "06", note: "均在计划时段", tone: "sand" },
-  {
-    label: "今日成交",
-    value: "¥ 4,860",
-    note: "演示口径 · 未接支付",
-    tone: "rose",
-  },
-  { label: "待处理事项", value: "03", note: "1 条需要优先处理", tone: "ink" },
-];
-
-const orders = [
-  [
-    "ZY202610030026",
-    "林女士",
-    "全身释压 SPA",
-    "14:00–15:30",
-    "安然",
-    "服务中",
-    "live",
-  ],
-  [
-    "ZY202610030025",
-    "周先生",
-    "肩颈舒缓",
-    "14:30–15:30",
-    "若溪",
-    "已出发",
-    "route",
-  ],
-  [
-    "ZY202610030024",
-    "陈女士",
-    "足部舒缓",
-    "15:00–16:00",
-    "待匹配",
-    "待调度",
-    "wait",
-  ],
-  [
-    "ZY202610030023",
-    "王女士",
-    "肩颈舒缓",
-    "13:00–14:00",
-    "静宜",
-    "已完成",
-    "done",
-  ],
-];
+const statusLabels: Record<string, string> = {
+  PENDING_PAYMENT: "待支付",
+  PAID: "已支付",
+  DISPATCHING: "待调度",
+  ASSIGNED: "已指派",
+  EN_ROUTE: "已出发",
+  ARRIVED: "已到达",
+  IN_SERVICE: "服务中",
+  AWAITING_CONFIRMATION: "待确认",
+  COMPLETED: "已完成",
+  CANCELLED: "已取消",
+  REFUNDING: "退款中",
+  REFUNDED: "已退款",
+};
 
 async function apiRequest<T>(
   path: string,
@@ -128,16 +114,125 @@ async function apiRequest<T>(
   return body as T;
 }
 
-function Dashboard() {
+function Dashboard({
+  token,
+  organizationId,
+  login,
+  query,
+}: {
+  token: string;
+  organizationId: string;
+  login: () => Promise<void>;
+  query: string;
+}) {
+  const [dashboard, setDashboard] = useState<OperationsDashboard | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    if (!token || !organizationId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await apiRequest<{ data: OperationsDashboard }>(
+        `/admin/organizations/${organizationId}/dashboard`,
+        {},
+        token,
+      );
+      setDashboard(response.data);
+    } catch (caught) {
+      setDashboard(null);
+      setError(caught instanceof Error ? caught.message : "经营概览加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [organizationId, token]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!token || !organizationId) {
+    return (
+      <section className="catalog-workspace">
+        <div className="catalog-heading">
+          <div>
+            <span className="eyebrow">OPERATIONS</span>
+            <h2>经营概览</h2>
+            <p>登录后读取所属组织的真实订单与资金汇总。</p>
+          </div>
+          {import.meta.env.DEV && (
+            <button className="primary-action" onClick={() => void login()}>
+              登录本地运营账号
+            </button>
+          )}
+        </div>
+        <div className="catalog-gate">
+          <ShieldCheck size={20} />
+          <div>
+            <strong>经营数据需要授权身份</strong>
+            <p>页面不会在未登录时展示虚构订单、收入或技师信息。</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const metrics = dashboard
+    ? [
+        {
+          label: "今日预约",
+          value: String(dashboard.metrics.todayOrders),
+          note: `${dashboard.day} · 郑州时间`,
+          tone: "green",
+        },
+        {
+          label: "履约中",
+          value: String(dashboard.metrics.activeOrders),
+          note: "已支付至待确认",
+          tone: "sand",
+        },
+        {
+          label: "今日支付成功",
+          value: formatMoney(dashboard.metrics.paidTodayFen),
+          note: "含后续进入退款流程的原支付",
+          tone: "rose",
+        },
+        {
+          label: "待处理事项",
+          value: String(dashboard.metrics.attentionRequired),
+          note: "超时支付、异常退款与安全事件",
+          tone: "ink",
+        },
+      ]
+    : [];
+  const dashboardOrders =
+    dashboard?.recentOrders.filter((order) => {
+      const needle = query.trim().toLowerCase();
+      return (
+        !needle ||
+        [
+          order.orderNo,
+          order.customerName,
+          order.serviceName,
+          order.therapistName ?? "",
+          statusLabels[order.status] ?? order.status,
+        ].some((value) => value.toLowerCase().includes(needle))
+      );
+    }) ?? [];
+
   return (
     <>
       <section className="notice">
         <span>开发环境</span>
         <p>
-          当前为演示数据，微信支付、短信、地图与安全热线尚未接入，不可用于真实经营。
+          下方数据来自本地数据库；微信支付、短信、地图与正式安全值班仍未接入。
         </p>
-        <button>查看接入门禁</button>
+        <button onClick={() => void load()} disabled={loading}>
+          {loading ? "读取中…" : "刷新数据"}
+        </button>
       </section>
+      {error && <div className="catalog-error">{error}</div>}
       <section className="metrics">
         {metrics.map((metric) => (
           <article className={metric.tone} key={metric.label}>
@@ -150,129 +245,303 @@ function Dashboard() {
           </article>
         ))}
       </section>
-      <section className="content-grid">
-        <article className="panel orders">
-          <div className="panel-head">
-            <div>
-              <h2>今日订单</h2>
-              <p>履约状态与调度进度</p>
-            </div>
-            <button>查看全部订单</button>
-          </div>
-          <div className="table">
-            <div className="tr th">
-              <span>订单 / 客户</span>
-              <span>服务项目</span>
-              <span>预约时间</span>
-              <span>技师</span>
-              <span>状态</span>
-            </div>
-            {orders.map((order) => (
-              <div className="tr" key={order[0]}>
-                <span>
-                  <b>{order[0]}</b>
-                  <small>{order[1]}</small>
-                </span>
-                <span>{order[2]}</span>
-                <span>{order[3]}</span>
-                <span>{order[4]}</span>
-                <span>
-                  <em className={order[6]}>{order[5]}</em>
-                </span>
+      {dashboard && (
+        <section className="content-grid">
+          <article className="panel orders dashboard-orders">
+            <div className="panel-head">
+              <div>
+                <h2>今日创建的订单</h2>
+                <p>最多显示最近 10 条，不包含服务地址</p>
               </div>
-            ))}
-          </div>
-        </article>
-        <article className="panel pulse">
-          <div className="panel-head">
-            <div>
-              <h2>履约脉搏</h2>
-              <p>当前时段服务分布</p>
+              <small>
+                更新于{" "}
+                {new Date(dashboard.generatedAt).toLocaleTimeString("zh-CN")}
+              </small>
             </div>
-            <span className="live-dot">实时演示</span>
-          </div>
-          <div className="donut">
-            <div>
-              <strong>18</strong>
-              <span>活跃订单</span>
-            </div>
-          </div>
-          <div className="legend">
-            <span>
-              <i className="g" />
-              服务中 <b>6</b>
-            </span>
-            <span>
-              <i className="y" />
-              在途中 <b>4</b>
-            </span>
-            <span>
-              <i className="p" />
-              待开始 <b>5</b>
-            </span>
-            <span>
-              <i className="n" />
-              待调度 <b>3</b>
-            </span>
-          </div>
-        </article>
-      </section>
-      <section className="bottom-grid">
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>今日排班</h2>
-              <p>8 位技师在线 · 演示数据</p>
-            </div>
-            <button>排班中心</button>
-          </div>
-          <div className="therapists">
-            {["安然", "若溪", "静宜", "知夏", "南乔"].map((name, index) => (
-              <div key={name}>
-                <span className={`avatar a${index}`}>{name[0]}</span>
-                <b>{name}</b>
-                <small>
-                  {index < 3 ? "服务中" : index === 3 ? "在途中" : "可接单"}
-                </small>
+            <div className="table">
+              <div className="tr th">
+                <span>订单 / 客户</span>
+                <span>服务项目</span>
+                <span>预约时间</span>
+                <span>技师</span>
+                <span>状态</span>
               </div>
-            ))}
-          </div>
-        </article>
-        <article className="panel alert-panel">
-          <div className="panel-head">
-            <div>
-              <h2>待处理</h2>
-              <p>按风险与时效排序</p>
+              {dashboardOrders.map((order) => (
+                <div className="tr" key={order.id}>
+                  <span>
+                    <b>{order.orderNo}</b>
+                    <small>{order.customerName}</small>
+                  </span>
+                  <span>
+                    {order.serviceName}
+                    <small>{formatMoney(order.payableFen)}</small>
+                  </span>
+                  <span>
+                    {new Date(order.appointmentStart).toLocaleTimeString(
+                      "zh-CN",
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      },
+                    )}
+                  </span>
+                  <span>{order.therapistName ?? "待匹配"}</span>
+                  <span>
+                    <em>{statusLabels[order.status] ?? order.status}</em>
+                  </span>
+                </div>
+              ))}
+              {dashboardOrders.length === 0 && (
+                <div className="catalog-empty">
+                  {query.trim() ? "没有匹配的订单" : "今日暂无新订单"}
+                </div>
+              )}
             </div>
-          </div>
-          <div className="task">
-            <span className="danger">急</span>
-            <div>
-              <b>订单待人工调度</b>
-              <small>预约时间 15:00 · 已等待 6 分钟</small>
-            </div>
-            <button>处理</button>
-          </div>
-          <div className="task">
-            <span>审</span>
-            <div>
-              <b>2 位技师资料待审核</b>
-              <small>身份材料仅限授权角色查看</small>
-            </div>
-            <button>查看</button>
-          </div>
-        </article>
-      </section>
+          </article>
+        </section>
+      )}
     </>
+  );
+}
+
+function DispatchWorkspace({
+  token,
+  organizationId,
+  login,
+  query,
+}: {
+  token: string;
+  organizationId: string;
+  login: () => Promise<void>;
+  query: string;
+}) {
+  const [board, setBoard] = useState<DispatchBoard | null>(null);
+  const [selection, setSelection] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [savingId, setSavingId] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    if (!token || !organizationId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await apiRequest<{ data: DispatchBoard }>(
+        `/admin/organizations/${organizationId}/dispatch`,
+        {},
+        token,
+      );
+      setBoard(response.data);
+      setSelection((current) => {
+        const next = { ...current };
+        for (const order of response.data.orders) {
+          next[order.id] =
+            current[order.id] ??
+            order.therapist?.id ??
+            order.eligibleTherapists[0]?.id ??
+            "";
+        }
+        return next;
+      });
+    } catch (caught) {
+      setBoard(null);
+      setError(caught instanceof Error ? caught.message : "调度看板加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [organizationId, token]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function assign(orderId: string) {
+    const therapistId = selection[orderId];
+    if (!therapistId) return;
+    setSavingId(orderId);
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest(
+        `/admin/organizations/${organizationId}/dispatch/orders/${orderId}/assign`,
+        { method: "POST", body: JSON.stringify({ therapistId }) },
+        token,
+      );
+      setMessage("技师指派成功，订单已进入履约队列。");
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "技师指派失败");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  if (!token || !organizationId) {
+    return (
+      <section className="catalog-workspace">
+        <div className="catalog-heading">
+          <div>
+            <span className="eyebrow">ORDER DISPATCH</span>
+            <h2>订单调度</h2>
+            <p>登录后读取待调度订单，并按有效排班指派技师。</p>
+          </div>
+          {import.meta.env.DEV && (
+            <button className="primary-action" onClick={() => void login()}>
+              登录本地调度账号
+            </button>
+          )}
+        </div>
+        <div className="catalog-gate">
+          <ShieldCheck size={20} />
+          <div>
+            <strong>调度操作需要授权身份</strong>
+            <p>未登录时不会展示订单、客户或技师数据。</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const visibleOrders =
+    board?.orders.filter((order) => {
+      const needle = query.trim().toLowerCase();
+      return (
+        !needle ||
+        [
+          order.orderNo,
+          order.customerName,
+          order.serviceName,
+          order.therapist?.displayName ?? "",
+        ].some((value) => value.toLowerCase().includes(needle))
+      );
+    }) ?? [];
+
+  return (
+    <section className="catalog-workspace dispatch-workspace">
+      <div className="catalog-heading">
+        <div>
+          <span className="eyebrow">ORDER DISPATCH</span>
+          <h2>订单调度</h2>
+          <p>仅列出已支付、调度中与已指派订单；不展示地址和电话。</p>
+        </div>
+        <button
+          className="ghost-action"
+          onClick={() => void load()}
+          disabled={loading}
+        >
+          <RefreshCw size={15} className={loading ? "spinning" : ""} />
+          {loading ? "读取中…" : "刷新"}
+        </button>
+      </div>
+      <div className="catalog-gate dispatch-rule">
+        <ShieldCheck size={20} />
+        <div>
+          <strong>排班与冲突校验已启用</strong>
+          <p>只能指派覆盖完整预约时段且没有其他预约冲突的在岗技师。</p>
+        </div>
+      </div>
+      {message && <div className="dispatch-message">{message}</div>}
+      {error && <div className="catalog-error">{error}</div>}
+      <div className="dispatch-table panel">
+        <div className="dispatch-row dispatch-head">
+          <span>订单 / 客户</span>
+          <span>服务与预约</span>
+          <span>状态</span>
+          <span>技师指派</span>
+        </div>
+        {visibleOrders.map((order) => {
+          const isAssigned = order.status === "ASSIGNED";
+          return (
+            <div className="dispatch-row" key={order.id}>
+              <span>
+                <b>{order.orderNo}</b>
+                <small>{order.customerName}</small>
+              </span>
+              <span>
+                <b>{order.serviceName}</b>
+                <small>
+                  {new Date(order.appointmentStart).toLocaleString("zh-CN", {
+                    timeZone: "Asia/Shanghai",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  · {order.durationMinutes} 分钟 ·{" "}
+                  {formatMoney(order.payableFen)}
+                </small>
+              </span>
+              <span>
+                <em className={isAssigned ? "status-on" : "status-waiting"}>
+                  {statusLabels[order.status] ?? order.status}
+                </em>
+              </span>
+              <span className="dispatch-action">
+                <select
+                  aria-label={`为订单 ${order.orderNo} 选择技师`}
+                  value={selection[order.id] ?? ""}
+                  onChange={(event) =>
+                    setSelection((current) => ({
+                      ...current,
+                      [order.id]: event.target.value,
+                    }))
+                  }
+                  disabled={isAssigned || savingId === order.id}
+                >
+                  <option value="">暂无可用技师</option>
+                  {order.eligibleTherapists.map((therapist) => (
+                    <option value={therapist.id} key={therapist.id}>
+                      {therapist.displayName}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="primary-action compact"
+                  disabled={
+                    isAssigned || !selection[order.id] || savingId === order.id
+                  }
+                  onClick={() => void assign(order.id)}
+                >
+                  {isAssigned
+                    ? `已指派 ${order.therapist?.displayName ?? "技师"}`
+                    : savingId === order.id
+                      ? "指派中…"
+                      : "确认指派"}
+                </button>
+              </span>
+            </div>
+          );
+        })}
+        {!loading && board && visibleOrders.length === 0 && (
+          <div className="catalog-empty">
+            {query.trim() ? "没有匹配的调度订单" : "当前没有待调度订单"}
+          </div>
+        )}
+        {loading && !board && (
+          <div className="catalog-empty">正在读取调度订单…</div>
+        )}
+      </div>
+      {board && (
+        <small className="dispatch-updated">
+          最近读取：
+          {new Date(board.generatedAt).toLocaleString("zh-CN", {
+            timeZone: board.timeZone,
+          })}
+        </small>
+      )}
+    </section>
   );
 }
 
 function CatalogWorkspace({
   token,
   onDevelopmentLogin,
+  query,
 }: {
   token: string;
   onDevelopmentLogin: () => Promise<void>;
+  query: string;
 }) {
   const [services, setServices] = useState<CatalogRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -319,6 +588,15 @@ function CatalogWorkspace({
       setSavingId("");
     }
   }
+  const visibleServices = services.filter((service) => {
+    const needle = query.trim().toLowerCase();
+    return (
+      !needle ||
+      [service.name, service.subtitle, service.category].some((value) =>
+        value.toLowerCase().includes(needle),
+      )
+    );
+  });
 
   return (
     <section className="catalog-workspace">
@@ -374,7 +652,7 @@ function CatalogWorkspace({
           <span>状态</span>
           <span>操作</span>
         </div>
-        {services.map((service) => {
+        {visibleServices.map((service) => {
           const adminService = "published" in service ? service : undefined;
           return (
             <div className="catalog-row" key={service.id}>
@@ -428,8 +706,10 @@ function CatalogWorkspace({
             </div>
           );
         })}
-        {!loading && services.length === 0 && (
-          <div className="catalog-empty">暂无服务项目</div>
+        {!loading && visibleServices.length === 0 && (
+          <div className="catalog-empty">
+            {query.trim() ? "没有匹配的服务项目" : "暂无服务项目"}
+          </div>
         )}
         {loading && <div className="catalog-empty">正在读取服务目录…</div>}
       </div>
@@ -439,10 +719,12 @@ function CatalogWorkspace({
 
 function App() {
   const [section, setSection] = useState<Section>("dashboard");
+  const [query, setQuery] = useState("");
   const [token, setToken] = useState(
     () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
   );
   const [displayName, setDisplayName] = useState("未登录");
+  const [organizationId, setOrganizationId] = useState("");
   const currentToken = useRef(token);
   currentToken.current = token;
 
@@ -450,11 +732,19 @@ function App() {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     if (!token) return;
     let current = true;
-    void apiRequest<{ data: { displayName: string } }>("/auth/me", {
+    void apiRequest<{
+      data: {
+        displayName: string;
+        memberships: Array<{ organizationId: string }>;
+      };
+    }>("/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => {
-        if (current) setDisplayName(r.data.displayName);
+        if (current) {
+          setDisplayName(r.data.displayName);
+          setOrganizationId(r.data.memberships[0]?.organizationId ?? "");
+        }
       })
       .catch((error: { status?: number }) => {
         if (!current || currentToken.current !== token) return;
@@ -463,6 +753,7 @@ function App() {
           currentToken.current = "";
           setToken("");
           setDisplayName("未登录");
+          setOrganizationId("");
         } else setDisplayName("会话待重新验证");
       });
     return () => {
@@ -486,9 +777,10 @@ function App() {
     currentToken.current = "";
     setToken("");
     setDisplayName("未登录");
+    setOrganizationId("");
   }
 
-  async function developmentLogin(code = "local-catalog-operator") {
+  async function developmentLogin(code = "local-safety-admin") {
     const response = await apiRequest<{ data: AuthSession }>(
       "/auth/wechat-miniapp",
       {
@@ -500,6 +792,7 @@ function App() {
     currentToken.current = response.data.accessToken;
     setToken(response.data.accessToken);
     setDisplayName(response.data.user.displayName);
+    setOrganizationId(response.data.user.memberships[0]?.organizationId ?? "");
   }
 
   function acceptBrowserSession(session: AuthSession) {
@@ -515,7 +808,12 @@ function App() {
     currentToken.current = session.accessToken;
     setToken(session.accessToken);
     setDisplayName(session.user.displayName);
+    setOrganizationId(session.user.memberships[0]?.organizationId ?? "");
   }
+
+  const canSearch = (
+    ["dashboard", "dispatch", "technicians", "catalog", "audit"] as Section[]
+  ).includes(section);
 
   return (
     <div className="app-shell">
@@ -533,7 +831,11 @@ function App() {
               className={target === section ? "active" : ""}
               disabled={!target}
               key={label}
-              onClick={() => target && setSection(target)}
+              onClick={() => {
+                if (!target) return;
+                setSection(target);
+                setQuery("");
+              }}
             >
               <Icon size={19} />
               <span>{label}</span>
@@ -541,13 +843,25 @@ function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-card">
+        <button
+          className="sidebar-card"
+          onClick={() => {
+            setSection("settings");
+            setQuery("");
+          }}
+        >
           <HeartHandshake size={24} />
           <strong>服务合规中心</strong>
           <p>协议、隐私与安全门禁</p>
-          <a>查看上线清单 →</a>
-        </div>
-        <button className="settings">
+          <span>查看上线清单 →</span>
+        </button>
+        <button
+          className="settings"
+          onClick={() => {
+            setSection("settings");
+            setQuery("");
+          }}
+        >
           <Settings size={19} />
           系统设置
         </button>
@@ -567,21 +881,46 @@ function App() {
             <h1>
               {section === "dashboard"
                 ? "运营中心"
-                : section === "security"
-                  ? "账户安全"
-                  : section === "safety"
-                    ? "安全值班与升级"
-                    : section === "refunds"
-                      ? "退款申请与复核"
-                      : "服务目录管理"}
+                : section === "dispatch"
+                  ? "订单调度"
+                  : section === "technicians"
+                    ? "技师管理"
+                    : section === "scheduling"
+                      ? "排班中心"
+                      : section === "security"
+                        ? "账户安全"
+                        : section === "safety"
+                          ? "安全值班与升级"
+                          : section === "refunds"
+                            ? "退款申请与复核"
+                            : section === "area"
+                              ? "服务区域"
+                              : section === "audit"
+                                ? "权限审计"
+                                : section === "settings"
+                                  ? "系统设置与上线门禁"
+                                  : "服务目录管理"}
             </h1>
           </div>
           <div className="header-actions">
-            <label>
-              <Search size={18} />
-              <input placeholder="搜索订单、技师或客户" />
-            </label>
-            <button className="bell">
+            {canSearch && (
+              <label>
+                <Search size={18} />
+                <input
+                  placeholder="搜索当前页面"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+            )}
+            <button
+              className="bell"
+              aria-label="打开安全值班"
+              onClick={() => {
+                setSection("safety");
+                setQuery("");
+              }}
+            >
               <Bell size={20} />
               <span />
             </button>
@@ -593,10 +932,45 @@ function App() {
               </span>
               <ChevronDown size={16} />
             </div>
+            {token && (
+              <button
+                className="logout-button"
+                aria-label="退出当前后台账号"
+                onClick={() => void logout()}
+              >
+                <LogOut size={17} />
+                退出
+              </button>
+            )}
           </div>
         </header>
         {section === "dashboard" ? (
-          <Dashboard />
+          <Dashboard
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin()}
+            query={query}
+          />
+        ) : section === "dispatch" ? (
+          <DispatchWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-scheduling-dispatcher")}
+            query={query}
+          />
+        ) : section === "technicians" ? (
+          <TechniciansWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-safety-admin")}
+            query={query}
+          />
+        ) : section === "scheduling" ? (
+          <SchedulingWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-safety-admin")}
+          />
         ) : section === "security" ? (
           <SecurityWorkspace
             token={token}
@@ -607,10 +981,30 @@ function App() {
           <RefundWorkspace token={token} login={developmentLogin} />
         ) : section === "safety" ? (
           <SafetyWorkspace token={token} login={developmentLogin} />
+        ) : section === "area" ? (
+          <ServiceAreaWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-safety-admin")}
+          />
+        ) : section === "audit" ? (
+          <AuditWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-safety-admin")}
+            query={query}
+          />
+        ) : section === "settings" ? (
+          <SystemWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-safety-admin")}
+          />
         ) : (
           <CatalogWorkspace
             token={token}
             onDevelopmentLogin={() => developmentLogin()}
+            query={query}
           />
         )}
       </main>

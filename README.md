@@ -24,8 +24,8 @@
 
 1. 复制 `.env.example` 为 `.env`。
 2. 启动基础设施：`docker compose -f infra/docker-compose.dev.yml up -d`。
-3. 安装依赖：`pnpm install`。
-4. 初始化数据库：`pnpm --filter @zydj/api prisma:generate`，然后 `pnpm --filter @zydj/api prisma:migrate`。
+3. 安装依赖：`pnpm install`。安装完成时会按 `apps/api/prisma/schema.prisma` 自动生成 Prisma Client；需要单独重建时运行 `pnpm --filter @zydj/api prisma:generate`。
+4. 初始化数据库：`pnpm --filter @zydj/api prisma:migrate`。
 5. 启动三端 Web 与 API：`pnpm dev`。
 
 默认地址：API `http://localhost:3100/v1`，管理后台 `http://localhost:5173`，技师工作台 `http://localhost:5174`。
@@ -34,13 +34,13 @@
 
 小程序“我的”页已接入 M1 登录入口。本地 `AUTH_PROVIDER=mock` 只用于开发，生产会强制要求微信 AppSecret、会话 pepper 和 32 字节数据加密密钥；真实值只通过服务器环境变量注入。
 
-管理后台“服务项目”已读取 PostgreSQL 目录。执行开发种子时只有显式设置 `SEED_DEVELOPMENT_IDENTITIES=true` 才会创建本地运营、调度和技师演示身份及次日班次；这些身份和登录按钮不会作为生产管理员认证方案。
+管理后台现已接入经营看板、订单调度、技师管理、排班中心、服务项目、退款复核、服务区域、安全值班、账户安全、权限审计和系统上线门禁等真实本地 API；当前页面搜索会筛选所在模块的数据。调度与排班写入都会执行组织权限、有效技师、排班和冲突校验，并记录审计证据；后台不返回服务地址或客户电话。执行开发种子时只有显式设置 `SEED_DEVELOPMENT_IDENTITIES=true` 才会创建本地运营、调度和技师演示身份及次日班次；这些身份和登录按钮不会作为生产管理员认证方案。
 
 ## 当前阶段
 
 2026-10-04已完成[后台MFA基础](docs/STAFF_MFA_IMPLEMENTATION.md)、[微信后台安全登录交接](docs/BROWSER_LOGIN_IMPLEMENTATION.md)与[验证器丢失受审恢复](docs/MFA_RECOVERY_IMPLEMENTATION.md)。这些是代码与隔离环境验收，不表示真人设备、真实微信主体或公开生产环境已验收。
 
-已完成工程基线、品牌视觉、公开配置、M1 微信登录/会话/RBAC、M2 实时目录/排班/占位/报价/订单及Mock支付，以及退款持久化、申请/独立复核、累计额度占用、并发幂等、结果回调/原单查询/恢复租约、一次记账与退款管理页面。小程序目录、预约、订单和退款申请已接入API。微信JSAPI预下单已加入持久化单次派发、响应验签、RSA调起参数和小程序SDK入口；原单自动查询/幂等关单/再次核实、恢复租约和人工升级已实现，见[补偿交付](docs/WECHAT_RECOVERY_IMPLEMENTATION.md)。三个开关均默认false。经营看板/技师H5仍是演示，真机资金、正式后台认证/MFA和运维值班未验收，不能直接宣称生产资金闭环验收。
+已完成工程基线、品牌视觉、公开配置、M1 微信登录/会话/RBAC、M2 实时目录/排班/占位/报价/订单及Mock支付，以及退款持久化、申请/独立复核、累计额度占用、并发幂等、结果回调/原单查询/恢复租约、一次记账与退款管理页面。小程序目录、预约、订单和退款申请已接入API。微信JSAPI预下单已加入持久化单次派发、响应验签、RSA调起参数和小程序SDK入口；原单自动查询/幂等关单/再次核实、恢复租约和人工升级已实现，见[补偿交付](docs/WECHAT_RECOVERY_IMPLEMENTATION.md)。三个开关均默认false。经营看板已改为登录后读取所属组织的真实数据库汇总；订单调度已接入真实订单、排班校验、冲突防护和并发幂等指派；技师H5的“今日、订单、排班、我的”四个导航页均已启用，读取本人今日订单、本周详细班次及本月已完成订单流水，并支持本人今日订单按状态机执行出发、到达、开始服务和提交客户确认；小程序客户可在待确认状态二次确认后完成订单。履约和客户确认操作均带行锁、归属校验、状态机、事件、审计与并发幂等保护。技师本月流水只展示真实订单总额；因平台抽成、结算和打款规则尚未配置，可结算金额明确显示“待核算”，不会伪造收入。正式H5登录与正式结算仍未完成。真机资金、正式后台认证/MFA和运维值班未验收，不能直接宣称生产资金闭环验收。
 
 交付入口：[环境变量](docs/ENV_VARIABLES.md)、[数据库角色初始化](infra/database-init.sql)、[数据库迁移脚本](scripts/database-init.ps1)、[完整部署与人工检查项](docs/DEPLOYMENT.md)、[退款设计](docs/REFUND_IMPLEMENTATION.md)、[全流程自测结果](docs/SELF_TEST_REPORT.md)、[改动文件清单](docs/CHANGE_FILES.md)。
 
