@@ -291,7 +291,26 @@ try {
     longitude: 113.6254,
     coordinateSystem: "GCJ-02" as const,
   };
-  let addressVerificationId: string | undefined;
+  const verifyAddressForReservation = async (reservationId: string) => {
+    if (!runRealAmapFlow) {
+      return undefined;
+    }
+    const verification = await call(
+      "/locations/address-verifications",
+      customer.token,
+      {
+        reservationId,
+        detail: address.detail,
+        latitude: address.latitude,
+        longitude: address.longitude,
+        coordinateSystem: "GCJ-02",
+      },
+      undefined,
+      201,
+    );
+    assert.equal(verification.coordinateSystem, "GCJ-02");
+    return verification.id as string;
+  };
   if (runRealAmapFlow) {
     const suggestions = await call(
       "/locations/address-suggestions?keyword=%E4%BA%8C%E4%B8%83%E5%B9%BF%E5%9C%BA",
@@ -305,22 +324,8 @@ try {
           Number.isFinite(row.longitude),
       ),
     );
-    const verification = await call(
-      "/locations/address-verifications",
-      customer.token,
-      {
-        reservationId: hold.id,
-        detail: address.detail,
-        latitude: address.latitude,
-        longitude: address.longitude,
-        coordinateSystem: "GCJ-02",
-      },
-      undefined,
-      201,
-    );
-    addressVerificationId = verification.id;
-    assert.equal(verification.coordinateSystem, "GCJ-02");
   }
+  const addressVerificationId = await verifyAddressForReservation(hold.id);
   const orderBody = {
     reservationId: hold.id,
     address,
@@ -843,10 +848,19 @@ try {
     undefined,
     201,
   );
+  const cancelAddressVerificationId = await verifyAddressForReservation(
+    cancelHold.id,
+  );
   const cancelOrder = await call(
     "/orders",
     customer.token,
-    { ...orderBody, reservationId: cancelHold.id },
+    {
+      ...orderBody,
+      reservationId: cancelHold.id,
+      ...(cancelAddressVerificationId
+        ? { addressVerificationId: cancelAddressVerificationId }
+        : {}),
+    },
     `${prefix}-cancel-order`,
     201,
   );
