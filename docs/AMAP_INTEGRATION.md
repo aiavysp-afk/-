@@ -20,9 +20,10 @@ API 运行环境配置以下变量：
 
 在“开发管理 → 开发设置 → 服务器域名”的 `request合法域名` 中保留：
 
+- `https://api.mtsc.top`
 - `https://restapi.amap.com`
 
-已不再使用的地图供应商域名应删除。小程序 `app.json` 同时声明 `scope.userLocation` 和 `getLocation`。
+2026-10-07 已在微信公众平台扫码确认并从正式列表复核以上两个域名，旧腾讯地图域名不在列表中。小程序 `app.json` 同时声明 `scope.userLocation` 和 `getLocation`。
 
 ## 业务链路
 
@@ -43,5 +44,7 @@ API 运行环境配置以下变量：
 
 - 无真实 Key：`pnpm typecheck && pnpm test && pnpm build`
 - 受控真实高德验收：仅对隔离测试数据库运行 `RUN_REAL_AMAP_FLOW=true pnpm --filter @zydj/api test:mall`，并从受控环境提供两个 Key。
+
+2026-10-07 受控真实高德验收通过，覆盖 POI、逆地理解析、订单地址证明和驾车路线；随后官方微信开发者工具上传开发版本 `7.1.0` 成功。上传开发版本不等于真机定位授权、导航唤起、审核或正式发布已经完成。
 
 正式发布前必须再检查 Key 绑定平台/白名单、高德配额监控、小程序隐私保护指引与真机授权提示。
