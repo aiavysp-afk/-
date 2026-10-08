@@ -207,8 +207,32 @@
   letter-spacing: 2rpx;
 }
 .primary-button[disabled],
+.wechat-phone-button[disabled],
 .sms-button[disabled] {
   opacity: 0.66;
+}
+.wechat-phone-button {
+  margin-top: 28rpx;
+  border-radius: 46rpx;
+  background: linear-gradient(95deg, #214d42, #0f372f);
+  color: #fff;
+  font-size: 25rpx;
+  line-height: 88rpx;
+  box-shadow: 0 16rpx 36rpx #163f3330;
+  letter-spacing: 1rpx;
+}
+.method-divider {
+  display: flex;
+  align-items: center;
+  gap: 17rpx;
+  color: #9aa49f;
+  font-size: 18rpx;
+  margin: 27rpx 2rpx 22rpx;
+}
+.method-divider view {
+  height: 1rpx;
+  background: #e5e2d9;
+  flex: 1;
 }
 .quick-tip {
   display: block;
@@ -478,7 +502,7 @@
   justify-content: center;
 }
 .sms-card .field-shell {
-  margin-top: 27rpx;
+  margin-top: 0;
 }
 .sms-card .code-shell {
   margin-top: 16rpx;

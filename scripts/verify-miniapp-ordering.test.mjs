@@ -45,16 +45,27 @@ test("first login exposes native phone authorization with an isolated SMS fallba
   );
   assert.ok(app.pages.includes("pages/phone-verification/index"));
   assert.match(page, /open-type="getPhoneNumber"/);
-  assert.match(page, /bindtap="requestSmsCode"/);
-  assert.match(page, /bindtap="confirmSmsCode"/);
+  assert.match(page, /bindgetphonenumber="authorizeWechatPhone"/);
+  assert.match(page, /bindtap="handleSmsAction"/);
   assert.match(auth, /auth\/sms-phone\/request/);
   assert.match(auth, /auth\/sms-phone\/confirm/);
+  assert.match(auth, /auth\/wechat-phone/);
   assert.match(home, /open-type="contact"/);
 });
 
-test("service, WeChat login and order submission stay on the customer flow", async () => {
+test("verified customer service browsing and order submission stay on the customer flow", async () => {
   const calls = [];
   const storage = new Map();
+  storage.set("zydj.auth.session", {
+    accessToken: "session-token",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    user: {
+      id: "customer-1",
+      displayName: "\u5fae\u4fe1\u7528\u6237",
+      phoneVerified: true,
+      memberships: [],
+    },
+  });
   let captured;
   globalThis.getApp = () => ({
     globalData: { apiBaseUrl: "https://api.mtsc.top/v1" },
@@ -167,6 +178,7 @@ test("service, WeChat login and order submission stay on the customer flow", asy
     addressVerificationRequired: false,
   });
   await captured.create();
+  await captured.create();
 
   assert.equal(captured.data.error, "");
   assert.equal(storage.has("zydj.auth.session"), true);
@@ -174,7 +186,6 @@ test("service, WeChat login and order submission stay on the customer flow", asy
     calls.filter((item) => item.path.startsWith("/")).map((item) => item.path),
     [
       "/catalog/services",
-      "/auth/wechat-miniapp",
       "/booking-holds",
       "/orders/quote",
       "/orders",

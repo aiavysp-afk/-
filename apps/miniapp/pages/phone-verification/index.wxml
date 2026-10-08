@@ -55,6 +55,16 @@
     <text class="login-title">验证联系手机号</text>
     <text class="login-subtitle">手机号用于预约联系、订单通知与售后核验</text>
 
+    <button
+      class="wechat-phone-button"
+      open-type="getPhoneNumber"
+      bindgetphonenumber="authorizeWechatPhone"
+      loading="{{busy && loginMode === 'WECHAT_PHONE'}}"
+      disabled="{{busy}}"
+    >{{busy && loginMode === 'WECHAT_PHONE' ? '正在验证…' : '微信手机号一键验证'}}</button>
+
+    <view class="method-divider"><view /><text>或使用短信验证码</text><view /></view>
+
     <view class="field-shell {{phoneFocused ? 'is-focused' : ''}}">
       <text class="field-prefix">+86</text>
       <input
@@ -106,5 +116,5 @@
     </view>
   </view>
 
-  <view class="security-note"><text class="security-icon">◇</text><text>登录分两步完成，不会未经确认获取手机号</text></view>
+  <view class="security-note"><text class="security-icon">◇</text><text>手机号需本人明确授权，不会自动读取</text></view>
 </view>

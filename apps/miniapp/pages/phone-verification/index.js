@@ -57,9 +57,9 @@ Page({
                 wx.showToast({ title: "账号已登录", icon: "success" });
                 return;
             }
-            this.setData({ wechatReady: true, phoneFocused: true });
+            this.setData({ wechatReady: true, phoneFocused: false });
             wx.showToast({ title: "微信授权成功，请验证手机号", icon: "none" });
-            this.setData({ actionStatus: "微信授权已完成，请输入手机号" });
+            this.setData({ actionStatus: "微信授权已完成，请一键验证手机号" });
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "微信授权登录失败";
@@ -70,6 +70,64 @@ Page({
             wx.showModal({
                 title: "微信登录未完成",
                 content: message,
+                confirmText: "我知道了",
+                showCancel: false,
+            });
+        }
+        finally {
+            this.setData({ busy: false, loginMode: "" });
+        }
+    },
+    async authorizeWechatPhone(event) {
+        var _a, _b;
+        if (this.data.busy || !this.ensureAgreementAccepted())
+            return;
+        const code = (_a = event.detail.code) === null || _a === void 0 ? void 0 : _a.trim();
+        if (!code) {
+            const cancelled = /deny|cancel/i.test((_b = event.detail.errMsg) !== null && _b !== void 0 ? _b : "");
+            const message = cancelled
+                ? "你已取消微信手机号授权，可重试或改用短信验证码"
+                : "微信未返回手机号授权凭证，请重试或改用短信验证码";
+            this.setData({
+                actionStatus: "微信手机号未验证",
+                error: message,
+            });
+            wx.showToast({ title: message, icon: "none" });
+            return;
+        }
+        if (!(0, auth_1.getStoredSession)()) {
+            this.setData({
+                actionStatus: "",
+                wechatReady: false,
+                error: "微信登录已失效，请先重新完成微信授权",
+            });
+            wx.showToast({ title: "请先重新完成微信授权", icon: "none" });
+            return;
+        }
+        this.setData({
+            actionStatus: "正在验证微信手机号…",
+            busy: true,
+            error: "",
+            loginMode: "WECHAT_PHONE",
+        });
+        try {
+            const result = await (0, auth_1.verifyWechatPhone)(code);
+            this.setData({
+                completed: true,
+                maskedPhone: result.maskedPhone,
+                actionStatus: "微信手机号验证完成",
+            });
+            wx.showToast({ title: "登录成功", icon: "success" });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "微信手机号验证失败";
+            this.setData({
+                actionStatus: "微信手机号未验证",
+                error: message,
+            });
+            wx.showModal({
+                title: "微信手机号验证失败",
+                content: `${message}。你也可以改用短信验证码。`,
                 confirmText: "我知道了",
                 showCancel: false,
             });

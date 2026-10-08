@@ -82,6 +82,15 @@ function installWx({ requests = [], smsRequestFailure, storedSession } = {}) {
         });
         return;
       }
+      if (options.url.endsWith("/auth/wechat-phone")) {
+        options.success({
+          statusCode: 200,
+          data: {
+            data: { phoneVerified: true, maskedPhone: "138****8000" },
+          },
+        });
+        return;
+      }
       if (options.url.endsWith("/auth/sms-phone/confirm")) {
         options.success({
           statusCode: 200,
@@ -152,6 +161,62 @@ test("WeChat authorization completes step one without silently requesting a phon
     );
     assert.equal(page.data.wechatReady, true);
     assert.equal(page.data.completed, false);
+  } finally {
+    host.restore();
+  }
+});
+
+test("native WeChat phone authorization completes login and persists verification", async () => {
+  const host = installWx();
+  try {
+    const page = createPage();
+    await page.authorizeWechat();
+    await page.authorizeWechatPhone({
+      detail: { code: "dynamic-phone-code", errMsg: "getPhoneNumber:ok" },
+    });
+    assert.deepEqual(
+      host.requests.map((request) => request.url),
+      [
+        "https://api.fixture.test/v1/auth/wechat-miniapp",
+        "https://api.fixture.test/v1/auth/wechat-phone",
+      ],
+    );
+    assert.equal(host.requests[1].data.code, "dynamic-phone-code");
+    assert.match(host.requests[1].header.Authorization, /^Bearer /);
+    assert.equal(host.requests[1].timeout, 12_000);
+    assert.equal(page.data.completed, true);
+    assert.equal(page.data.maskedPhone, "138****8000");
+    assert.equal(
+      globalThis.wx.getStorageSync(storageKey).user.phoneVerified,
+      true,
+    );
+  } finally {
+    host.restore();
+  }
+});
+
+test("cancelled WeChat phone authorization stays visible and sends no request", async () => {
+  const host = installWx({
+    storedSession: {
+      accessToken: "x".repeat(40),
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      user: {
+        id: "fixture-user",
+        displayName: "微信用户",
+        phoneVerified: false,
+        memberships: [],
+      },
+    },
+  });
+  try {
+    const page = createPage();
+    page.data.wechatReady = true;
+    await page.authorizeWechatPhone({
+      detail: { errMsg: "getPhoneNumber:fail user deny" },
+    });
+    assert.equal(host.requests.length, 0);
+    assert.equal(page.data.actionStatus, "微信手机号未验证");
+    assert.match(page.data.error, /已取消/);
   } finally {
     host.restore();
   }
