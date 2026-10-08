@@ -27,11 +27,12 @@ function createPage() {
   };
 }
 
-function installWx({ requests = [], storedSession } = {}) {
+function installWx({ requests = [], smsRequestFailure, storedSession } = {}) {
   const previousWx = globalThis.wx;
   const previousGetApp = globalThis.getApp;
   let session = storedSession;
   const navigations = [];
+  const modals = [];
   globalThis.getApp = () => ({
     globalData: { apiBaseUrl: "https://api.fixture.test/v1" },
   });
@@ -65,6 +66,10 @@ function installWx({ requests = [], storedSession } = {}) {
         return;
       }
       if (options.url.endsWith("/auth/sms-phone/request")) {
+        if (smsRequestFailure) {
+          options.fail({ errMsg: smsRequestFailure });
+          return;
+        }
         options.success({
           statusCode: 200,
           data: {
@@ -89,11 +94,13 @@ function installWx({ requests = [], storedSession } = {}) {
       options.fail({ errMsg: "unexpected request" });
     },
     showToast() {},
+    showModal: (options) => modals.push(options),
     navigateTo: ({ url }) => navigations.push(url),
     navigateBack() {},
     switchTab: ({ url }) => navigations.push(url),
   };
   return {
+    modals,
     navigations,
     requests,
     restore() {
@@ -169,9 +176,39 @@ test("SMS verification runs only after WeChat authorization and completes login"
     );
     assert.match(host.requests[1].header.Authorization, /^Bearer /);
     assert.match(host.requests[2].header.Authorization, /^Bearer /);
+    assert.equal(host.requests[0].timeout, 12_000);
+    assert.equal(host.requests[1].timeout, 12_000);
+    assert.equal(host.requests[2].timeout, 12_000);
     assert.equal(page.data.completed, true);
     assert.equal(page.data.maskedPhone, "138****8000");
     page.onUnload();
+  } finally {
+    host.restore();
+  }
+});
+
+test("SMS network failures remain visible instead of leaving an unresponsive button", async () => {
+  const host = installWx({
+    smsRequestFailure: "request:fail timeout",
+    storedSession: {
+      accessToken: "x".repeat(40),
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      user: {
+        id: "fixture-user",
+        displayName: "微信用户",
+        phoneVerified: false,
+        memberships: [],
+      },
+    },
+  });
+  try {
+    const page = createPage();
+    page.data.phone = "13800138000";
+    await page.requestSmsCode();
+    assert.equal(page.data.busy, false);
+    assert.equal(page.data.actionStatus, "验证码未发送");
+    assert.match(page.data.error, /请求超时/);
+    assert.equal(host.modals.at(-1)?.title, "验证码发送失败");
   } finally {
     host.restore();
   }

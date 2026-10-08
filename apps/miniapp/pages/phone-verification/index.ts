@@ -11,6 +11,7 @@ type LoginMode = "" | "WECHAT" | "SMS";
 Page({
   data: {
     accepted: true,
+    actionStatus: "",
     busy: false,
     codeFocused: false,
     completed: false,
@@ -45,7 +46,12 @@ Page({
   },
   async authorizeWechat() {
     if (this.data.busy || !this.ensureAgreementAccepted()) return;
-    this.setData({ busy: true, error: "", loginMode: "WECHAT" });
+    this.setData({
+      actionStatus: "正在连接微信登录…",
+      busy: true,
+      error: "",
+      loginMode: "WECHAT",
+    });
     try {
       const session = getStoredSession() ?? (await loginWithWechat());
       if (!needsPhoneVerification(session)) {
@@ -55,9 +61,18 @@ Page({
       }
       this.setData({ wechatReady: true, phoneFocused: true });
       wx.showToast({ title: "微信授权成功，请验证手机号", icon: "none" });
+      this.setData({ actionStatus: "微信授权已完成，请输入手机号" });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "微信授权登录失败";
       this.setData({
-        error: error instanceof Error ? error.message : "微信授权登录失败",
+        actionStatus: "微信授权未完成",
+        error: message,
+      });
+      wx.showModal({
+        title: "微信登录未完成",
+        content: message,
+        confirmText: "我知道了",
+        showCancel: false,
       });
     } finally {
       this.setData({ busy: false, loginMode: "" });
@@ -106,22 +121,36 @@ Page({
     )
       return;
     if (!/^1[3-9]\d{9}$/.test(this.data.phone)) {
-      this.setData({ error: "请输入正确的 11 位手机号" });
+      const message = "请输入正确的 11 位手机号";
+      this.setData({ actionStatus: "", error: message });
+      wx.showToast({ title: message, icon: "none" });
       return;
     }
     if (!getStoredSession()) {
       this.setData({
+        actionStatus: "",
         wechatReady: false,
         error: "微信登录已失效，请先重新完成微信授权",
       });
+      wx.showToast({ title: "请先重新完成微信授权", icon: "none" });
       return;
     }
-    this.setData({ busy: true, error: "", loginMode: "SMS" });
+    this.setData({
+      actionStatus: "正在请求短信验证码…",
+      busy: true,
+      error: "",
+      loginMode: "SMS",
+    });
+    wx.showToast({ title: "正在发送验证码", icon: "loading" });
     try {
       const result = await requestSmsPhoneVerification(this.data.phone);
       this.setData({
         smsRequested: true,
         smsCountdown: result.retryAfterSeconds,
+        actionStatus:
+          result.status === "UNKNOWN"
+            ? "短信状态待确认，请稍候查看"
+            : "验证码已发送，请查看手机短信",
         error:
           result.status === "UNKNOWN"
             ? "短信请求状态暂未确认，请稍候查看，暂勿重复点击"
@@ -138,8 +167,16 @@ Page({
       }, 1_000);
       wx.showToast({ title: "验证码已发送", icon: "success" });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "验证码发送失败";
       this.setData({
-        error: error instanceof Error ? error.message : "验证码发送失败",
+        actionStatus: "验证码未发送",
+        error: message,
+      });
+      wx.showModal({
+        title: "验证码发送失败",
+        content: message,
+        confirmText: "我知道了",
+        showCancel: false,
       });
     } finally {
       this.setData({ busy: false, loginMode: "" });
@@ -162,7 +199,12 @@ Page({
       });
       return;
     }
-    this.setData({ busy: true, error: "", loginMode: "SMS" });
+    this.setData({
+      actionStatus: "正在校验验证码…",
+      busy: true,
+      error: "",
+      loginMode: "SMS",
+    });
     try {
       const result = await confirmSmsPhoneVerification(
         this.data.phone,
@@ -171,8 +213,16 @@ Page({
       this.setData({ completed: true, maskedPhone: result.maskedPhone });
       wx.showToast({ title: "登录成功", icon: "success" });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "验证码登录失败";
       this.setData({
-        error: error instanceof Error ? error.message : "验证码登录失败",
+        actionStatus: "手机号验证未完成",
+        error: message,
+      });
+      wx.showModal({
+        title: "手机号验证失败",
+        content: message,
+        confirmText: "我知道了",
+        showCancel: false,
       });
     } finally {
       this.setData({ busy: false, loginMode: "" });

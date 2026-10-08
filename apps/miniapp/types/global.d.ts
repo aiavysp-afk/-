@@ -74,6 +74,7 @@ declare const wx: {
     method: "GET" | "POST";
     data?: unknown;
     header?: Record<string, string>;
+    timeout?: number;
     success(result: { statusCode: number; data: T }): void;
     fail(error: { errMsg: string }): void;
   }): void;

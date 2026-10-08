@@ -4,6 +4,12 @@ exports.confirmSmsPhoneVerification = exports.requestSmsPhoneVerification = expo
 const STORAGE_KEY = "zydj.auth.session";
 const CUSTOMER_LOGIN_URL = "/pages/phone-verification/index?required=1";
 let customerLoginRedirecting = false;
+const networkFailureMessage = (error, fallback) => {
+    var _a;
+    return /timeout/i.test((_a = error.errMsg) !== null && _a !== void 0 ? _a : "")
+        ? "请求超时，请检查网络后重试"
+        : fallback;
+};
 const getStoredSession = () => {
     const value = wx.getStorageSync(STORAGE_KEY);
     if (!value || typeof value !== "object")
@@ -59,6 +65,7 @@ const loginWithWechat = async () => {
         wx.request({
             url: `${app.globalData.apiBaseUrl}/auth/wechat-miniapp`,
             method: "POST",
+            timeout: 12000,
             data: { code },
             header: { "content-type": "application/json" },
             success: (result) => {
@@ -67,7 +74,7 @@ const loginWithWechat = async () => {
                 else
                     reject(new Error(result.data.message || "登录服务暂时不可用"));
             },
-            fail: (error) => reject(new Error(error.errMsg || "无法连接登录服务")),
+            fail: (error) => reject(new Error(networkFailureMessage(error, "无法连接登录服务"))),
         });
     });
     wx.setStorageSync(STORAGE_KEY, session);
@@ -83,6 +90,7 @@ const verifyWechatPhone = async (code) => {
         wx.request({
             url: `${app.globalData.apiBaseUrl}/auth/wechat-phone`,
             method: "POST",
+            timeout: 12000,
             data: { code },
             header: {
                 "content-type": "application/json",
@@ -96,7 +104,7 @@ const verifyWechatPhone = async (code) => {
                     reject(new Error(response.data.message || "手机号验证暂时不可用"));
                 }
             },
-            fail: (error) => reject(new Error(error.errMsg || "无法连接手机号验证服务")),
+            fail: (error) => reject(new Error(networkFailureMessage(error, "无法连接手机号验证服务"))),
         });
     });
     const nextSession = {
@@ -116,6 +124,7 @@ const requestSmsPhoneVerification = async (phone) => {
         wx.request({
             url: `${app.globalData.apiBaseUrl}/auth/sms-phone/request`,
             method: "POST",
+            timeout: 12000,
             data: { phone },
             header: {
                 "content-type": "application/json",
@@ -127,7 +136,7 @@ const requestSmsPhoneVerification = async (phone) => {
                 else
                     reject(new Error(response.data.message || "验证码发送暂时不可用"));
             },
-            fail: (error) => reject(new Error(error.errMsg || "无法连接短信服务")),
+            fail: (error) => reject(new Error(networkFailureMessage(error, "无法连接短信服务"))),
         });
     });
 };
@@ -141,6 +150,7 @@ const confirmSmsPhoneVerification = async (phone, code) => {
         wx.request({
             url: `${app.globalData.apiBaseUrl}/auth/sms-phone/confirm`,
             method: "POST",
+            timeout: 12000,
             data: { phone, code },
             header: {
                 "content-type": "application/json",
@@ -152,7 +162,7 @@ const confirmSmsPhoneVerification = async (phone, code) => {
                 else
                     reject(new Error(response.data.message || "短信验证失败"));
             },
-            fail: (error) => reject(new Error(error.errMsg || "无法连接验证服务")),
+            fail: (error) => reject(new Error(networkFailureMessage(error, "无法连接验证服务"))),
         });
     });
     wx.setStorageSync(STORAGE_KEY, {

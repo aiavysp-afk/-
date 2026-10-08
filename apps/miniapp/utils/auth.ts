@@ -19,6 +19,14 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+const networkFailureMessage = (
+  error: { errMsg?: string },
+  fallback: string,
+) =>
+  /timeout/i.test(error.errMsg ?? "")
+    ? "请求超时，请检查网络后重试"
+    : fallback;
+
 export const getStoredSession = () => {
   const value = wx.getStorageSync(STORAGE_KEY);
   if (!value || typeof value !== "object") return undefined;
@@ -75,6 +83,7 @@ export const loginWithWechat = async () => {
     wx.request<ApiResponse<AuthSession>>({
       url: `${app.globalData.apiBaseUrl}/auth/wechat-miniapp`,
       method: "POST",
+      timeout: 12_000,
       data: { code },
       header: { "content-type": "application/json" },
       success: (result) => {
@@ -82,7 +91,8 @@ export const loginWithWechat = async () => {
           resolve(result.data.data);
         else reject(new Error(result.data.message || "登录服务暂时不可用"));
       },
-      fail: (error) => reject(new Error(error.errMsg || "无法连接登录服务")),
+      fail: (error) =>
+        reject(new Error(networkFailureMessage(error, "无法连接登录服务"))),
     });
   });
   wx.setStorageSync(STORAGE_KEY, session);
@@ -98,6 +108,7 @@ export const verifyWechatPhone = async (code: string) => {
       wx.request<ApiResponse<WechatPhoneVerificationResult>>({
         url: `${app.globalData.apiBaseUrl}/auth/wechat-phone`,
         method: "POST",
+        timeout: 12_000,
         data: { code },
         header: {
           "content-type": "application/json",
@@ -111,7 +122,11 @@ export const verifyWechatPhone = async (code: string) => {
           }
         },
         fail: (error) =>
-          reject(new Error(error.errMsg || "无法连接手机号验证服务")),
+          reject(
+            new Error(
+              networkFailureMessage(error, "无法连接手机号验证服务"),
+            ),
+          ),
       });
     },
   );
@@ -131,6 +146,7 @@ export const requestSmsPhoneVerification = async (phone: string) => {
     wx.request<ApiResponse<SmsPhoneVerificationRequestResult>>({
       url: `${app.globalData.apiBaseUrl}/auth/sms-phone/request`,
       method: "POST",
+      timeout: 12_000,
       data: { phone },
       header: {
         "content-type": "application/json",
@@ -141,7 +157,8 @@ export const requestSmsPhoneVerification = async (phone: string) => {
           resolve(response.data.data);
         else reject(new Error(response.data.message || "验证码发送暂时不可用"));
       },
-      fail: (error) => reject(new Error(error.errMsg || "无法连接短信服务")),
+      fail: (error) =>
+        reject(new Error(networkFailureMessage(error, "无法连接短信服务"))),
     });
   });
 };
@@ -158,6 +175,7 @@ export const confirmSmsPhoneVerification = async (
       wx.request<ApiResponse<WechatPhoneVerificationResult>>({
         url: `${app.globalData.apiBaseUrl}/auth/sms-phone/confirm`,
         method: "POST",
+        timeout: 12_000,
         data: { phone, code },
         header: {
           "content-type": "application/json",
@@ -168,7 +186,8 @@ export const confirmSmsPhoneVerification = async (
             resolve(response.data.data);
           else reject(new Error(response.data.message || "短信验证失败"));
         },
-        fail: (error) => reject(new Error(error.errMsg || "无法连接验证服务")),
+        fail: (error) =>
+          reject(new Error(networkFailureMessage(error, "无法连接验证服务"))),
       });
     },
   );

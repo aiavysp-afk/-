@@ -89,8 +89,9 @@
       bindtap="handleSmsAction"
       loading="{{busy && loginMode === 'SMS'}}"
       disabled="{{busy}}"
-    >{{smsRequested ? '确认验证码并登录' : '获取短信验证码'}}</button>
+    >{{busy && loginMode === 'SMS' ? (smsRequested ? '正在校验…' : '正在发送…') : (smsRequested ? '确认验证码并登录' : '获取短信验证码')}}</button>
 
+    <text wx:if="{{actionStatus}}" class="action-status">{{actionStatus}}</text>
     <text wx:if="{{error}}" class="error-message">{{error}}</text>
   </view>
 
