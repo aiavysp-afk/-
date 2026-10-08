@@ -1,6 +1,9 @@
 import type { PublicConfig, ServiceItem } from "@zydj/contracts";
 import { api, money } from "../../utils/api";
-import { requireVerifiedCustomerAccess } from "../../utils/auth";
+import {
+  hasVerifiedCustomerSession,
+  requireVerifiedCustomerAccess,
+} from "../../utils/auth";
 import { syncCustomTabBar } from "../../utils/tab-bar";
 
 type HomeService = ServiceItem & {
@@ -15,9 +18,10 @@ Page({
     loading: false,
     error: "",
     serviceCity: "郑州市",
+    accessReady: false,
   },
   async onShow() {
-    if (!requireVerifiedCustomerAccess()) return;
+    this.setData({ accessReady: hasVerifiedCustomerSession() });
     syncCustomTabBar(this, 0);
     await Promise.all([this.loadServices(), this.loadPublicConfig()]);
   },
@@ -50,12 +54,34 @@ Page({
     }
   },
   chooseAddress() {
+    if (!requireVerifiedCustomerAccess()) return;
     wx.switchTab({ url: "/pages/services/index" });
   },
   bookNow() {
+    if (!requireVerifiedCustomerAccess()) return;
     wx.switchTab({ url: "/pages/services/index" });
   },
+  openServices() {
+    if (!requireVerifiedCustomerAccess()) return;
+    wx.switchTab({ url: "/pages/services/index" });
+  },
+  openTherapists() {
+    if (!requireVerifiedCustomerAccess()) return;
+    wx.switchTab({ url: "/pages/therapists/index" });
+  },
+  openOrders() {
+    if (!requireVerifiedCustomerAccess()) return;
+    wx.switchTab({ url: "/pages/orders/index" });
+  },
+  requireAccess() {
+    requireVerifiedCustomerAccess();
+  },
+  retryServices() {
+    if (!requireVerifiedCustomerAccess()) return;
+    void this.loadServices();
+  },
   bookService(e: { currentTarget: { dataset: { slug?: string } } }) {
+    if (!requireVerifiedCustomerAccess()) return;
     const slug = e.currentTarget.dataset.slug;
     if (!slug) return;
     wx.navigateTo({

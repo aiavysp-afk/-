@@ -1,7 +1,8 @@
 <view class="page">
   <view class="topbar">
     <view class="brand"><view class="brand-mark">中</view><view><text>中原到家</text><text>正规上门养护服务</text></view></view>
-    <button class="top-support" open-type="contact" show-message-card session-from="home-header"><text>◌</text><text>客服</text></button>
+    <button wx:if="{{accessReady}}" class="top-support" open-type="contact" show-message-card session-from="home-header"><text>◌</text><text>客服</text></button>
+    <button wx:else class="top-support" bindtap="requireAccess"><text>◌</text><text>客服</text></button>
   </view>
   <view class="hero">
     <view class="hero-content">
@@ -14,17 +15,18 @@
     <view class="hero-art"><view class="halo"/><view class="massage-line line-a"/><view class="massage-line line-b"/><view class="massage-stone stone-a"/><view class="massage-stone stone-b"/><view class="leaf leaf-a"/><view class="leaf leaf-b"/></view>
   </view>
   <view class="quick-grid">
-    <navigator url="/pages/services/index" open-type="switchTab"><view class="quick-icon mint">✦</view><text>选服务</text></navigator>
-    <navigator url="/pages/therapists/index" open-type="switchTab"><view class="quick-icon peach">人</view><text>看审核</text></navigator>
-    <navigator url="/pages/orders/index" open-type="switchTab"><view class="quick-icon lime">▤</view><text>查订单</text></navigator>
-    <button open-type="contact" show-message-card session-from="home-quick"><view class="quick-icon blue">•••</view><text>在线客服</text></button>
+    <view class="quick-link" bindtap="openServices"><view class="quick-icon mint">✦</view><text>选服务</text></view>
+    <view class="quick-link" bindtap="openTherapists"><view class="quick-icon peach">人</view><text>看审核</text></view>
+    <view class="quick-link" bindtap="openOrders"><view class="quick-icon lime">▤</view><text>查订单</text></view>
+    <button wx:if="{{accessReady}}" open-type="contact" show-message-card session-from="home-quick"><view class="quick-icon blue">•••</view><text>在线客服</text></button>
+    <button wx:else bindtap="requireAccess"><view class="quick-icon blue">•••</view><text>在线客服</text></button>
   </view>
   <view class="assurance">
     <view><text class="assurance-icon">✓</text><text>平台核验</text></view><view><text class="assurance-icon">¥</text><text>价格透明</text></view><view><text class="assurance-icon">盾</text><text>服务留痕</text></view><view><text class="assurance-icon">洁</text><text>规范洁净</text></view>
   </view>
-  <view class="section-head"><view><text class="section-title">精选服务</text><text class="section-desc">为忙碌生活留一段松弛</text></view><navigator url="/pages/services/index" open-type="switchTab">更多 ›</navigator></view>
+  <view class="section-head"><view><text class="section-title">精选服务</text><text class="section-desc">为忙碌生活留一段松弛</text></view><text class="section-more" bindtap="openServices">更多 ›</text></view>
   <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
-  <view wx:if="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="loadServices">重新加载</button></view>
+  <view wx:if="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="retryServices">重新加载</button></view>
   <view wx:if="{{services.length}}" class="service-list">
     <view wx:for="{{services}}" wx:key="id" class="service-card" data-slug="{{item.slug}}" bindtap="bookService">
       <view class="service-visual {{item.tone}}"><view class="visual-orbit"/><view class="visual-stone"/><text>{{item.badge || '安心到家'}}</text></view>

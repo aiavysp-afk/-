@@ -9,10 +9,10 @@ Page({
         loading: false,
         error: "",
         serviceCity: "郑州市",
+        accessReady: false,
     },
     async onShow() {
-        if (!(0, auth_1.requireVerifiedCustomerAccess)())
-            return;
+        this.setData({ accessReady: (0, auth_1.hasVerifiedCustomerSession)() });
         (0, tab_bar_1.syncCustomTabBar)(this, 0);
         await Promise.all([this.loadServices(), this.loadPublicConfig()]);
     },
@@ -48,12 +48,41 @@ Page({
         }
     },
     chooseAddress() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         wx.switchTab({ url: "/pages/services/index" });
     },
     bookNow() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         wx.switchTab({ url: "/pages/services/index" });
     },
+    openServices() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
+        wx.switchTab({ url: "/pages/services/index" });
+    },
+    openTherapists() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
+        wx.switchTab({ url: "/pages/therapists/index" });
+    },
+    openOrders() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
+        wx.switchTab({ url: "/pages/orders/index" });
+    },
+    requireAccess() {
+        (0, auth_1.requireVerifiedCustomerAccess)();
+    },
+    retryServices() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
+        void this.loadServices();
+    },
     bookService(e) {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         const slug = e.currentTarget.dataset.slug;
         if (!slug)
             return;

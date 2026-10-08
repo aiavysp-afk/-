@@ -68,7 +68,6 @@ test("a verified customer session opens protected pages without redirecting", ()
 test("every customer menu and deep feature page uses the same access guard", () => {
   const protectedFiles = [
     "custom-tab-bar/index.ts",
-    "pages/home/index.ts",
     "pages/services/index.ts",
     "pages/therapists/index.ts",
     "pages/therapist-detail/index.ts",
@@ -87,6 +86,32 @@ test("every customer menu and deep feature page uses the same access guard", () 
       source,
       /requireVerifiedCustomerAccess/,
       file + " must enforce verified customer access",
+    );
+  }
+});
+
+test("the public landing page stays visible but every action is login-gated", () => {
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/home/index.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    source,
+    /async onShow\(\)\s*\{\s*if \(!requireVerifiedCustomerAccess\(\)\)/,
+  );
+  for (const handler of [
+    "chooseAddress",
+    "bookNow",
+    "openServices",
+    "openTherapists",
+    "openOrders",
+    "retryServices",
+    "bookService",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(handler + "[\\s\\S]{0,180}requireVerifiedCustomerAccess"),
+      handler + " must require login before navigation or an action",
     );
   }
 });
