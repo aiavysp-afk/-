@@ -66,6 +66,7 @@
     <view class="assurance-title"><view/><text>你的服务 我来保障</text><view/></view>
     <view class="assurance-list"><view wx:for="{{safeguardItems}}" wx:key="*this"><text>✓</text><text>{{item}}</text></view></view>
     <button class="emergency-link" bindtap="callEmergency">商家紧急值班电话 · {{emergencyContact.configured ? '可拨号' : '待配置'}}</button>
+    <text class="compliance-note">本页仅提供普通客户的订单、账户与售后功能；工作人员入口不在个人中心展示。</text>
   </view>
   <view class="safe-bottom" />
 </view>

@@ -6,10 +6,11 @@
     <view class="hero-seal"><text>中原</text><text>甄选</text></view>
   </view>
   <scroll-view scroll-x class="filters" show-scrollbar="{{false}}"><view class="filter-row"><text wx:for="{{filters}}" wx:key="key" class="filter {{activeFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectFilter">{{item.label}}</text></view></scroll-view>
+  <view class="sort-row"><text>排序</text><button wx:for="{{sorts}}" wx:key="key" class="{{activeSort===item.key?'active':''}}" data-key="{{item.key}}" bindtap="selectSort">{{item.label}}</button></view>
 
   <view wx:if="{{loading}}" class="state-card"><view class="loading-ring"/><text>正在读取真实排班…</text></view>
   <view wx:elif="{{error}}" class="state-card error-card"><text>{{error}}</text><button bindtap="load">重新加载</button></view>
-  <view wx:elif="{{!visibleTherapists.length}}" class="state-card empty-card"><text class="empty-symbol">◇</text><text>当前筛选暂无可约技师</text><text>技师离线或未排班时不会开放下单</text></view>
+  <view wx:elif="{{!visibleTherapists.length}}" class="state-card empty-card"><text class="empty-symbol">◇</text><text>当前筛选暂无真实可约技师</text><text>只展示后台已审核资料；技师未排班时不会开放下单</text></view>
 
   <view wx:else class="therapist-list">
     <view wx:for="{{visibleTherapists}}" wx:key="id" class="therapist-card {{item.bookable ? '' : 'disabled'}}" data-id="{{item.id}}" bindtap="openDetail">

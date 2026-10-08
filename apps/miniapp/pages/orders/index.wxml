@@ -7,8 +7,9 @@
     <view class="toolbar"><text>{{filterTitle}}</text><button bindtap="load" disabled="{{loading}}">{{loading?'刷新中…':'刷新'}}</button></view>
     <text wx:if="{{error}}" class="error">{{error}}</text>
     <view wx:for="{{orders}}" wx:key="id" class="order-card">
-      <view class="order-head"><view><text>{{item.orderNo}}</text><text>{{item.time}}</text></view><text>{{item.status}}</text></view>
+      <view class="order-head"><view><text>{{item.orderNo}}</text><text>{{item.time}}</text></view><text>{{item.statusLabel}}</text></view>
       <view class="order-main"><view class="service-icon">✦</view><view><text class="name">{{item.serviceName}}</text><text>预约金额 ¥{{item.price}}</text></view></view>
+      <view wx:if="{{item.progressVisible}}" class="progress-card"><view class="progress-steps"><view wx:for="{{item.progressSteps}}" wx:for-item="step" wx:key="label" class="{{step.tone}}"><text>✓</text><text>{{step.label}}</text></view></view><text>{{item.progressDetail}}</text><text>页面每 5 秒自动刷新，最终状态以服务器记录为准</text></view>
       <view class="location-status"><text>{{item.technicianLocationLabel}}</text><button wx:if="{{item.technicianLocationAvailable}}" data-id="{{item.id}}" data-action="technician-location" bindtap="action" disabled="{{!!busy}}">查看位置</button></view>
       <view class="actions" wx:if="{{item.status==='PENDING_PAYMENT'}}"><button class="primary" data-id="{{item.id}}" data-action="pay" bindtap="action" disabled="{{!!busy}}">查看支付渠道并确认</button><button data-id="{{item.id}}" data-action="cancel" bindtap="action" disabled="{{!!busy}}">取消订单</button></view>
       <button wx:if="{{item.confirmAvailable}}" class="primary wide" data-id="{{item.id}}" data-action="confirm-completion" bindtap="action" disabled="{{!!busy}}">确认服务已完成</button>
@@ -17,11 +18,12 @@
       <button wx:if="{{item.refundAvailable}}" class="secondary wide" data-id="{{item.id}}" data-action="refund" bindtap="action" disabled="{{!!busy}}">申请开始前全额退款（需复核）</button>
       <button class="safety-action wide" wx:if="{{item.safetyAvailable}}" data-id="{{item.id}}" data-action="safety" bindtap="action" disabled="{{!!busy}}">记录紧急安全事件</button>
       <button class="remove-action wide" wx:if="{{item.removable}}" data-id="{{item.id}}" data-action="remove" bindtap="action" disabled="{{!!busy}}">从我的订单移除</button>
+      <view wx:if="{{item.policyVisible}}" class="cancel-policy"><text>取消与退款说明</text><text>未支付订单可直接取消；支付后、服务开始前可发起退款申请，技师接单或出发后的取消将进入人工复核。</text><text>退款审核通过并由支付渠道受理后原路退回，实际到账时间以订单退款状态和微信支付通知为准，不承诺即时到账。</text></view>
       <view wx:for="{{item.safetyIncidents}}" wx:for-item="incident" wx:key="id" class="safety-record"><text>安全事件 · {{incident.statusLabel}}</text><text>分类：{{incident.category}}</text><text>系统记录不等于通知送达；危险请立即报警或呼叫急救</text></view>
       <view wx:for="{{item.refunds}}" wx:for-item="refund" wx:key="id" class="refund"><text>退款记录 · {{refund.id}}</text><text>状态：{{refund.status}}</text><text wx:if="{{refund.status==='REQUESTED'}}">等待另一位授权财务复核，不代表已到账</text><text wx:if="{{refund.status==='UNKNOWN' || refund.status==='ABNORMAL' || refund.status==='CLOSED'}}">渠道结果需财务核实，请勿重复申请</text></view>
     </view>
     <view wx:if="{{showEmptyOrders}}" class="empty"><view>▤</view><text>{{filterTitle}}暂无记录</text><text>选一个适合你的正规上门服务</text><navigator url="/pages/services/index" open-type="switchTab">去看看服务</navigator></view>
-    <view class="help-note"><text>售后说明</text><text>服务开始后及争议退款请联系人工客服，不能自动套用开始前退款规则。</text><button open-type="contact" show-message-card session-from="orders-footer">联系在线客服</button></view>
+    <view class="help-note"><text>售后说明</text><text>服务开始后及争议退款请联系人工客服，不能自动套用开始前退款规则。取消申请、复核、渠道受理和到账是不同阶段，请以页面状态为准。</text><button open-type="contact" show-message-card session-from="orders-footer">联系在线客服</button></view>
   </view>
   <view class="safe-bottom" />
   <view wx:if="{{reviewOpen}}" class="review-mask" bindtap="closeReview">

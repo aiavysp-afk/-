@@ -232,7 +232,30 @@ export class CustomerCenterService {
       })),
       recharge: {
         enabled: false,
-        reason: "正式充值功能尚未接入，当前仅展示真实账面数据",
+        reason:
+          "四档充值金额已配置；充值支付、微信回调与入账核对完成前不会开放扣款",
+        plans: [599_00, 888_00, 1_198_00, 2_888_00].map((amountFen) => ({
+          amountFen,
+          label: `充值 ${amountFen / 100} 元`,
+        })),
+        firstRechargeReward: {
+          enabled: false,
+          reason: "首充红包须在真实支付回调成功后发放，当前未开放",
+        },
+      },
+      withdrawal: {
+        enabled: false,
+        minimumFen: 1_000_00,
+        stepFen: 1_000_00,
+        reviewRequired: true,
+        reason:
+          "未验证微信商户转账与实名审核能力，暂不提供实时到账；提现申请必须审核并保留账务记录",
+      },
+      checkIn: {
+        enabled: false,
+        rewardUnit: "POINTS",
+        reason:
+          "签到奖励只能使用不可提现积分；未配置封顶与风控前不启用每日翻倍",
       },
     };
   }

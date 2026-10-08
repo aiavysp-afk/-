@@ -31,6 +31,11 @@ type Row = OrderView & {
   removable: boolean;
   reviewAvailable: boolean;
   reviewStatusLabel: string;
+  statusLabel: string;
+  progressVisible: boolean;
+  progressDetail: string;
+  progressSteps: Array<{ label: string; tone: "done" | "current" | "pending" }>;
+  policyVisible: boolean;
 };
 type CustomerOrder = OrderView & {
   reviewStatus: "PENDING_REVIEW" | "PUBLISHED" | "HIDDEN" | null;
@@ -70,6 +75,59 @@ const technicianLocationStatuses: Record<string, string> = {
   STALE: "技师位置已超过 5 分钟未更新",
   AVAILABLE: "技师位置已更新",
 };
+const orderStatusLabels: Record<string, string> = {
+  PENDING_PAYMENT: "待付款",
+  PAID: "已付款",
+  DISPATCHING: "等待技师接单",
+  ASSIGNED: "技师已接单",
+  EN_ROUTE: "技师已出发",
+  ARRIVED: "技师已到达",
+  IN_SERVICE: "服务进行中",
+  AWAITING_CONFIRMATION: "等待确认完成",
+  COMPLETED: "已完成",
+  CANCELLED: "已取消",
+  REFUNDING: "退款处理中",
+  REFUNDED: "已退款",
+};
+const progressStatuses = [
+  "PAID",
+  "ASSIGNED",
+  "EN_ROUTE",
+  "ARRIVED",
+  "IN_SERVICE",
+  "AWAITING_CONFIRMATION",
+] as const;
+const progressLabels = ["已付款", "已接单", "出发", "到达", "服务中", "待确认"];
+
+function orderProgress(status: string) {
+  const normalized = status === "DISPATCHING" ? "PAID" : status;
+  const current = progressStatuses.indexOf(
+    normalized as (typeof progressStatuses)[number],
+  );
+  const progressSteps = progressLabels.map((label, index) => ({
+    label,
+    tone:
+      index < current
+        ? ("done" as const)
+        : index === current
+          ? ("current" as const)
+          : ("pending" as const),
+  }));
+  const detail: Record<string, string> = {
+    PAID: "订单已付款，系统正在匹配真实可约技师",
+    DISPATCHING: "订单已进入接单队列，状态每 5 秒自动更新",
+    ASSIGNED: "技师已经接单，请留意出发提醒",
+    EN_ROUTE: "技师正在前往服务地址，可查看位置状态",
+    ARRIVED: "技师已到达，请核验订单与人员信息",
+    IN_SERVICE: "服务正在进行，如有异常请立即联系在线客服",
+    AWAITING_CONFIRMATION: "技师已结束服务，请核对后确认完成",
+  };
+  return {
+    progressVisible: current >= 0,
+    progressDetail: detail[status] ?? "订单状态持续同步中",
+    progressSteps,
+  };
+}
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let ordersPageVisible = false;
 let loadInFlight = false;
@@ -182,6 +240,8 @@ Page({
             ]);
           return {
             ...order,
+            ...orderProgress(order.status),
+            statusLabel: orderStatusLabels[order.status] ?? order.status,
             price: money(order.payableFen),
             time: shanghaiTime(order.appointmentStart),
             refunds,
@@ -226,6 +286,15 @@ Page({
                   : order.reviewStatus === "HIDDEN"
                     ? "评价未公开"
                     : "",
+            policyVisible: [
+              "PENDING_PAYMENT",
+              "PAID",
+              "DISPATCHING",
+              "ASSIGNED",
+              "EN_ROUTE",
+              "ARRIVED",
+              "REFUNDING",
+            ].includes(order.status),
           };
         }),
       );

@@ -10,6 +10,7 @@ import type {
   GeocodedAddress,
   PublicConfig,
   ServiceItem,
+  TechnicianReview,
 } from "@zydj/contracts";
 import { api, money, newKey, shanghaiTime } from "../../utils/api";
 import {
@@ -33,6 +34,16 @@ import {
 import { customerCenterPath } from "../../utils/customer-center";
 
 type QuoteDisplay = ReturnType<typeof quoteDisplay>;
+type ReviewView = TechnicianReview & {
+  stars: string;
+  dateLabel: string;
+};
+type BookingSlotView = AvailabilitySlot & {
+  label: string;
+  key: string;
+  hourKey: string;
+  sourceIndex: number;
+};
 
 const categoryNames: Record<ServiceItem["category"], string> = {
   MASSAGE: "按摩舒缓",
@@ -50,7 +61,10 @@ Page({
     date: "",
     minDate: "",
     maxDate: "",
-    slots: [] as (AvailabilitySlot & { label: string; key: string })[],
+    slots: [] as BookingSlotView[],
+    visibleSlots: [] as BookingSlotView[],
+    hourOptions: [] as string[],
+    activeHour: "",
     selected: -1,
     selectedSlotLabel: "",
     contactName: "",
@@ -85,6 +99,9 @@ Page({
     addressBookLoading: false,
     addressBookLoaded: false,
     addressBookError: "",
+    serviceReviews: [] as ReviewView[],
+    reviewsLoading: false,
+    reviewsError: "",
   },
   async onLoad(options: { slug?: string; therapistId?: string }) {
     if (!requireVerifiedCustomerAccess()) return;
@@ -108,7 +125,10 @@ Page({
         minDate: shanghaiDate(),
         maxDate: shanghaiDate(30),
       });
-      await this.loadSlots();
+      await Promise.all([
+        this.loadSlots(),
+        this.loadServiceReviews(service.slug),
+      ]);
     } catch (error) {
       this.fail(error);
     }
@@ -240,23 +260,56 @@ Page({
       const slots = await api<AvailabilitySlot[]>(
         `/availability/slots?serviceId=${encodeURIComponent(this.data.service.id)}&date=${this.data.date}`,
       );
-      const slotViews = slots.map((slot) => ({
-        ...slot,
-        label: shanghaiTime(slot.startsAt).slice(11),
-        key: `${slot.therapistId}-${slot.startsAt}`,
-      }));
+      const slotViews = slots.map((slot, sourceIndex) => {
+        const label = shanghaiTime(slot.startsAt).slice(11);
+        return {
+          ...slot,
+          label,
+          key: `${slot.therapistId}-${slot.startsAt}`,
+          hourKey: `${label.slice(0, 2)}:00`,
+          sourceIndex,
+        };
+      });
       const selected = pickSlotIndex(
         slotViews,
         this.data.preferredTherapistId,
         this.data.appointmentMode,
       );
+      const hourOptions = [...new Set(slotViews.map((slot) => slot.hourKey))];
+      const activeHour = slotViews[selected]?.hourKey ?? hourOptions[0] ?? "";
       this.setData({
         slots: slotViews,
+        visibleSlots: slotViews.filter((slot) => slot.hourKey === activeHour),
+        hourOptions,
+        activeHour,
         selected,
         selectedSlotLabel: slotViews[selected]?.label ?? "",
       });
     } catch (error) {
       this.fail(error);
+    }
+  },
+  async loadServiceReviews(slug: string) {
+    this.setData({ reviewsLoading: true, reviewsError: "" });
+    try {
+      const reviews = await api<TechnicianReview[]>(
+        `/catalog/services/${encodeURIComponent(slug)}/reviews`,
+      );
+      this.setData({
+        serviceReviews: reviews.map((review) => ({
+          ...review,
+          stars: "★".repeat(review.rating),
+          dateLabel: shanghaiTime(review.createdAt).slice(0, 10),
+        })),
+      });
+    } catch (error) {
+      this.setData({
+        serviceReviews: [],
+        reviewsError:
+          error instanceof Error ? error.message : "用户评价读取失败",
+      });
+    } finally {
+      this.setData({ reviewsLoading: false });
     }
   },
   async dateChanged(e: { detail: { value: string } }) {
@@ -265,6 +318,9 @@ Page({
       date: e.detail.value,
       selected: -1,
       selectedSlotLabel: "",
+      visibleSlots: [],
+      hourOptions: [],
+      activeHour: "",
       quoteDetails: null,
     });
     await this.loadSlots();
@@ -280,6 +336,9 @@ Page({
       date: appointmentMode === "soon" ? shanghaiDate() : shanghaiDate(1),
       selected: -1,
       selectedSlotLabel: "",
+      visibleSlots: [],
+      hourOptions: [],
+      activeHour: "",
       quoteDetails: null,
       error: "",
     });
@@ -301,6 +360,22 @@ Page({
         error: "",
       });
     }
+  },
+  selectHour(e: { currentTarget: { dataset: { hour: string } } }) {
+    if (this.data.reservationId) return;
+    const activeHour = e.currentTarget.dataset.hour;
+    const visibleSlots = this.data.slots.filter(
+      (slot) => slot.hourKey === activeHour,
+    );
+    const selected = visibleSlots[0]?.sourceIndex ?? -1;
+    this.setData({
+      activeHour,
+      visibleSlots,
+      selected,
+      selectedSlotLabel: this.data.slots[selected]?.label ?? "",
+      quoteDetails: null,
+      error: "",
+    });
   },
   input(e: {
     currentTarget: { dataset: { field: string } };

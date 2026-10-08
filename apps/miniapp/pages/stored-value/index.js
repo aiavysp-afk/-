@@ -26,6 +26,14 @@ Page({
         balanceKnown: false,
         cards: [],
         rechargeReason: "正式充值功能尚未开放",
+        rechargeEnabled: false,
+        rechargePlans: [],
+        rechargeOpen: false,
+        selectedRecharge: 0,
+        firstRechargeReason: "",
+        withdrawalReason: "",
+        withdrawalRule: "提现金额须为 1000 元的整数倍",
+        checkInReason: "",
         loading: false,
         error: "",
         ledgerOpen: false,
@@ -54,6 +62,15 @@ Page({
                 balance: (0, api_1.money)(wallet.balanceFen),
                 balanceKnown: true,
                 rechargeReason: wallet.recharge.reason,
+                rechargeEnabled: wallet.recharge.enabled,
+                rechargePlans: wallet.recharge.plans.map((plan) => ({
+                    ...plan,
+                    amount: (0, api_1.money)(plan.amountFen),
+                })),
+                firstRechargeReason: wallet.recharge.firstRechargeReward.reason,
+                withdrawalReason: wallet.withdrawal.reason,
+                withdrawalRule: `最低 ¥${(0, api_1.money)(wallet.withdrawal.minimumFen)}，且须按 ¥${(0, api_1.money)(wallet.withdrawal.stepFen)} 的整数倍申请；${wallet.withdrawal.reviewRequired ? "需要人工复核" : "无需人工复核"}`,
+                checkInReason: wallet.checkIn.reason,
                 cards: wallet.cards.map((card) => ({
                     ...card,
                     balance: (0, api_1.money)(card.balanceFen),
@@ -91,9 +108,36 @@ Page({
         void this.load();
     },
     recharge() {
+        this.setData({ rechargeOpen: true });
+    },
+    closeRecharge() {
+        this.setData({ rechargeOpen: false });
+    },
+    keepRechargeOpen() { },
+    selectRecharge(event) {
+        this.setData({
+            selectedRecharge: Number(event.currentTarget.dataset.index),
+        });
+    },
+    confirmRecharge() {
+        const plan = this.data.rechargePlans[this.data.selectedRecharge];
         wx.showModal({
-            title: "充值暂未开放",
-            content: `${this.data.rechargeReason}\n\n请勿向个人账户转账，后续正式接入微信支付并完成资金合规后再开放。`,
+            title: plan ? `充值 ¥${plan.amount}` : "充值暂未开放",
+            content: `${this.data.rechargeReason}\n\n${this.data.firstRechargeReason}\n\n请勿向个人账户转账；页面不会在支付回调成功前增加余额。`,
+            showCancel: false,
+        });
+    },
+    showWithdrawalPolicy() {
+        wx.showModal({
+            title: "提现规则",
+            content: `${this.data.withdrawalRule}\n\n${this.data.withdrawalReason}`,
+            showCancel: false,
+        });
+    },
+    showCheckInPolicy() {
+        wx.showModal({
+            title: "签到奖励说明",
+            content: this.data.checkInReason,
             showCancel: false,
         });
     },

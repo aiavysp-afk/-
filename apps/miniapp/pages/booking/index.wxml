@@ -31,8 +31,17 @@
       <picker wx:if="{{appointmentMode==='schedule'}}" mode="date" value="{{date}}" start="{{minDate}}" end="{{maxDate}}" bindchange="dateChanged" disabled="{{!!reservationId}}"><view class="date-field"><text>预约日期</text><text>{{date}} ›</text></view></picker>
       <text wx:if="{{preferredTherapistId && selected >= 0}}" class="preferred-note">已优先选择该技师的可约时段，你仍可改选</text>
       <text wx:elif="{{preferredTherapistId && slots.length}}" class="preferred-note warning">该技师当日暂无时段，可返回技师页或改选其他可约人员</text>
-      <view class="slots"><button wx:for="{{slots}}" wx:key="key" class="{{selected===index?'selected':''}}" data-index="{{index}}" bindtap="select" disabled="{{!!reservationId}}">{{item.label}}</button></view>
+      <scroll-view wx:if="{{hourOptions.length}}" class="hour-picker" scroll-x enhanced show-scrollbar="{{false}}"><view><button wx:for="{{hourOptions}}" wx:key="*this" class="{{activeHour===item?'active':''}}" data-hour="{{item}}" bindtap="selectHour" disabled="{{!!reservationId}}">{{item}} 时段</button></view></scroll-view>
+      <view class="slots"><button wx:for="{{visibleSlots}}" wx:key="key" class="{{selected===item.sourceIndex?'selected':''}}" data-index="{{item.sourceIndex}}" bindtap="select" disabled="{{!!reservationId}}">{{item.label}}</button></view>
       <view wx:if="{{!slots.length}}" class="empty-slot"><text>当前日期暂无可预约时段</text><text>请选择其他日期后再试</text></view>
+    </view>
+
+    <view class="panel review-panel">
+      <view class="panel-head"><view><text class="panel-title">用户评价</text><text class="panel-note">仅展示已完成订单且审核通过的真实评价</text></view><text class="review-count">{{serviceReviews.length}} 条</text></view>
+      <text wx:if="{{reviewsLoading}}" class="review-state">评价读取中…</text>
+      <text wx:elif="{{reviewsError}}" class="review-state warning">{{reviewsError}}</text>
+      <view wx:elif="{{serviceReviews.length}}" class="review-list"><view wx:for="{{serviceReviews}}" wx:key="id" class="review-row"><view><text>{{item.customerAlias}}</text><text>{{item.dateLabel}}</text></view><text class="review-stars">{{item.stars}}</text><text>{{item.content}}</text></view></view>
+      <view wx:else class="review-empty"><text>暂无已公开评价</text><text>平台不会生成评价或虚构晒单</text></view>
     </view>
 
     <view class="panel login-card">

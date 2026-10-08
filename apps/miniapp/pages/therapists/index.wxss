@@ -4,6 +4,27 @@
   background: linear-gradient(180deg, #f8f3e8 0, #eef4f0 440rpx, #f3f5f4 100%);
   box-sizing: border-box;
 }
+.sort-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 0 24rpx 18rpx;
+  color: #8a9893;
+  font-size: 17rpx;
+}
+.sort-row button {
+  margin: 0;
+  padding: 0 18rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  color: #61716b;
+  line-height: 50rpx;
+  font-size: 17rpx;
+}
+.sort-row button.active {
+  background: #1f6a55;
+  color: #fff;
+}
 .topbar {
   height: 76rpx;
   display: flex;

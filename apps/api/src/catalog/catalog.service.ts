@@ -9,6 +9,7 @@ import type {
   AdminServiceItem,
   ServiceAdminUpdate,
   ServiceItem,
+  TechnicianReview,
 } from "@zydj/contracts";
 import { AccessControlService } from "../auth/access-control.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
@@ -35,6 +36,31 @@ export class CatalogService {
     });
     if (!service) throw new NotFoundException("服务不存在或未上架");
     return this.toPublic(service);
+  }
+
+  async listPublishedReviews(slug: string): Promise<TechnicianReview[]> {
+    const service = await this.prisma.service.findFirst({
+      where: { slug, published: true },
+      select: { id: true },
+    });
+    if (!service) throw new NotFoundException("服务不存在或未上架");
+    const reviews = await this.prisma.technicianReview.findMany({
+      where: {
+        status: "PUBLISHED",
+        order: { items: { some: { serviceId: service.id } } },
+      },
+      include: { customer: { select: { displayName: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
+    return reviews.map((review) => ({
+      id: review.id,
+      technicianId: review.technicianId,
+      customerAlias: this.customerAlias(review.customer.displayName),
+      rating: review.rating,
+      content: review.content,
+      createdAt: review.createdAt.toISOString(),
+    }));
   }
 
   async listForAdmin(
@@ -190,5 +216,10 @@ export class CatalogService {
       throw new InternalServerErrorException("服务资料格式异常");
     }
     return value;
+  }
+
+  private customerAlias(displayName: string) {
+    const name = displayName.trim();
+    return name ? `${Array.from(name)[0]}**` : "匿名用户";
   }
 }

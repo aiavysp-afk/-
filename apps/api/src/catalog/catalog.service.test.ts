@@ -50,6 +50,42 @@ describe("CatalogService", () => {
     expect(typeof result[0]?.priceFen).toBe("number");
   });
 
+  it("returns only published reviews belonging to the requested service", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: "review-1",
+        technicianId: "tech-1",
+        rating: 5,
+        content: "流程规范，沟通清楚",
+        createdAt: new Date("2026-10-08T02:00:00.000Z"),
+        customer: { displayName: "王女士" },
+      },
+    ]);
+    const catalog = new CatalogService(
+      {
+        service: {
+          findFirst: vi.fn().mockResolvedValue({ id: "svc-1" }),
+        },
+        technicianReview: { findMany },
+      } as unknown as PrismaService,
+      new AccessControlService(),
+    );
+
+    const result = await catalog.listPublishedReviews("neck-relax-60");
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: "PUBLISHED",
+          order: { items: { some: { serviceId: "svc-1" } } },
+        },
+      }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({ customerAlias: "王**", rating: 5 }),
+    ]);
+  });
+
   it("rejects edits to a service owned by another organization before writing", async () => {
     const update = vi.fn();
     const catalog = new CatalogService(

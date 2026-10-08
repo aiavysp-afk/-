@@ -8,6 +8,7 @@ import {
 } from "@nestjs/platform-fastify";
 import { AppModule } from "./app.module.js";
 import type { AppEnv } from "./config/env.js";
+import { HttpExceptionTelemetryFilter } from "./observability/http-exception.filter.js";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -17,6 +18,7 @@ async function bootstrap() {
   );
   const config = app.get<ConfigService<AppEnv, true>>(ConfigService);
   await app.register(helmet, { contentSecurityPolicy: false });
+  app.useGlobalFilters(new HttpExceptionTelemetryFilter());
   app.setGlobalPrefix("v1");
   app.enableCors({
     origin: config

@@ -4,7 +4,7 @@
   </view>
   <view class="hero">
     <view class="hero-content">
-      <view class="location" bindtap="chooseAddress"><text class="pin">⌖</text><text>{{serviceCity}}全域服务</text><text>›</text></view>
+      <view class="location" bindtap="chooseAddress"><text class="pin">⌖</text><text>{{locationLabel}}</text><text>{{locationBusy?'…':'›'}}</text></view>
       <text class="hero-kicker">CARE · RELAX · HOME</text>
       <text class="hero-title">让专业放松</text><text class="hero-title">如约到家</text>
       <text class="hero-desc">按摩舒缓 · SPA放松 · 足部养护</text>
@@ -22,13 +22,14 @@
   <view class="assurance">
     <view><text class="assurance-icon">✓</text><text>平台核验</text></view><view><text class="assurance-icon">¥</text><text>价格透明</text></view><view><text class="assurance-icon">盾</text><text>服务留痕</text></view><view><text class="assurance-icon">洁</text><text>规范洁净</text></view>
   </view>
+  <view class="newcomer-card" bindtap="openNewcomer"><view><text>新客权益</text><text>完成登录后查看账户实际可领取优惠</text></view><text>去看看 ›</text></view>
   <view class="section-head"><view><text class="section-title">精选服务</text><text class="section-desc">为忙碌生活留一段松弛</text></view><text class="section-more" bindtap="openServices">更多 ›</text></view>
   <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
   <view wx:if="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="retryServices">重新加载</button></view>
   <view wx:if="{{services.length}}" class="service-list">
     <view wx:for="{{services}}" wx:key="id" class="service-card" data-slug="{{item.slug}}" bindtap="bookService">
       <view class="service-visual {{item.tone}}"><view class="visual-orbit"/><view class="visual-stone"/><text>{{item.badge || '安心到家'}}</text></view>
-      <view class="service-main"><view class="service-heading"><text>{{item.name}}</text><text>可预约</text></view><text class="service-sub">{{item.subtitle}}</text><view class="service-bottom"><view><text>{{item.duration}}</text><text><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">起</text></text></view><button>去下单</button></view></view>
+      <view class="service-main"><view class="service-heading"><text>{{item.name}}</text><text>可预约</text></view><text class="service-sub">{{item.subtitle}}</text><view class="service-facts"><text>{{item.categoryLabel}}</text><text>{{item.duration}}</text><text>免出行费</text></view><view class="service-bottom"><view><text>已公示价格</text><text><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">/次</text></text></view><button>详情/下单</button></view></view>
     </view>
   </view>
   <view class="boundary"><view class="boundary-badge">正</view><view><text>正规服务边界</text><text>仅提供公示的非医疗养生放松服务，拒绝任何违法违规要求。</text></view></view>

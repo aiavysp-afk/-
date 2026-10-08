@@ -5,12 +5,19 @@ const therapists_1 = require("../../utils/therapists");
 Page({
     data: {
         activeFilter: "ALL",
+        activeSort: "EARLIEST",
         bookingOpen: false,
         error: "",
         filters: [
             { key: "ALL", label: "全部技师" },
+            { key: "BOOKABLE", label: "当前可约" },
             { key: "TODAY", label: "今日可约" },
             { key: "TOMORROW", label: "明日可约" },
+        ],
+        sorts: [
+            { key: "EARLIEST", label: "最早可约" },
+            { key: "RATING", label: "评分优先" },
+            { key: "ORDERS", label: "服务单量" },
         ],
         loading: false,
         selectedTherapist: null,
@@ -49,13 +56,36 @@ Page({
         this.setData({ activeFilter: event.currentTarget.dataset.key });
         this.applyFilter();
     },
+    selectSort(event) {
+        this.setData({ activeSort: event.currentTarget.dataset.key });
+        this.applyFilter();
+    },
     applyFilter() {
         const visibleTherapists = this.data.therapists.filter((therapist) => {
+            if (this.data.activeFilter === "BOOKABLE")
+                return therapist.bookable;
             if (this.data.activeFilter === "TODAY")
                 return therapist.todaySlotCount > 0;
             if (this.data.activeFilter === "TOMORROW")
                 return therapist.tomorrowSlotCount > 0;
             return true;
+        });
+        visibleTherapists.sort((left, right) => {
+            if (this.data.activeSort === "RATING")
+                return ((Number.parseFloat(right.ratingLabel) || 0) -
+                    (Number.parseFloat(left.ratingLabel) || 0));
+            if (this.data.activeSort === "ORDERS")
+                return ((Number.parseInt(right.orderCountLabel, 10) || 0) -
+                    (Number.parseInt(left.orderCountLabel, 10) || 0));
+            const leftTime = left.services
+                .flatMap((service) => service.slots)
+                .map((slot) => slot.startsAt)
+                .sort()[0];
+            const rightTime = right.services
+                .flatMap((service) => service.slots)
+                .map((slot) => slot.startsAt)
+                .sort()[0];
+            return (leftTime !== null && leftTime !== void 0 ? leftTime : "9999").localeCompare(rightTime !== null && rightTime !== void 0 ? rightTime : "9999");
         });
         this.setData({ visibleTherapists });
     },

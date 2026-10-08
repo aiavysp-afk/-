@@ -1016,7 +1016,29 @@ export const CustomerWalletSchema = z.object({
   balanceFen: MoneyFenSchema,
   cards: z.array(StoredValueCardSchema),
   recharge: z.object({
-    enabled: z.literal(false),
+    enabled: z.boolean(),
+    reason: z.string(),
+    plans: z.array(
+      z.object({
+        amountFen: MoneyFenSchema,
+        label: z.string(),
+      }),
+    ),
+    firstRechargeReward: z.object({
+      enabled: z.boolean(),
+      reason: z.string(),
+    }),
+  }),
+  withdrawal: z.object({
+    enabled: z.boolean(),
+    minimumFen: MoneyFenSchema,
+    stepFen: MoneyFenSchema,
+    reviewRequired: z.boolean(),
+    reason: z.string(),
+  }),
+  checkIn: z.object({
+    enabled: z.boolean(),
+    rewardUnit: z.literal("POINTS"),
     reason: z.string(),
   }),
 });

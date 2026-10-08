@@ -184,6 +184,80 @@
 .panel-note {
   display: block;
 }
+.hour-picker {
+  width: 100%;
+  margin: 20rpx 0 12rpx;
+  white-space: nowrap;
+}
+.hour-picker > view {
+  display: inline-flex;
+  gap: 12rpx;
+}
+.hour-picker button {
+  margin: 0;
+  padding: 0 22rpx;
+  border-radius: 28rpx;
+  background: #eff4f1;
+  color: #52665f;
+  line-height: 56rpx;
+  font-size: 18rpx;
+}
+.hour-picker button.active {
+  background: #1f6a55;
+  color: #fff;
+}
+.review-count {
+  color: #1f6a55;
+  font-size: 18rpx;
+}
+.review-state,
+.review-empty text {
+  display: block;
+  padding: 22rpx 0;
+  color: #8a9691;
+  font-size: 18rpx;
+}
+.review-list {
+  margin-top: 18rpx;
+}
+.review-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #edf1ef;
+}
+.review-row view text {
+  display: block;
+}
+.review-row view text:first-child {
+  color: #2d493f;
+  font-size: 19rpx;
+  font-weight: 600;
+}
+.review-row view text:last-child {
+  margin-top: 4rpx;
+  color: #9aa49f;
+  font-size: 15rpx;
+}
+.review-row > text:last-child {
+  grid-column: 1/3;
+  color: #53635e;
+  font-size: 19rpx;
+  line-height: 1.55;
+}
+.review-stars {
+  color: #d6a741;
+  font-size: 19rpx;
+}
+.review-empty {
+  text-align: center;
+}
+.review-empty text:last-child {
+  padding-top: 0;
+  color: #a5afab;
+  font-size: 16rpx;
+}
 .panel-title {
   font-size: 29rpx;
   font-weight: 600;
