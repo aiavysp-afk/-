@@ -41,8 +41,11 @@ jobs:
       - run: pnpm --filter @zydj/api exec prisma generate
       - run: node --test scripts/serve-private-preview.test.mjs
       - run: bash -n scripts/deploy-private-acceptance.sh
+      - run: bash -n scripts/deploy-production-api.sh
+      - run: bash -n scripts/deploy-production-nginx.sh
       - run: bash -n scripts/retire-legacy-mall.sh
       - run: node --check scripts/prepare-production.mjs
+      - run: node --test scripts/verify-production-nginx.test.mjs scripts/deploy-production-release.test.mjs
       - run: bash scripts/database-init.sh
       - run: pnpm typecheck
       - run: pnpm test
