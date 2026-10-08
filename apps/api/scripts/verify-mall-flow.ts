@@ -125,6 +125,10 @@ try {
     await prisma.organization.create({ data: { name: prefix } })
   ).id;
   const customer = await identity("CUSTOMER", "customer");
+  const phoneVerification = await call("/auth/wechat-phone", customer.token, {
+    code: `${prefix}-phone`,
+  });
+  assert.equal(phoneVerification.phoneVerified, true);
   const stranger = await identity("CUSTOMER", "stranger");
   const applicant = await identity("FINANCE_REQUESTER", "applicant");
   const reviewer = await identity("FINANCE_APPROVER", "reviewer");
@@ -148,7 +152,9 @@ try {
     where: { id: stranger.user.id },
     data: { status: "ACTIVE" },
   });
-  checks.push("login, unauthorized and disabled-account guards");
+  checks.push(
+    "login, WeChat phone verification, unauthorized and disabled-account guards",
+  );
 
   const service = await prisma.service.create({
     data: {
@@ -998,6 +1004,10 @@ try {
   checks.push(
     "unpaid cancellation, forbidden post-cancel payment, logout revocation",
   );
+  const miniappCustomerSession = await call("/auth/wechat-miniapp", "", {
+    code: customer.code,
+  });
+  assert.equal(miniappCustomerSession.user.phoneVerified, true);
 
   const miniappConfirmationStart = new Date(Date.now() + 2 * 60 * 60_000);
   const miniappConfirmationReservation =
@@ -1050,8 +1060,13 @@ try {
   // Execute the compiled native miniapp pages with a wx transport shim against the same real HTTP API.
   // This verifies page logic, not WeChat rendering/device capabilities.
   const storage = new Map<string, unknown>();
+  storage.set("zydj.auth.session", {
+    ...miniappCustomerSession,
+    user: { ...miniappCustomerSession.user, phoneVerified: true },
+  });
   const require = createRequire(import.meta.url);
   let captured: any;
+  let reLaunchCalls = 0;
   const globals = globalThis as any;
   const previous = {
     wx: globals.wx,
@@ -1075,6 +1090,10 @@ try {
     login: (options: any) => options.success({ code: customer.code }),
     showToast: () => {},
     navigateTo: () => {},
+    reLaunch: (options: any) => {
+      reLaunchCalls++;
+      options.complete?.();
+    },
     switchTab: () => {},
     showModal: (options: any) => options.success({ confirm: true }),
     request: (options: any) => {
@@ -1094,10 +1113,12 @@ try {
         .catch(() => options.fail({ errMsg: "test request failed" }));
     },
   };
+  let orderPage: any;
   try {
     require("../../miniapp/pages/services/index.js");
     const catalogPage = captured;
     await catalogPage.onShow();
+    assert.equal(reLaunchCalls, 0);
     assert.equal(catalogPage.data.error, "");
     assert.ok(
       catalogPage.data.services.some((row: any) => row.id === service.id),
@@ -1119,8 +1140,11 @@ try {
     });
     await booking.create();
     assert.equal(booking.data.error, "");
+    assert.ok(booking.data.quoteDetails);
+    await booking.create();
+    assert.equal(booking.data.error, "");
     require("../../miniapp/pages/orders/index.js");
-    const orderPage = captured;
+    orderPage = captured;
     await orderPage.onShow();
     assert.equal(orderPage.data.error, "");
     const awaitingConfirmation = orderPage.data.orders.find(
@@ -1253,6 +1277,7 @@ try {
       "compiled WeChat page SDK success/cancel/failure and UNKNOWN use server query, never local settlement or mock confirmation (isolated SDK/transport fixtures)",
     );
   } finally {
+    orderPage?.onHide?.();
     globals.wx = previous.wx;
     globals.Page = previous.Page;
     globals.getApp = previous.getApp;
