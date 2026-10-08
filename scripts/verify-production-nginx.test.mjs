@@ -55,6 +55,10 @@ test("root-domain maintenance config publishes only the technician client subtre
   );
   assert.ok(maintenance.includes("location = /technician/"));
   assert.ok(
+    maintenance.includes("rewrite ^ /technician/index.html last;"),
+  );
+  assert.ok(maintenance.includes("location = /technician/index.html"));
+  assert.ok(
     maintenance.includes(
       "/var/www/zhongyuan-daojia-technician/current/index.html",
     ),
