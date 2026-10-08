@@ -79,6 +79,7 @@ test("verified customer service browsing and order submission stay on the custom
     setStorageSync: (key, value) => storage.set(key, value),
     removeStorageSync: (key) => storage.delete(key),
     login: ({ success }) => success({ code: "real-one-time-code" }),
+    showModal: ({ complete }) => complete?.(),
     showToast: () => undefined,
     switchTab: ({ url }) => calls.push({ path: url, method: "NAVIGATE" }),
     request: ({ url, method = "GET", data, header, success }) => {
@@ -130,7 +131,22 @@ test("verified customer service browsing and order submission stay on the custom
           currency: "CNY",
           moneyUnit: "fen",
         },
-        "/orders": { id: "order-1" },
+        "/orders": {
+          id: "order-1",
+          orderNo: "ZYDJ202610080001",
+          reservationId: "hold-1",
+          status: "PENDING_PAYMENT",
+          serviceName: "肩颈舒缓",
+          appointmentStart: "2026-10-08T02:00:00.000Z",
+          appointmentEnd: "2026-10-08T03:00:00.000Z",
+          serviceAmountFen: 19800,
+          travelFeeFen: 0,
+          discountFen: 0,
+          payableFen: 19800,
+          paymentExpiresAt: "2026-10-08T01:55:00.000Z",
+          createdAt: "2026-10-08T01:25:00.000Z",
+          reviewStatus: null,
+        },
       };
       success({
         statusCode: path === "/orders" ? 201 : 200,
@@ -189,6 +205,7 @@ test("verified customer service browsing and order submission stay on the custom
       "/booking-holds",
       "/orders/quote",
       "/orders",
+      "/orders/order-1/payment-intent",
       "/pages/orders/index",
     ],
   );

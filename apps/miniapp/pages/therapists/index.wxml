@@ -12,11 +12,10 @@
 
   <view wx:else class="therapist-list">
     <view wx:for="{{visibleTherapists}}" wx:key="id" class="therapist-card {{item.bookable ? '' : 'disabled'}}" data-id="{{item.id}}" bindtap="openDetail">
-      <view class="avatar-wrap tone-{{item.avatarIndex}}"><view class="avatar-head"/><view class="avatar-body"/><text>{{item.badge}}</text><view class="status-dot {{item.statusTone}}"/></view>
+      <view class="avatar-wrap tone-{{item.avatarIndex}}"><image wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill"/><block wx:else><view class="avatar-head"/><view class="avatar-body"/></block><text>{{item.badge}}</text><view class="status-dot {{item.statusTone}}"/></view>
       <view class="card-content">
         <view class="name-row"><text class="name">{{item.alias}}</text><text class="status {{item.statusTone}}">{{item.statusLabel}}</text></view>
         <view class="tag-row"><text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
-        <text class="store">{{item.storeLabel}}</text>
         <view class="data-row"><text>{{item.ratingLabel}}</text><text>·</text><text>{{item.orderCountLabel}}</text></view>
         <view class="time-row"><text>最早可约</text><text>{{item.earliestLabel}}</text></view>
         <text class="travel">{{item.travelLabel}}</text>
@@ -24,7 +23,7 @@
       <button class="book-button" data-id="{{item.id}}" catchtap="openBooking" disabled="{{!item.bookable}}">去下单</button>
     </view>
   </view>
-  <view class="disclosure"><text>资料说明</text><text>公开评分、相册、证书与历史单量须取得本人授权并由后台发布；暂无数据时如实标注，不使用演示内容。</text></view>
+  <view class="disclosure"><text>资料说明</text><text>姓名、头像、介绍、评价与履约数据均来自同一后台公开档案；未经本人及平台审核的字段不会展示。所有技师均免出行费。</text></view>
   <view class="safe-bottom" />
 
   <view wx:if="{{bookingOpen}}" class="sheet-mask" bindtap="closeBooking">

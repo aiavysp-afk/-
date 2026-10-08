@@ -1,6 +1,6 @@
 import {
-  loadPublicTherapists,
-  type PublicTherapistView,
+  loadPublicTherapist,
+  type PublicTherapistDetailView,
 } from "../../utils/therapists";
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
 
@@ -8,7 +8,7 @@ Page({
   data: {
     error: "",
     loading: true,
-    therapist: null as PublicTherapistView | null,
+    therapist: null as PublicTherapistDetailView | null,
   },
   async onLoad(options: { id?: string }) {
     if (!requireVerifiedCustomerAccess()) return;
@@ -17,9 +17,7 @@ Page({
       return;
     }
     try {
-      const therapists = await loadPublicTherapists();
-      const therapist = therapists.find((item) => item.id === options.id);
-      if (!therapist) throw new Error("该技师当前没有公开可约排班");
+      const therapist = await loadPublicTherapist(options.id);
       this.setData({ therapist });
     } catch (error) {
       this.setData({

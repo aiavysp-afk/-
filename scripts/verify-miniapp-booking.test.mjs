@@ -38,17 +38,17 @@ test("server quote fields are displayed in yuan with no client-side recalculatio
     quoteDisplay({
       reservationId: "hold-1",
       serviceAmountFen: 19_800,
-      travelFeeFen: 2_000,
+      travelFeeFen: 0,
       discountFen: 1_500,
-      payableFen: 20_300,
+      payableFen: 18_300,
       currency: "CNY",
       moneyUnit: "fen",
     }),
     {
       serviceAmount: "198.00",
-      travelFee: "20.00",
+      travelFee: "0.00",
       discount: "15.00",
-      payable: "203.00",
+      payable: "183.00",
     },
   );
 });
@@ -77,7 +77,14 @@ test("booking page uses a two-step server quote flow and discloses one-item limi
   assert.match(page, /提交订单并支付/);
   assert.match(page, /立即打开微信支付/);
   assert.doesNotMatch(page, /创建订单不会自动扣款/);
-  assert.doesNotMatch(page, /划线原价|虚构优惠|免出行费/);
+  assert.doesNotMatch(page, /划线原价|虚构优惠/);
+  assert.match(page, /免出行费（¥0\.00）/);
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/booking/index.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /quote\.travelFeeFen !== 0/);
+  assert.match(source, /order\.travelFeeFen !== 0/);
 });
 
 test("created orders immediately prepare a verified WeChat payment and query the original result", () => {
@@ -105,10 +112,7 @@ test("handwritten addresses are geocoded before quote and location/search remain
   assert.match(source, /\/locations\/address-geocodes/);
   assert.match(source, /await this\.ensureAddressCoordinates\(\)/);
   assert.match(source, /fullAddress\(\)/);
-  assert.doesNotMatch(
-    source,
-    /请先使用定位或高德地址搜索选择上门坐标/,
-  );
+  assert.doesNotMatch(source, /请先使用定位或高德地址搜索选择上门坐标/);
   assert.match(page, /可手动填写，也可用高德自动定位/);
   assert.match(page, /楼栋、单元、门牌号/);
   assert.match(page, /高德定位当前地址/);

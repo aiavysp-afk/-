@@ -71,7 +71,7 @@ declare const wx: {
   }): void;
   request<T>(options: {
     url: string;
-    method: "GET" | "POST";
+    method: "GET" | "POST" | "DELETE";
     data?: unknown;
     header?: Record<string, string>;
     timeout?: number;

@@ -25,3 +25,7 @@ coverage/
 .codex-tmp-deploy-*/
 .DS_Store
 apps/api/prisma/dev.db
+
+# Internal portrait candidates remain outside source control until each person
+# has granted publication consent and the profile has passed platform review.
+assets/technician-profile-candidates/

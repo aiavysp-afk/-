@@ -7,6 +7,7 @@ export type Permission =
   | "catalog.write"
   | "schedule.read"
   | "schedule.write"
+  | "technicians.manage"
   | "orders.read"
   | "orders.dispatch"
   | "finance.request"

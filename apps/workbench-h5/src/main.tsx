@@ -34,10 +34,19 @@ import {
   formatRoute,
   getBrowserGcj02Location,
 } from "./map";
+import {
+  profileDraftFrom,
+  profileStatusLabels,
+  splitProfileList,
+  technicianWorkbenchProfilePaths,
+  type TechnicianProfile,
+  type TechnicianProfileDraft,
+} from "./technician-profile";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 const TOKEN_STORAGE_KEY = "zydj.technician.access-token";
+const TECHNICIAN_PROFILE_PATHS = technicianWorkbenchProfilePaths();
 const statusLabels: Record<string, string> = {
   PENDING_PAYMENT: "待支付",
   PAID: "已支付",
@@ -570,6 +579,7 @@ function App() {
               <ProfileView
                 workbench={workbench}
                 earnings={earnings}
+                token={token}
                 onLogout={logout}
               />
             )}
@@ -933,21 +943,314 @@ function ShiftsView({ workbench }: { workbench: TechnicianWorkbench }) {
 function ProfileView({
   workbench,
   earnings,
+  token,
   onLogout,
 }: {
   workbench: TechnicianWorkbench;
   earnings: TechnicianEarnings | null;
+  token: string;
   onLogout: () => Promise<void>;
 }) {
+  const [profile, setProfile] = useState<TechnicianProfile | null>(null);
+  const [draft, setDraft] = useState<TechnicianProfileDraft | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
+
+  const loadProfile = useCallback(async () => {
+    setProfileLoading(true);
+    setProfileError("");
+    try {
+      const response = await apiRequest<{ data: TechnicianProfile }>(
+        TECHNICIAN_PROFILE_PATHS.profile,
+        {},
+        token,
+      );
+      setProfile(response.data);
+      setDraft(profileDraftFrom(response.data));
+    } catch (caught) {
+      setProfileError(
+        caught instanceof Error ? caught.message : "个人资料读取失败",
+      );
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  async function saveProfile(showConfirmation = true) {
+    if (!draft || profileSaving) return null;
+    setProfileSaving(true);
+    setProfileError("");
+    setProfileMessage("");
+    try {
+      const response = await apiRequest<{ data: TechnicianProfile }>(
+        TECHNICIAN_PROFILE_PATHS.profile,
+        { method: "PATCH", body: JSON.stringify(draft) },
+        token,
+      );
+      setProfile(response.data);
+      setDraft(profileDraftFrom(response.data));
+      if (showConfirmation) setProfileMessage("资料草稿已同步到管理后台。");
+      return response.data;
+    } catch (caught) {
+      setProfileError(caught instanceof Error ? caught.message : "资料保存失败");
+      return null;
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function submitProfile() {
+    const saved = await saveProfile(false);
+    if (!saved) return;
+    setProfileSaving(true);
+    setProfileError("");
+    try {
+      const response = await apiRequest<{ data: TechnicianProfile }>(
+        TECHNICIAN_PROFILE_PATHS.submitReview,
+        { method: "POST", body: "{}" },
+        token,
+      );
+      setProfile(response.data);
+      setDraft(profileDraftFrom(response.data));
+      setProfileMessage("资料已提交后台审核，审核完成后才会对客户公开。");
+    } catch (caught) {
+      setProfileError(caught instanceof Error ? caught.message : "提交审核失败");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  const profileLocked = profile?.status === "PENDING_REVIEW";
+
   return (
     <section className="view-page profile-page">
       <div className="profile-card">
-        <div className="profile-avatar">技</div>
+        {profile?.avatarUrl ? (
+          <img
+            className="profile-avatar profile-avatar-image"
+            src={profile.avatarUrl}
+            alt={`${profile.publicName}的公开头像`}
+          />
+        ) : (
+          <div className="profile-avatar">技</div>
+        )}
         <div>
-          <strong>{workbench.displayName}</strong>
-          <span>已授权技师 · 工作台已连接</span>
+          <strong>{profile?.publicName || workbench.displayName}</strong>
+          <span>
+            {profile
+              ? `${profileStatusLabels[profile.status]} · 与管理后台同步`
+              : "已授权技师 · 工作台已连接"}
+          </span>
         </div>
       </div>
+      <section className="profile-editor">
+        <div className="profile-editor-heading">
+          <div>
+            <h2>公开资料</h2>
+            <p>保存到统一后台；只有管理员审核并发布后客户才可查看。</p>
+          </div>
+          {profile && (
+            <em className={`profile-status status-${profile.status.toLowerCase()}`}>
+              {profileStatusLabels[profile.status]}
+            </em>
+          )}
+        </div>
+        {profileLoading && <div className="profile-empty">正在读取资料…</div>}
+        {profileError && <div className="profile-form-error">{profileError}</div>}
+        {profileMessage && (
+          <div className="profile-form-success">{profileMessage}</div>
+        )}
+        {profile?.rejectionReason && (
+          <div className="profile-review-note">
+            <strong>后台退回原因</strong>
+            <p>{profile.rejectionReason}</p>
+          </div>
+        )}
+        {draft && (
+          <div className="profile-form">
+            <label>
+              客户端公开称呼
+              <input
+                value={draft.publicName ?? ""}
+                maxLength={40}
+                disabled={profileLocked}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? { ...current, publicName: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              头像 HTTPS 地址
+              <input
+                inputMode="url"
+                value={draft.avatarUrl ?? ""}
+                disabled={profileLocked}
+                placeholder="仅填写已获授权的本人照片地址"
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? { ...current, avatarUrl: event.target.value || null }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              个人简介
+              <textarea
+                value={draft.introduction ?? ""}
+                maxLength={2000}
+                rows={5}
+                disabled={profileLocked}
+                placeholder="填写真实的服务经历、沟通风格与服务边界"
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? { ...current, introduction: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              擅长项目（逗号或换行分隔）
+              <textarea
+                value={(draft.specialties ?? []).join("\n")}
+                rows={3}
+                disabled={profileLocked}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          specialties: splitProfileList(event.target.value),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              从业年限
+              <input
+                type="number"
+                min={0}
+                max={60}
+                value={draft.serviceYears ?? ""}
+                disabled={profileLocked}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          serviceYears: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              生活照/工作照 HTTPS 地址（每行一张）
+              <textarea
+                value={(draft.galleryUrls ?? []).join("\n")}
+                rows={4}
+                disabled={profileLocked}
+                placeholder="最多 12 张，仅使用本人已授权照片"
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          galleryUrls: splitProfileList(event.target.value),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              已提交核验的资质名称（每行一项）
+              <textarea
+                value={(draft.certificates ?? []).join("\n")}
+                rows={3}
+                disabled={profileLocked}
+                placeholder="不得填写未取得或未提交核验的资质"
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          certificates: splitProfileList(event.target.value),
+                        }
+                      : current,
+                  )
+                }
+              />
+              <small>不要填写身份证号、证件号码或其他敏感信息。</small>
+            </label>
+            <div className="profile-form-actions">
+              <button
+                className="secondary"
+                disabled={profileSaving || profileLocked}
+                onClick={() => void saveProfile()}
+              >
+                {profileSaving ? "同步中…" : "保存草稿"}
+              </button>
+              <button
+                disabled={
+                  profileSaving ||
+                  profileLocked ||
+                  !profile ||
+                  !["DRAFT", "REJECTED"].includes(profile.status)
+                }
+                onClick={() => void submitProfile()}
+              >
+                提交后台审核
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+      {profile && (
+        <section className="profile-reviews">
+          <div className="profile-editor-heading">
+            <div>
+              <h2>客户评价</h2>
+              <p>评价来自已完成订单，只读展示，技师不能修改。</p>
+            </div>
+            <strong>
+              {profile.reviewSummary.averageRating?.toFixed(1) ?? "暂无"}
+              <small>{profile.reviewSummary.reviewCount} 条</small>
+            </strong>
+          </div>
+          {profile.recentReviews.map((review) => (
+            <article key={review.id}>
+              <div>
+                <b>{review.customerAlias}</b>
+                <span>{"★".repeat(review.rating)}</span>
+              </div>
+              <p>{review.content}</p>
+              <time>{new Date(review.createdAt).toLocaleDateString("zh-CN")}</time>
+            </article>
+          ))}
+          {profile.recentReviews.length === 0 && (
+            <div className="profile-empty">暂时没有已发布评价</div>
+          )}
+        </section>
+      )}
       {earnings && <EarningsCard earnings={earnings} />}
       <div className="privacy-card">
         <ShieldAlert size={20} />

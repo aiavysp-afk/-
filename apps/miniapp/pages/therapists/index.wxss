@@ -194,6 +194,10 @@
   overflow: hidden;
   background: linear-gradient(160deg, #e3d2af, #f5eee0);
 }
+.avatar-wrap > image {
+  width: 100%;
+  height: 100%;
+}
 .tone-1 {
   background: linear-gradient(160deg, #d1e4dc, #f1f7f3);
 }

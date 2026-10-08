@@ -1061,6 +1061,262 @@ h1 {
   font-size: 14px;
   margin-bottom: 3px;
 }
+.profile-detail-button {
+  background: #f1f5f2;
+  border: 1px solid #d9e3de;
+  border-radius: 9px;
+  color: #2c6253;
+  font: 600 10px "Noto Sans SC";
+  margin-top: 14px;
+  padding: 9px 11px;
+  width: 100%;
+}
+.technician-profile-panel {
+  margin-top: 20px;
+  padding: 22px;
+}
+.technician-profile-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+.technician-profile-head h2 {
+  font-family: "Noto Serif SC";
+  font-size: 20px;
+  margin: 4px 0;
+}
+.technician-profile-head p {
+  color: #75837d;
+  font-size: 11px;
+  margin: 0;
+}
+.technician-profile-head-actions,
+.profile-admin-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.profile-admin-success {
+  background: #e7f2ec;
+  border-radius: 9px;
+  color: #2c6655;
+  font-size: 11px;
+  margin: 16px 0;
+  padding: 12px 14px;
+}
+.profile-admin-summary {
+  align-items: center;
+  background: linear-gradient(135deg, #214e42, #17382f);
+  border-radius: 15px;
+  color: #fff;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 58px 1fr auto;
+  margin: 18px 0;
+  padding: 16px;
+}
+.profile-admin-summary > img,
+.profile-admin-summary > .resource-icon {
+  border: 1px solid #ffffff32;
+  border-radius: 14px;
+  height: 58px;
+  margin: 0;
+  object-fit: cover;
+  width: 58px;
+}
+.profile-admin-summary strong,
+.profile-admin-summary small,
+.profile-admin-summary span {
+  display: block;
+}
+.profile-admin-summary strong {
+  font-family: "Noto Serif SC";
+  font-size: 17px;
+}
+.profile-admin-summary small,
+.profile-admin-summary span {
+  color: #c2d4ce;
+  font-size: 9px;
+  margin-top: 3px;
+}
+.profile-admin-status {
+  background: #f1e5c7;
+  border-radius: 999px;
+  color: #72551d;
+  font-size: 9px;
+  font-style: normal;
+  padding: 6px 9px;
+}
+.profile-admin-status.status-published,
+.profile-admin-status.status-approved {
+  background: #d8ede3;
+  color: #225c49;
+}
+.profile-admin-status.status-rejected {
+  background: #f5dfda;
+  color: #8f453b;
+}
+.profile-admin-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+}
+.profile-admin-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.profile-admin-form label {
+  color: #56645e;
+  display: grid;
+  font-size: 10px;
+  font-weight: 700;
+  gap: 6px;
+}
+.profile-admin-form input,
+.profile-admin-form textarea {
+  background: #fbfcfa;
+  border: 1px solid #dbe1dd;
+  border-radius: 9px;
+  color: #263a33;
+  font: 500 11px/1.6 "Noto Sans SC";
+  padding: 10px 11px;
+  resize: vertical;
+  width: 100%;
+}
+.profile-admin-form label > small {
+  color: #8a9690;
+  font-size: 9px;
+  font-weight: 400;
+}
+.profile-admin-wide {
+  grid-column: 1 / -1;
+}
+.profile-admin-reviews {
+  background: #f7f8f5;
+  border-radius: 13px;
+  padding: 16px;
+}
+.profile-admin-reviews > div:first-child span,
+.profile-admin-reviews > div:first-child strong,
+.profile-admin-reviews > div:first-child small {
+  display: block;
+}
+.profile-admin-reviews > div:first-child span {
+  color: #67766f;
+  font-size: 10px;
+}
+.profile-admin-reviews > div:first-child strong {
+  color: #a57a31;
+  font-family: "Noto Serif SC";
+  font-size: 27px;
+  margin: 5px 0 2px;
+}
+.profile-admin-reviews > div:first-child small {
+  color: #87928d;
+  font-size: 9px;
+}
+.review-status-summary {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.profile-admin-reviews > div:first-child .review-status-summary span {
+  background: #e8ece9;
+  border-radius: 999px;
+  color: #5f6e67;
+  display: inline-block;
+  font-size: 8px;
+  padding: 4px 7px;
+}
+.profile-admin-reviews article {
+  border-top: 1px solid #e2e6e2;
+  margin-top: 13px;
+  padding-top: 13px;
+}
+.profile-admin-reviews article header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.profile-admin-reviews article b {
+  font-size: 10px;
+}
+.profile-admin-reviews article header div {
+  display: grid;
+  gap: 3px;
+}
+.profile-admin-reviews article header small {
+  color: #8a9690;
+  font-size: 8px;
+}
+.profile-admin-reviews article.status-pending_review header small {
+  color: #936f2e;
+}
+.profile-admin-reviews article.status-published header small {
+  color: #286450;
+}
+.profile-admin-reviews article.status-hidden {
+  opacity: 0.72;
+}
+.profile-admin-reviews article span {
+  color: #c59236;
+  font-size: 10px;
+}
+.profile-admin-reviews article p {
+  color: #4f5e58;
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 7px 0;
+}
+.profile-admin-reviews article time {
+  color: #9aa39f;
+  font-size: 8px;
+}
+.profile-admin-reviews article footer {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.profile-admin-reviews article footer > div {
+  display: flex;
+  gap: 6px;
+}
+.profile-admin-reviews article footer button {
+  border-radius: 7px;
+  font: 600 8px "Noto Sans SC";
+  padding: 6px 8px;
+}
+.review-publish-action {
+  background: #e4f1eb;
+  border: 1px solid #cfe1d8;
+  color: #28624f;
+}
+.review-hide-action {
+  background: #fff1ed;
+  border: 1px solid #efd9d3;
+  color: #904b42;
+}
+.profile-admin-reviews article footer button:disabled {
+  opacity: 0.5;
+}
+.review-moderation-note {
+  background: #f0f2ef;
+  border-radius: 8px;
+  color: #74817b;
+  font-size: 8px;
+  line-height: 1.6;
+  margin: 14px 0 0;
+  padding: 9px;
+}
+@media (max-width: 1050px) {
+  .profile-admin-layout {
+    grid-template-columns: 1fr;
+  }
+}
 .date-filter {
   color: #6e7b76;
   display: flex;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AddressVerificationCreateSchema,
+  AdminTechnicianReviewSchema,
   AddressVerificationSchema,
   AvailabilityQuerySchema,
   AddressSuggestionQuerySchema,
@@ -11,6 +12,7 @@ import {
   IdempotencyKeySchema,
   MoneyFenSchema,
   OrderCreateSchema,
+  OrderViewSchema,
   PaymentIntentSchema,
   WechatPayParametersSchema,
   RefundRequestSchema,
@@ -25,9 +27,83 @@ import {
   ServiceAdminUpdateSchema,
   ShiftCreateSchema,
   TechnicianWorkbenchSchema,
+  TechnicianProfileSchema,
+  TechnicianProfileUpdateSchema,
+  TechnicianReviewCreateSchema,
   WechatMiniappLoginRequestSchema,
   formatMoney,
 } from "./index.js";
+
+describe("technician profile contracts", () => {
+  it("keeps every public technician explicitly free of travel fees", () => {
+    const profile = TechnicianProfileSchema.parse({
+      technicianId: "technician-1",
+      displayName: "实名技师",
+      publicName: "小安",
+      avatarUrl: "https://cdn.example.com/avatar.jpg",
+      galleryUrls: [],
+      introduction: "已审核的专业服务介绍",
+      specialties: ["肩颈舒缓"],
+      serviceYears: 2,
+      certificates: ["健康服务培训证明"],
+      reviewSummary: {
+        averageRating: 5,
+        reviewCount: 1,
+        completedOrders: 3,
+      },
+      recentReviews: [],
+      status: "PUBLISHED",
+      rejectionReason: null,
+      freeTravelFee: true,
+      travelFeeFen: 0,
+      updatedAt: "2026-10-08T03:00:00.000Z",
+    });
+    expect(profile).toMatchObject({ freeTravelFee: true, travelFeeFen: 0 });
+    expect(() =>
+      TechnicianProfileSchema.parse({ ...profile, travelFeeFen: 100 }),
+    ).toThrow();
+  });
+
+  it("accepts only bounded HTTPS profile updates", () => {
+    expect(
+      TechnicianProfileUpdateSchema.parse({
+        publicName: "小安",
+        avatarUrl: "https://cdn.example.com/avatar.jpg",
+        serviceYears: null,
+      }),
+    ).toMatchObject({ publicName: "小安", serviceYears: null });
+    expect(() => TechnicianProfileUpdateSchema.parse({})).toThrow();
+    expect(() =>
+      TechnicianProfileUpdateSchema.parse({
+        avatarUrl: "http://cdn.example.com/avatar.jpg",
+      }),
+    ).toThrow();
+  });
+
+  it("requires a real bounded rating and review body", () => {
+    expect(
+      TechnicianReviewCreateSchema.parse({ rating: 5, content: "服务认真周到" }),
+    ).toEqual({ rating: 5, content: "服务认真周到" });
+    expect(() =>
+      TechnicianReviewCreateSchema.parse({ rating: 6, content: "无效评分" }),
+    ).toThrow();
+  });
+
+  it("keeps submitted reviews pending until an administrator publishes them", () => {
+    const review = AdminTechnicianReviewSchema.parse({
+      id: "review-1",
+      orderId: "order-1",
+      technicianId: "technician-1",
+      customerAlias: "已认证客户",
+      rating: 5,
+      content: "服务认真周到",
+      status: "PENDING_REVIEW",
+      createdAt: "2026-10-08T03:00:00.000Z",
+      updatedAt: "2026-10-08T03:00:00.000Z",
+    });
+    expect(review.status).toBe("PENDING_REVIEW");
+  });
+});
 
 describe("safety duty contracts", () => {
   it("requires two distinct responders and a bounded acknowledgement timeout", () => {
@@ -261,6 +337,26 @@ describe("scheduling contracts", () => {
 });
 
 describe("order contracts", () => {
+  it("exposes nullable review state so clients do not offer duplicate reviews", () => {
+    const order = OrderViewSchema.parse({
+      id: "order-1",
+      orderNo: "ZY20261008ABCDEF01",
+      reservationId: "hold-1",
+      status: "COMPLETED",
+      serviceName: "肩颈舒缓",
+      appointmentStart: "2026-10-08T02:00:00.000Z",
+      appointmentEnd: "2026-10-08T03:00:00.000Z",
+      serviceAmountFen: 19_800,
+      travelFeeFen: 0,
+      discountFen: 0,
+      payableFen: 19_800,
+      reviewStatus: "PENDING_REVIEW",
+      paymentExpiresAt: null,
+      createdAt: "2026-10-08T01:00:00.000Z",
+    });
+    expect(order.reviewStatus).toBe("PENDING_REVIEW");
+  });
+
   it("accepts a bounded idempotency key and rejects short values", () => {
     expect(IdempotencyKeySchema.parse("order-20261004-0001")).toBe(
       "order-20261004-0001",

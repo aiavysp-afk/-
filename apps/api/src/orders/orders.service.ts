@@ -11,10 +11,12 @@ import {
   PaymentStatus,
   Prisma,
   ReservationStatus,
+  TechnicianReviewStatus,
 } from "@prisma/client";
 import type {
   CustomerOrderConfirmationResult,
   CustomerTechnicianLocation,
+  OrderHideResult,
   OrderCreate,
   OrderQuote,
   OrderView,
@@ -30,7 +32,9 @@ import { OrderStateMachine } from "./order-state-machine.js";
 const PAYMENT_WINDOW_MS = 15 * 60 * 1_000;
 const POLICY_VERSION = "2026-10-03.dev-v1";
 
-type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }> & {
+  technicianReview?: { status: TechnicianReviewStatus } | null;
+};
 
 @Injectable()
 export class OrdersService {
@@ -225,8 +229,11 @@ export class OrdersService {
 
   async listOwn(principal: AuthPrincipal) {
     const orders = await this.prisma.order.findMany({
-      where: { customerId: principal.userId },
-      include: { items: true },
+      where: { customerId: principal.userId, customerHiddenAt: null },
+      include: {
+        items: true,
+        technicianReview: { select: { status: true } },
+      },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -236,12 +243,16 @@ export class OrdersService {
   async getOwn(principal: AuthPrincipal, id: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { items: true },
+      include: {
+        items: true,
+        technicianReview: { select: { status: true } },
+      },
     });
     if (!order) throw new NotFoundException("订单不存在");
     if (order.customerId !== principal.userId) {
       throw new ForbiddenException("不能查看其他用户的订单");
     }
+    if (order.customerHiddenAt) throw new NotFoundException("订单不存在");
     return this.toView(order);
   }
 
@@ -257,6 +268,7 @@ export class OrdersService {
         customerId: true,
         therapistId: true,
         status: true,
+        customerHiddenAt: true,
         therapist: {
           select: { technicianLocation: true },
         },
@@ -265,6 +277,7 @@ export class OrdersService {
     if (!order) throw new NotFoundException("订单不存在");
     if (order.customerId !== principal.userId)
       throw new ForbiddenException("不能查看其他用户的技师位置");
+    if (order.customerHiddenAt) throw new NotFoundException("订单不存在");
     if (!order.therapistId)
       return { orderId: order.id, status: "UNASSIGNED", location: null };
     if (
@@ -362,6 +375,71 @@ export class OrdersService {
       });
     });
     return this.toView(updated);
+  }
+
+  async hideOwn(
+    principal: AuthPrincipal,
+    id: string,
+    now = new Date(),
+  ): Promise<OrderHideResult> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          organizationId: true,
+          customerId: true,
+          status: true,
+          customerHiddenAt: true,
+        },
+      });
+      if (!order) throw new NotFoundException("订单不存在");
+      if (order.customerId !== principal.userId) {
+        throw new ForbiddenException("不能删除其他用户的订单记录");
+      }
+      if (
+        order.status !== OrderStatus.CANCELLED &&
+        order.status !== OrderStatus.REFUNDED
+      ) {
+        throw new ConflictException("仅已取消或已退款订单可以从客户列表删除");
+      }
+      if (order.customerHiddenAt) {
+        return {
+          orderId: order.id,
+          hiddenAt: order.customerHiddenAt.toISOString(),
+        };
+      }
+      const updated = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          customerId: principal.userId,
+          customerHiddenAt: null,
+          status: { in: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+        },
+        data: { customerHiddenAt: now },
+      });
+      if (updated.count !== 1) throw new ConflictException("订单状态已变化");
+      await tx.orderEvent.create({
+        data: {
+          orderId: order.id,
+          type: "CUSTOMER_ORDER_HIDDEN",
+          actorId: principal.userId,
+          payload: { hiddenAt: now.toISOString() },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: principal.userId,
+          organizationId: order.organizationId,
+          action: "CUSTOMER_ORDER_HIDDEN",
+          resourceType: "Order",
+          resourceId: order.id,
+          metadata: { status: order.status, hiddenAt: now.toISOString() },
+        },
+      });
+      return { orderId: order.id, hiddenAt: now.toISOString() };
+    });
   }
 
   async confirmCompletion(
@@ -521,6 +599,7 @@ export class OrdersService {
       travelFeeFen: this.safeMoney(order.travelFeeFen),
       discountFen: this.safeMoney(order.discountFen),
       payableFen: this.safeMoney(order.payableFen),
+      reviewStatus: order.technicianReview?.status ?? null,
       paymentExpiresAt: order.paymentExpiresAt?.toISOString() ?? null,
       createdAt: order.createdAt.toISOString(),
     };

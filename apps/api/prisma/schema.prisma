@@ -113,6 +113,20 @@ enum RefundReason {
   LATE_PAYMENT
 }
 
+enum TechnicianProfileStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  PUBLISHED
+  REJECTED
+}
+
+enum TechnicianReviewStatus {
+  PENDING_REVIEW
+  PUBLISHED
+  HIDDEN
+}
+
 model Organization {
   id                  String                   @id @default(cuid())
   name                String
@@ -126,6 +140,8 @@ model Organization {
   mfaRecoveryRequests MfaRecoveryRequest[]
   safetyDutyRosters   SafetyDutyRoster[]
   safetyIncidents     SafetyIncident[]
+  technicianProfiles  TechnicianProfile[]
+  technicianReviews   TechnicianReview[]
 }
 
 model User {
@@ -161,6 +177,10 @@ model User {
   addressVerifications        AddressVerification[]
   phoneVerificationChallenges PhoneVerificationChallenge[]
   technicianLocation          TechnicianLocation?
+  technicianProfile           TechnicianProfile?           @relation("TechnicianProfileOwner")
+  reviewedTechnicianProfiles  TechnicianProfile[]          @relation("TechnicianProfileReviewer")
+  submittedTechnicianReviews  TechnicianReview[]           @relation("TechnicianReviewCustomer")
+  receivedTechnicianReviews   TechnicianReview[]           @relation("TechnicianReviewTechnician")
 }
 
 model ExternalIdentity {
@@ -414,6 +434,7 @@ model Order {
   addressCoordinateSystem String?
   policyVersion           String
   paymentExpiresAt        DateTime?
+  customerHiddenAt        DateTime?
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
   items                   OrderItem[]
@@ -422,9 +443,56 @@ model Order {
   idempotencyKey          String
   requestFingerprint      String
   safetyIncidents         SafetyIncident[]
+  technicianReview        TechnicianReview?
 
   @@unique([customerId, idempotencyKey])
   @@index([organizationId, status, appointmentStart])
+  @@index([customerId, customerHiddenAt, createdAt])
+}
+
+model TechnicianProfile {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  technicianId    String                  @unique
+  technician      User                    @relation("TechnicianProfileOwner", fields: [technicianId], references: [id], onDelete: Cascade)
+  publicName      String
+  avatarUrl       String?
+  galleryUrls     Json                    @default("[]")
+  introduction    String                  @default("")
+  specialties     Json                    @default("[]")
+  serviceYears    Int?
+  certificates    Json                    @default("[]")
+  status          TechnicianProfileStatus @default(DRAFT)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedBy      User?                   @relation("TechnicianProfileReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedAt      DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([organizationId, status, updatedAt])
+}
+
+model TechnicianReview {
+  id             String                 @id @default(cuid())
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  orderId        String                 @unique
+  order          Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  customerId     String
+  customer       User                   @relation("TechnicianReviewCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  technicianId   String
+  technician     User                   @relation("TechnicianReviewTechnician", fields: [technicianId], references: [id], onDelete: Restrict)
+  rating         Int
+  content        String
+  status         TechnicianReviewStatus @default(PENDING_REVIEW)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([technicianId, status, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([customerId, createdAt])
 }
 
 model TechnicianLocation {

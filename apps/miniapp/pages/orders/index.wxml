@@ -11,8 +11,11 @@
       <view class="location-status"><text>{{item.technicianLocationLabel}}</text><button wx:if="{{item.technicianLocationAvailable}}" data-id="{{item.id}}" data-action="technician-location" bindtap="action" disabled="{{!!busy}}">查看位置</button></view>
       <view class="actions" wx:if="{{item.status==='PENDING_PAYMENT'}}"><button class="primary" data-id="{{item.id}}" data-action="pay" bindtap="action" disabled="{{!!busy}}">查看支付渠道并确认</button><button data-id="{{item.id}}" data-action="cancel" bindtap="action" disabled="{{!!busy}}">取消订单</button></view>
       <button wx:if="{{item.confirmAvailable}}" class="primary wide" data-id="{{item.id}}" data-action="confirm-completion" bindtap="action" disabled="{{!!busy}}">确认服务已完成</button>
+      <button wx:if="{{item.reviewAvailable}}" class="review-action wide" data-id="{{item.id}}" bindtap="openReview" disabled="{{!!busy}}">评价本次服务</button>
+      <text wx:if="{{item.reviewStatusLabel}}" class="review-status">{{item.reviewStatusLabel}}</text>
       <button wx:if="{{item.refundAvailable}}" class="secondary wide" data-id="{{item.id}}" data-action="refund" bindtap="action" disabled="{{!!busy}}">申请开始前全额退款（需复核）</button>
       <button class="safety-action wide" wx:if="{{item.safetyAvailable}}" data-id="{{item.id}}" data-action="safety" bindtap="action" disabled="{{!!busy}}">记录紧急安全事件</button>
+      <button class="remove-action wide" wx:if="{{item.removable}}" data-id="{{item.id}}" data-action="remove" bindtap="action" disabled="{{!!busy}}">从我的订单移除</button>
       <view wx:for="{{item.safetyIncidents}}" wx:for-item="incident" wx:key="id" class="safety-record"><text>安全事件 · {{incident.statusLabel}}</text><text>分类：{{incident.category}}</text><text>系统记录不等于通知送达；危险请立即报警或呼叫急救</text></view>
       <view wx:for="{{item.refunds}}" wx:for-item="refund" wx:key="id" class="refund"><text>退款记录 · {{refund.id}}</text><text>状态：{{refund.status}}</text><text wx:if="{{refund.status==='REQUESTED'}}">等待另一位授权财务复核，不代表已到账</text><text wx:if="{{refund.status==='UNKNOWN' || refund.status==='ABNORMAL' || refund.status==='CLOSED'}}">渠道结果需财务核实，请勿重复申请</text></view>
     </view>
@@ -20,4 +23,13 @@
     <view class="help-note"><text>售后说明</text><text>服务开始后及争议退款请联系人工客服，不能自动套用开始前退款规则。</text><button open-type="contact" show-message-card session-from="orders-footer">联系在线客服</button></view>
   </view>
   <view class="safe-bottom" />
+  <view wx:if="{{reviewOpen}}" class="review-mask" bindtap="closeReview">
+    <view class="review-sheet" catchtap="keepReviewOpen">
+      <view class="review-sheet-head"><view><text>评价本次服务</text><text>评价提交审核后，通过审核才会同步到技师公开资料</text></view><text bindtap="closeReview">×</text></view>
+      <view class="rating-row"><button wx:for="{{reviewRatings}}" wx:key="*this" data-rating="{{item}}" bindtap="selectReviewRating" class="{{reviewRating>=item?'selected':''}}">★</button></view>
+      <textarea maxlength="1000" value="{{reviewContent}}" bindinput="reviewContentChanged" placeholder="请如实填写服务感受（至少2个字）" />
+      <button class="primary submit-review" bindtap="submitReview" loading="{{!!busy}}" disabled="{{!!busy}}">提交评价审核</button>
+      <text class="review-disclosure">仅已完成的本人订单可评价，每单限一次；平台不生成或补写评论，审核通过后才公开。</text>
+    </view>
+  </view>
 </view>

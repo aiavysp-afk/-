@@ -367,6 +367,8 @@ Page({
             const quote = await (0, api_1.api)("/orders/quote", "POST", {
                 reservationId: this.data.reservationId,
             });
+            if (quote.travelFeeFen !== 0)
+                throw new Error("平台承诺技师免出行费，当前报价异常，已阻止提交");
             this.setData({ quoteDetails: (0, booking_1.quoteDisplay)(quote) });
             wx.showToast({ title: "价格已由服务器核定", icon: "success" });
         }
@@ -418,6 +420,15 @@ Page({
                     ? { addressVerificationId: this.data.addressVerificationId }
                     : {}),
             }, this.data.orderKey);
+            if (order.travelFeeFen !== 0) {
+                wx.showModal({
+                    title: "订单价格异常",
+                    content: "平台承诺免出行费，该订单未通过金额复核，不会调起支付。请在订单页联系客服处理。",
+                    showCancel: false,
+                });
+                wx.switchTab({ url: "/pages/orders/index" });
+                return;
+            }
             this.setData({
                 reservationId: "",
                 orderKey: "",

@@ -11,6 +11,7 @@ import { SchedulingModule } from "./scheduling/scheduling.module.js";
 import { IntegrationsModule } from "./integrations/integrations.module.js";
 import { SafetyModule } from "./safety/safety.module.js";
 import { LocationsModule } from "./locations/locations.module.js";
+import { TechniciansModule } from "./technicians/technicians.module.js";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LocationsModule } from "./locations/locations.module.js";
     IntegrationsModule,
     SafetyModule,
     LocationsModule,
+    TechniciansModule,
   ],
   controllers: [PublicController],
 })

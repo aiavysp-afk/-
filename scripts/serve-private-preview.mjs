@@ -30,7 +30,7 @@ createServer(async (req, res) => {
     }
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname.startsWith("/v1/")) {
-      if (!["GET", "POST"].includes(req.method ?? "")) {
+      if (!["GET", "POST", "PATCH", "DELETE"].includes(req.method ?? "")) {
         res.writeHead(405).end();
         return;
       }
@@ -58,7 +58,7 @@ createServer(async (req, res) => {
               ? { "Idempotency-Key": req.headers["idempotency-key"] }
               : {}),
           },
-          ...(req.method === "POST" ? { body: Buffer.concat(parts) } : {}),
+          ...(req.method !== "GET" ? { body: Buffer.concat(parts) } : {}),
           redirect: "error",
           signal: AbortSignal.timeout(35_000),
         },

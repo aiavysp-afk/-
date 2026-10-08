@@ -39,6 +39,11 @@ Page({
         loggedIn: false,
         phoneVerified: false,
         showEmptyOrders: false,
+        reviewOpen: false,
+        reviewOrderId: "",
+        reviewRating: 5,
+        reviewRatings: [1, 2, 3, 4, 5],
+        reviewContent: "",
     },
     async onShow() {
         ordersPageVisible = true;
@@ -149,6 +154,15 @@ Page({
                     technicianLocation,
                     technicianLocationLabel: (_a = technicianLocationStatuses[technicianLocation.status]) !== null && _a !== void 0 ? _a : "技师位置状态待更新",
                     technicianLocationAvailable: Boolean(technicianLocation.location),
+                    removable: ["CANCELLED", "REFUNDED"].includes(order.status),
+                    reviewAvailable: order.status === "COMPLETED" && order.reviewStatus === null,
+                    reviewStatusLabel: order.reviewStatus === "PENDING_REVIEW"
+                        ? "评价待审核"
+                        : order.reviewStatus === "PUBLISHED"
+                            ? "评价已公开"
+                            : order.reviewStatus === "HIDDEN"
+                                ? "评价未公开"
+                                : "",
                 };
             }));
             this.setData({ orders: rows });
@@ -166,6 +180,60 @@ Page({
     },
     verifyPhone() {
         (0, auth_1.goToPhoneVerification)();
+    },
+    openReview(e) {
+        const order = this.data.orders.find((row) => row.id === e.currentTarget.dataset.id);
+        if (!(order === null || order === void 0 ? void 0 : order.reviewAvailable)) {
+            this.fail(new Error("只有已完成订单可以评价"));
+            return;
+        }
+        this.setData({
+            reviewOpen: true,
+            reviewOrderId: order.id,
+            reviewRating: 5,
+            reviewContent: "",
+            error: "",
+        });
+    },
+    closeReview() {
+        if (this.data.busy)
+            return;
+        this.setData({ reviewOpen: false, reviewOrderId: "", reviewContent: "" });
+    },
+    keepReviewOpen() { },
+    selectReviewRating(e) {
+        const rating = Number(e.currentTarget.dataset.rating);
+        if (Number.isInteger(rating) && rating >= 1 && rating <= 5)
+            this.setData({ reviewRating: rating });
+    },
+    reviewContentChanged(e) {
+        this.setData({ reviewContent: e.detail.value });
+    },
+    async submitReview() {
+        if (this.data.busy || !this.data.reviewOrderId)
+            return;
+        const content = this.data.reviewContent.trim();
+        if (content.length < 2) {
+            wx.showToast({ title: "请至少填写2个字的真实评价", icon: "none" });
+            return;
+        }
+        const body = {
+            rating: this.data.reviewRating,
+            content,
+        };
+        this.setData({ busy: this.data.reviewOrderId, error: "" });
+        try {
+            await (0, api_1.api)(`/orders/${this.data.reviewOrderId}/reviews`, "POST", body);
+            this.setData({ reviewOpen: false, reviewOrderId: "", reviewContent: "" });
+            wx.showToast({ title: "评价已提交审核", icon: "success" });
+            await this.load();
+        }
+        catch (error) {
+            this.fail(error);
+        }
+        finally {
+            this.setData({ busy: "" });
+        }
     },
     async action(e) {
         var _a;
@@ -331,6 +399,22 @@ Page({
                     address: order === null || order === void 0 ? void 0 : order.technicianLocationLabel,
                     scale: 16,
                 });
+            }
+            else if (action === "remove") {
+                const order = this.data.orders.find((row) => row.id === id);
+                if (!(order === null || order === void 0 ? void 0 : order.removable))
+                    throw new Error("只能移除已取消或已退款的订单");
+                const confirmed = await new Promise((resolve) => wx.showModal({
+                    title: "从我的订单移除？",
+                    content: "订单将从你的列表隐藏，但平台仍会依法保留订单、退款与审计记录，不会硬删除。",
+                    confirmText: "确认移除",
+                    success: (result) => resolve(result.confirm === true),
+                    fail: () => resolve(false),
+                }));
+                if (!confirmed)
+                    return;
+                await (0, api_1.api)(`/orders/${id}`, "DELETE");
+                wx.showToast({ title: "已从列表移除", icon: "success" });
             }
             await this.load();
         }

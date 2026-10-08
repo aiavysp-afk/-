@@ -203,6 +203,12 @@ export const OrderStatusSchema = z.enum([
   "REFUNDED",
 ]);
 
+export const TechnicianReviewStatusSchema = z.enum([
+  "PENDING_REVIEW",
+  "PUBLISHED",
+  "HIDDEN",
+]);
+
 export const OrderQuoteSchema = z.object({
   reservationId: z.string(),
   serviceAmountFen: MoneyFenSchema,
@@ -225,6 +231,7 @@ export const OrderViewSchema = z.object({
   travelFeeFen: MoneyFenSchema,
   discountFen: MoneyFenSchema,
   payableFen: MoneyFenSchema,
+  reviewStatus: TechnicianReviewStatusSchema.nullable(),
   paymentExpiresAt: IsoDateTimeSchema.nullable(),
   createdAt: IsoDateTimeSchema,
 });
@@ -428,6 +435,92 @@ export const AdminTechnicianBoardSchema = z.object({
   timeZone: z.literal("Asia/Shanghai"),
   generatedAt: IsoDateTimeSchema,
   technicians: z.array(AdminTechnicianSchema),
+});
+
+export const TechnicianProfileStatusSchema = z.enum([
+  "DRAFT",
+  "PENDING_REVIEW",
+  "APPROVED",
+  "PUBLISHED",
+  "REJECTED",
+]);
+
+const PublicHttpsUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(2_048)
+  .refine((value) => value.startsWith("https://"), "仅允许 HTTPS 资源地址");
+
+export const TechnicianProfileUpdateSchema = z
+  .object({
+    publicName: z.string().trim().min(2).max(40).optional(),
+    avatarUrl: PublicHttpsUrlSchema.nullable().optional(),
+    galleryUrls: z.array(PublicHttpsUrlSchema).max(12).optional(),
+    introduction: z.string().trim().max(2_000).optional(),
+    specialties: z
+      .array(z.string().trim().min(1).max(40))
+      .max(20)
+      .optional(),
+    serviceYears: z.number().int().min(0).max(60).nullable().optional(),
+    certificates: z
+      .array(z.string().trim().min(1).max(120))
+      .max(20)
+      .optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "至少提供一个可更新字段");
+
+export const TechnicianReviewCreateSchema = z
+  .object({
+    rating: z.number().int().min(1).max(5),
+    content: z.string().trim().min(2).max(1_000),
+  })
+  .strict();
+
+export const TechnicianReviewSchema = z.object({
+  id: z.string(),
+  technicianId: z.string(),
+  customerAlias: z.string(),
+  rating: z.number().int().min(1).max(5),
+  content: z.string(),
+  createdAt: IsoDateTimeSchema,
+});
+
+export const AdminTechnicianReviewSchema = TechnicianReviewSchema.extend({
+  orderId: z.string(),
+  status: TechnicianReviewStatusSchema,
+  updatedAt: IsoDateTimeSchema,
+});
+
+export const TechnicianReviewSummarySchema = z.object({
+  averageRating: z.number().min(1).max(5).nullable(),
+  reviewCount: z.number().int().nonnegative(),
+  completedOrders: z.number().int().nonnegative(),
+});
+
+export const TechnicianProfileSchema = z.object({
+  technicianId: z.string(),
+  displayName: z.string(),
+  publicName: z.string(),
+  avatarUrl: PublicHttpsUrlSchema.nullable(),
+  galleryUrls: z.array(PublicHttpsUrlSchema),
+  introduction: z.string(),
+  specialties: z.array(z.string()),
+  serviceYears: z.number().int().nonnegative().nullable(),
+  certificates: z.array(z.string()),
+  reviewSummary: TechnicianReviewSummarySchema,
+  recentReviews: z.array(TechnicianReviewSchema),
+  status: TechnicianProfileStatusSchema,
+  rejectionReason: z.string().nullable(),
+  freeTravelFee: z.literal(true),
+  travelFeeFen: z.literal(0),
+  updatedAt: IsoDateTimeSchema,
+});
+
+export const OrderHideResultSchema = z.object({
+  orderId: z.string(),
+  hiddenAt: IsoDateTimeSchema,
 });
 
 export const AdminShiftSchema = z.object({
@@ -879,6 +972,27 @@ export type DispatchAssignmentResult = z.infer<
 export type AdminTechnicianShift = z.infer<typeof AdminTechnicianShiftSchema>;
 export type AdminTechnician = z.infer<typeof AdminTechnicianSchema>;
 export type AdminTechnicianBoard = z.infer<typeof AdminTechnicianBoardSchema>;
+export type TechnicianProfileStatus = z.infer<
+  typeof TechnicianProfileStatusSchema
+>;
+export type TechnicianProfileUpdate = z.infer<
+  typeof TechnicianProfileUpdateSchema
+>;
+export type TechnicianReviewCreate = z.infer<
+  typeof TechnicianReviewCreateSchema
+>;
+export type TechnicianReviewStatus = z.infer<
+  typeof TechnicianReviewStatusSchema
+>;
+export type TechnicianReview = z.infer<typeof TechnicianReviewSchema>;
+export type AdminTechnicianReview = z.infer<
+  typeof AdminTechnicianReviewSchema
+>;
+export type TechnicianReviewSummary = z.infer<
+  typeof TechnicianReviewSummarySchema
+>;
+export type TechnicianProfile = z.infer<typeof TechnicianProfileSchema>;
+export type OrderHideResult = z.infer<typeof OrderHideResultSchema>;
 export type AdminShift = z.infer<typeof AdminShiftSchema>;
 export type AdminServiceArea = z.infer<typeof AdminServiceAreaSchema>;
 export type AdminReadiness = z.infer<typeof AdminReadinessSchema>;

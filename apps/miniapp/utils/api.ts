@@ -5,7 +5,7 @@ import {
 } from "./auth";
 export function api<T>(
   path: string,
-  method: "GET" | "POST" = "GET",
+  method: "GET" | "POST" | "DELETE" = "GET",
   data?: unknown,
   key?: string,
 ): Promise<T> {

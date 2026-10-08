@@ -77,6 +77,30 @@ describe("AccessControlService", () => {
     ).toBe(false);
   });
 
+  it("allows operators to manage technician profiles only in their organization", () => {
+    expect(
+      access.hasPermission(
+        principal(UserRole.OPERATOR),
+        "technicians.manage",
+        "org-a",
+      ),
+    ).toBe(true);
+    expect(
+      access.hasPermission(
+        principal(UserRole.OPERATOR),
+        "technicians.manage",
+        "org-b",
+      ),
+    ).toBe(false);
+    expect(
+      access.hasPermission(
+        principal(UserRole.DISPATCHER),
+        "technicians.manage",
+        "org-a",
+      ),
+    ).toBe(false);
+  });
+
   it("derives audit scope from memberships instead of a client supplied organization", () => {
     const operator = principal(UserRole.OPERATOR, "org-a");
     operator.memberships.push({

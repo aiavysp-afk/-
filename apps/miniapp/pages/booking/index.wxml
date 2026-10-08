@@ -63,7 +63,7 @@
     <view class="panel price-panel">
       <view class="panel-head"><view><text class="panel-title">价格明细</text><text class="panel-note">最终金额由服务器核价，不使用前端估算</text></view><text class="quote-badge">{{quoteDetails?'已核价':'待核价'}}</text></view>
       <view class="price-row"><text>服务项目费</text><text>¥{{quoteDetails?quoteDetails.serviceAmount:price}}</text></view>
-      <view class="price-row"><text>出行费</text><text>{{quoteDetails?'¥'+quoteDetails.travelFee:'待地址核价'}}</text></view>
+      <view class="price-row"><text>出行费</text><text class="free-travel">免出行费（¥0.00）</text></view>
       <view class="price-row discount"><text>优惠减免</text><text>{{quoteDetails?'-¥'+quoteDetails.discount:'待优惠模块接入'}}</text></view>
       <view class="price-total"><text>应付合计</text><view><text>¥</text><text>{{quoteDetails?quoteDetails.payable:price}}</text></view></view>
       <text wx:if="{{!quoteDetails}}" class="quote-tip">填写完整预约信息后，先点击下方按钮获取服务器正式报价。</text>

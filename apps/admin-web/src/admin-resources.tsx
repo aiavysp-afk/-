@@ -15,15 +15,30 @@ import type {
   AdminServiceArea,
   AdminShift,
   AdminTechnicianBoard,
+  AdminTechnicianReview,
   AuditLogEntry,
+  TechnicianProfile,
+  TechnicianProfileUpdate,
 } from "@zydj/contracts";
+import {
+  adminTechnicianProfilePaths,
+  profileStatusLabels,
+  profileUpdateFrom,
+  reviewStatusLabels,
+  splitProfileList,
+} from "./technician-profile";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 
-async function request<T>(path: string, token: string, body?: object) {
+async function request<T>(
+  path: string,
+  token: string,
+  body?: object,
+  method: "POST" | "PATCH" = "POST",
+) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: body ? "POST" : "GET",
+    method: body ? method : "GET",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -110,6 +125,7 @@ export function TechniciansWorkspace({
   const [board, setBoard] = useState<AdminTechnicianBoard | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState("");
   const load = useCallback(async () => {
     if (!token || !organizationId) return;
     setLoading(true);
@@ -207,6 +223,12 @@ export function TechniciansWorkspace({
                 账号
               </span>
             </div>
+            <button
+              className="profile-detail-button"
+              onClick={() => setSelectedTechnicianId(technician.id)}
+            >
+              查看与维护公开资料
+            </button>
           </article>
         ))}
       </div>
@@ -214,6 +236,372 @@ export function TechniciansWorkspace({
         <div className="catalog-empty">
           {needle ? "没有匹配的技师" : "当前组织暂无已启用技师"}
         </div>
+      )}
+      {selectedTechnicianId && (
+        <AdminTechnicianProfilePanel
+          token={token}
+          organizationId={organizationId}
+          technicianId={selectedTechnicianId}
+          onClose={() => setSelectedTechnicianId("")}
+        />
+      )}
+    </section>
+  );
+}
+
+function AdminTechnicianProfilePanel({
+  token,
+  organizationId,
+  technicianId,
+  onClose,
+}: {
+  token: string;
+  organizationId: string;
+  technicianId: string;
+  onClose: () => void;
+}) {
+  const [profile, setProfile] = useState<TechnicianProfile | null>(null);
+  const [draft, setDraft] = useState<TechnicianProfileUpdate | null>(null);
+  const [reviews, setReviews] = useState<AdminTechnicianReview[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [reviewSavingId, setReviewSavingId] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const profilePaths = adminTechnicianProfilePaths(
+    organizationId,
+    technicianId,
+  );
+  const { profile: profilePath, reviews: reviewsPath } = profilePaths;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const [value, reviewRows] = await Promise.all([
+        request<TechnicianProfile>(profilePath, token),
+        request<AdminTechnicianReview[]>(reviewsPath, token),
+      ]);
+      setProfile(value);
+      setDraft(profileUpdateFrom(value));
+      setReviews(reviewRows);
+    } catch (caught) {
+      setProfile(null);
+      setDraft(null);
+      setReviews([]);
+      setError(caught instanceof Error ? caught.message : "技师资料读取失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [profilePath, reviewsPath, token]);
+
+  useEffect(() => void load(), [load]);
+
+  async function saveProfile(showConfirmation = true) {
+    if (!draft || saving) return null;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const value = await request<TechnicianProfile>(
+        profilePath,
+        token,
+        draft,
+        "PATCH",
+      );
+      setProfile(value);
+      setDraft(profileUpdateFrom(value));
+      if (showConfirmation) setMessage("资料修改已保存并同步到三端数据源。");
+      return value;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "技师资料保存失败");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runWorkflowAction(
+    action: "approve" | "publish" | "unpublish",
+  ) {
+    const labels = {
+      approve: "确认资料内容与真人授权、资质核验结果一致并通过审核？",
+      publish: "确认将这份资料公开给客户端客户查看？",
+      unpublish: "确认暂停公开这份技师资料？",
+    } as const;
+    if (!window.confirm(labels[action])) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const value = await request<TechnicianProfile>(
+        profilePaths.profileAction(action),
+        token,
+        {},
+      );
+      setProfile(value);
+      setDraft(profileUpdateFrom(value));
+      setMessage(
+        action === "approve"
+          ? "审核已通过，仍需单独发布才会对客户公开。"
+          : action === "publish"
+            ? "资料已公开，客户端将读取同一份资料。"
+            : "资料已停止公开，历史订单和评价未删除。",
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "资料状态更新失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function moderateReview(
+    review: AdminTechnicianReview,
+    action: "publish" | "hide",
+  ) {
+    const confirmation =
+      action === "publish"
+        ? "确认该客户评价符合平台用户内容规范并公开展示？"
+        : "确认隐藏该客户评价？订单和原始评价记录仍会保留。";
+    if (!window.confirm(confirmation)) return;
+    setReviewSavingId(review.id);
+    setError("");
+    setMessage("");
+    try {
+      const updated = await request<AdminTechnicianReview>(
+        profilePaths.reviewAction(review.id, action),
+        token,
+        {},
+      );
+      setReviews((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setMessage(
+        action === "publish"
+          ? "评价已通过 UGC 审核并公开展示。"
+          : "评价已隐藏，原始内容和关联订单仍保留。",
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "评价审核失败");
+    } finally {
+      setReviewSavingId("");
+    }
+  }
+
+  return (
+    <section className="panel technician-profile-panel">
+      <div className="technician-profile-head">
+        <div>
+          <span className="eyebrow">UNIFIED PUBLIC PROFILE</span>
+          <h2>技师公开资料审核</h2>
+          <p>
+            技师端填报、管理后台审核、客户端展示共用同一数据源；评价来自完成订单，只读不可改。
+          </p>
+        </div>
+        <div className="technician-profile-head-actions">
+          <button className="ghost-action" disabled={loading} onClick={() => void load()}>
+            <RefreshCw size={15} className={loading ? "spinning" : ""} />
+            刷新
+          </button>
+          <button className="ghost-action" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+      {loading && <div className="catalog-empty">正在读取技师资料…</div>}
+      {error && <div className="catalog-error">{error}</div>}
+      {message && <div className="profile-admin-success">{message}</div>}
+      {profile && draft && (
+        <>
+          <div className="profile-admin-summary">
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt={`${profile.publicName}的公开头像`} />
+            ) : (
+              <div className="resource-icon"><UserRound size={22} /></div>
+            )}
+            <div>
+              <strong>{profile.publicName || profile.displayName}</strong>
+              <small>账号名称：{profile.displayName}</small>
+              <span>所有技师免出行费 · ¥{(profile.travelFeeFen / 100).toFixed(2)}</span>
+            </div>
+            <em className={`profile-admin-status status-${profile.status.toLowerCase()}`}>
+              {profileStatusLabels[profile.status]}
+            </em>
+          </div>
+          {profile.rejectionReason && (
+            <div className="catalog-error">最近退回原因：{profile.rejectionReason}</div>
+          )}
+          <div className="profile-admin-layout">
+            <div className="profile-admin-form">
+              <label>
+                客户端公开称呼
+                <input
+                  maxLength={40}
+                  value={draft.publicName ?? ""}
+                  onChange={(event) =>
+                    setDraft((current) => current ? { ...current, publicName: event.target.value } : current)
+                  }
+                />
+              </label>
+              <label>
+                头像 HTTPS 地址
+                <input
+                  inputMode="url"
+                  value={draft.avatarUrl ?? ""}
+                  placeholder="只能使用已取得本人授权的照片"
+                  onChange={(event) =>
+                    setDraft((current) => current ? { ...current, avatarUrl: event.target.value || null } : current)
+                  }
+                />
+              </label>
+              <label className="profile-admin-wide">
+                真实服务简介
+                <textarea
+                  rows={5}
+                  maxLength={2000}
+                  value={draft.introduction ?? ""}
+                  onChange={(event) =>
+                    setDraft((current) => current ? { ...current, introduction: event.target.value } : current)
+                  }
+                />
+              </label>
+              <label>
+                擅长项目（逗号或换行分隔）
+                <textarea
+                  rows={4}
+                  value={(draft.specialties ?? []).join("\n")}
+                  onChange={(event) =>
+                    setDraft((current) => current ? { ...current, specialties: splitProfileList(event.target.value) } : current)
+                  }
+                />
+              </label>
+              <label>
+                从业年限
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={draft.serviceYears ?? ""}
+                  onChange={(event) =>
+                    setDraft((current) => current ? {
+                      ...current,
+                      serviceYears: event.target.value ? Number(event.target.value) : null,
+                    } : current)
+                  }
+                />
+              </label>
+              <label className="profile-admin-wide">
+                生活照/工作照 HTTPS 地址（每行一张）
+                <textarea
+                  rows={4}
+                  value={(draft.galleryUrls ?? []).join("\n")}
+                  onChange={(event) =>
+                    setDraft((current) => current ? { ...current, galleryUrls: splitProfileList(event.target.value) } : current)
+                  }
+                />
+              </label>
+              <label className="profile-admin-wide">
+                已核验资质展示名称（每行一项）
+                <textarea
+                  rows={4}
+                  value={(draft.certificates ?? []).join("\n")}
+                  placeholder="只填写已核验的资质名称，不填写证件号"
+                  onChange={(event) =>
+                    setDraft((current) => current ? { ...current, certificates: splitProfileList(event.target.value) } : current)
+                  }
+                />
+                <small>不得录入身份证号、证件号码或未经核验的资质。</small>
+              </label>
+              <div className="profile-admin-actions profile-admin-wide">
+                <button className="ghost-action" disabled={saving} onClick={() => void saveProfile()}>
+                  {saving ? "保存中…" : "保存修改"}
+                </button>
+                <button
+                  className="primary-action compact"
+                  disabled={saving || profile.status !== "PENDING_REVIEW"}
+                  onClick={() => void runWorkflowAction("approve")}
+                >
+                  审核通过
+                </button>
+                {profile.status === "PUBLISHED" ? (
+                  <button className="danger-action" disabled={saving} onClick={() => void runWorkflowAction("unpublish")}>
+                    暂停公开
+                  </button>
+                ) : (
+                  <button
+                    className="primary-action compact"
+                    disabled={saving || profile.status !== "APPROVED"}
+                    onClick={() => void runWorkflowAction("publish")}
+                  >
+                    发布到客户端
+                  </button>
+                )}
+              </div>
+            </div>
+            <aside className="profile-admin-reviews">
+              <div>
+                <span>客户评价 · UGC 审核</span>
+                <strong>{profile.reviewSummary.averageRating?.toFixed(1) ?? "暂无"}</strong>
+                <small>
+                  {profile.reviewSummary.reviewCount} 条已公开 · {profile.reviewSummary.completedOrders} 个已完成订单
+                </small>
+                <div className="review-status-summary">
+                  <span>待审 {reviews.filter((review) => review.status === "PENDING_REVIEW").length}</span>
+                  <span>公开 {reviews.filter((review) => review.status === "PUBLISHED").length}</span>
+                  <span>隐藏 {reviews.filter((review) => review.status === "HIDDEN").length}</span>
+                </div>
+              </div>
+              {reviews.map((review) => (
+                <article className={`review-admin-item status-${review.status.toLowerCase()}`} key={review.id}>
+                  <header>
+                    <div>
+                      <b>{review.customerAlias}</b>
+                      <small>
+                        {reviewStatusLabels[review.status]}
+                      </small>
+                    </div>
+                    <span>{"★".repeat(review.rating)}</span>
+                  </header>
+                  <p>{review.content}</p>
+                  <footer>
+                    <time>
+                      {new Date(review.createdAt).toLocaleDateString("zh-CN")}
+                    </time>
+                    <div>
+                      {review.status !== "PUBLISHED" && (
+                        <button
+                          className="review-publish-action"
+                          disabled={reviewSavingId === review.id}
+                          onClick={() => void moderateReview(review, "publish")}
+                        >
+                          {reviewSavingId === review.id
+                            ? "处理中…"
+                            : review.status === "HIDDEN"
+                              ? "重新公开"
+                              : "审核并公开"}
+                        </button>
+                      )}
+                      {review.status !== "HIDDEN" && (
+                        <button
+                          className="review-hide-action"
+                          disabled={reviewSavingId === review.id}
+                          onClick={() => void moderateReview(review, "hide")}
+                        >
+                          {reviewSavingId === review.id ? "处理中…" : "隐藏"}
+                        </button>
+                      )}
+                    </div>
+                  </footer>
+                </article>
+              ))}
+              {reviews.length === 0 && (
+                <div className="catalog-empty">暂无客户评价待处理</div>
+              )}
+              <p className="review-moderation-note">
+                评价正文来自已完成订单。管理员只能审核公开或隐藏，不能改写客户内容。
+              </p>
+            </aside>
+          </div>
+        </>
       )}
     </section>
   );

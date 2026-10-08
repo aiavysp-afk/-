@@ -361,6 +361,10 @@
   justify-content: center;
   width: 48px;
 }
+.profile-avatar-image {
+  border: 1px solid #ffffff3d;
+  object-fit: cover;
+}
 .profile-card strong,
 .profile-card span {
   display: block;
@@ -375,6 +379,176 @@
 }
 .profile-page .earnings-card {
   margin-top: 14px;
+}
+.profile-editor,
+.profile-reviews {
+  background: #fff;
+  border: 1px solid #ebeae4;
+  border-radius: 18px;
+  margin-top: 14px;
+  padding: 16px;
+}
+.profile-editor-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.profile-editor-heading h2 {
+  font-family: "Noto Serif SC";
+  font-size: 15px;
+  margin: 0;
+}
+.profile-editor-heading p {
+  color: #7e8b86;
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 4px 0 0;
+}
+.profile-status {
+  background: #f1ead6;
+  border-radius: 999px;
+  color: #80652f;
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-style: normal;
+  padding: 5px 8px;
+}
+.profile-status.status-published,
+.profile-status.status-approved {
+  background: #e4f1eb;
+  color: #27634f;
+}
+.profile-status.status-rejected {
+  background: #f7e7e2;
+  color: #914d43;
+}
+.profile-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.profile-form label {
+  color: #33453f;
+  display: grid;
+  font-size: 10px;
+  font-weight: 600;
+  gap: 6px;
+}
+.profile-form input,
+.profile-form textarea {
+  background: #f8f8f4;
+  border: 1px solid #dfe3df;
+  border-radius: 10px;
+  color: #263730;
+  font: 500 11px/1.6 "Noto Sans SC";
+  min-width: 0;
+  padding: 10px 11px;
+  resize: vertical;
+  width: 100%;
+}
+.profile-form input:disabled,
+.profile-form textarea:disabled {
+  background: #f0f0ec;
+  color: #7b8581;
+}
+.profile-form label > small {
+  color: #8d9793;
+  font-size: 8px;
+  font-weight: 400;
+}
+.profile-form-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+.profile-form-actions button {
+  background: #23604f;
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  font: 600 10px "Noto Sans SC";
+  padding: 12px 8px;
+}
+.profile-form-actions button.secondary {
+  background: #edf1ee;
+  color: #315d50;
+}
+.profile-form-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.profile-form-error,
+.profile-form-success,
+.profile-review-note,
+.profile-empty {
+  border-radius: 10px;
+  font-size: 9px;
+  line-height: 1.6;
+  margin-top: 12px;
+  padding: 10px;
+}
+.profile-form-error,
+.profile-review-note {
+  background: #f8e9e5;
+  color: #914d43;
+}
+.profile-form-success {
+  background: #e8f2ed;
+  color: #28604f;
+}
+.profile-review-note strong,
+.profile-review-note p {
+  display: block;
+  margin: 0;
+}
+.profile-review-note p {
+  margin-top: 3px;
+}
+.profile-empty {
+  background: #f6f6f2;
+  color: #7c8883;
+  text-align: center;
+}
+.profile-reviews .profile-editor-heading > strong {
+  color: #a77f37;
+  font-family: "Noto Serif SC";
+  font-size: 19px;
+  text-align: right;
+}
+.profile-reviews .profile-editor-heading > strong small {
+  color: #8b9591;
+  display: block;
+  font: 400 8px "Noto Sans SC";
+  margin-top: 2px;
+}
+.profile-reviews article {
+  border-top: 1px solid #eceeea;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.profile-reviews article div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.profile-reviews article b {
+  font-size: 10px;
+}
+.profile-reviews article span {
+  color: #ca9a3e;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.profile-reviews article p {
+  color: #4d5d57;
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 7px 0 3px;
+}
+.profile-reviews article time {
+  color: #9aa39f;
+  font-size: 8px;
 }
 .privacy-card {
   align-items: flex-start;

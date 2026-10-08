@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -86,6 +87,14 @@ export class OrdersController {
     @Param("id") id: string,
   ) {
     return { data: await this.orders.cancelOwn(principal, id) };
+  }
+
+  @Delete(":id")
+  async hide(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("id") id: string,
+  ) {
+    return { data: await this.orders.hideOwn(principal, id) };
   }
 
   @Post(":id/confirm-completion")

@@ -16,10 +16,7 @@ Page({
             return;
         }
         try {
-            const therapists = await (0, therapists_1.loadPublicTherapists)();
-            const therapist = therapists.find((item) => item.id === options.id);
-            if (!therapist)
-                throw new Error("该技师当前没有公开可约排班");
+            const therapist = await (0, therapists_1.loadPublicTherapist)(options.id);
             this.setData({ therapist });
         }
         catch (error) {

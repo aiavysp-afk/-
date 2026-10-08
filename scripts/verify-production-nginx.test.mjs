@@ -7,6 +7,32 @@ const config = readFileSync(
   "utf8",
 );
 
+function locationBlock(declaration) {
+  const lines = config.split(/\r?\n/);
+  const start = lines.findIndex(
+    (line) => line.trim() === `location ${declaration} {`,
+  );
+  assert.notEqual(start, -1, `missing nginx location: ${declaration}`);
+
+  let depth = 0;
+  for (let index = start; index < lines.length; index += 1) {
+    depth += (lines[index].match(/\{/g) ?? []).length;
+    depth -= (lines[index].match(/\}/g) ?? []).length;
+    if (depth === 0) return lines.slice(start, index + 1).join("\n");
+  }
+
+  assert.fail(`unterminated nginx location: ${declaration}`);
+}
+
+function assertAllowedMethods(declaration, methods) {
+  const block = locationBlock(declaration);
+  assert.ok(
+    block.includes(`limit_except ${methods.join(" ")} { deny all; }`),
+    `${declaration} must allow only ${methods.join(", ")}`,
+  );
+  return block;
+}
+
 test("production nginx exposes every customer authentication route", () => {
   for (const route of [
     "wechat-miniapp",
@@ -57,6 +83,48 @@ test("production nginx exposes exact payment creation and callback routes", () =
   assert.match(config, /limit_except POST \{ deny all; \}/);
 });
 
+test("production nginx keeps public technician reads separate from authenticated writes", () => {
+  const publicProfiles = assertAllowedMethods(
+    "~ ^/v1/technicians(?:/[^/]+(?:/reviews)?)?$",
+    ["GET"],
+  );
+  assert.doesNotMatch(publicProfiles, /admin|workbench|orders/);
+
+  assertAllowedMethods("= /v1/technician/workbench/profile", ["GET", "PATCH"]);
+  assertAllowedMethods(
+    "= /v1/technician/workbench/profile/submit-review",
+    ["POST"],
+  );
+  assertAllowedMethods("~ ^/v1/orders/[^/]+/reviews$", ["POST"]);
+
+  assert.doesNotMatch(config, /location\s+\/v1\/technicians\s*\{/);
+  assert.doesNotMatch(config, /technician\/workbench\/profile\/\.\*/);
+});
+
+test("production nginx exposes exact authenticated admin profile and review moderation routes", () => {
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile$",
+    ["GET", "PATCH"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/(?:approve|publish|unpublish)$",
+    ["POST"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/reviews$",
+    ["GET"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/reviews/[^/]+/(?:publish|hide)$",
+    ["POST"],
+  );
+
+  assert.doesNotMatch(
+    config,
+    /location\s+~?\s+\^?\/v1\/admin\/organizations\/\[\^\/\]\+\/technicians\/\[\^\/\]\+\/reviews\/\.\*/,
+  );
+});
+
 test("root-domain maintenance config publishes only the technician client subtree", () => {
   const maintenance = readFileSync(
     new URL("../infra/maintenance/mtsc.top.conf", import.meta.url),
@@ -79,6 +147,7 @@ test("root-domain maintenance config publishes only the technician client subtre
     ),
   );
   assert.ok(maintenance.includes("connect-src https://api.mtsc.top"));
+  assert.ok(maintenance.includes("img-src 'self' data: https:"));
   assert.match(maintenance, /location \/ \{ error_page 503/);
 });
 

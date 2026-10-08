@@ -110,11 +110,25 @@ test("API proxy forwards authorization and exact idempotency/body but no arbitra
   assert.equal(captured.headers["idempotency-key"], "synthetic-key");
   assert.equal(captured.body, '{"fixture":true}');
 });
+test("API proxy supports guarded profile edits and customer soft-delete", async () => {
+  const patchResponse = await fetch(base + "/v1/technician/workbench/profile", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer synthetic" },
+    body: '{"publicName":"已授权技师"}',
+  });
+  assert.equal(patchResponse.status, 200);
+  assert.equal(captured.url, "/v1/technician/workbench/profile");
+  assert.equal(captured.body, '{"publicName":"已授权技师"}');
+
+  const deleteResponse = await fetch(base + "/v1/orders/order-1", {
+    method: "DELETE",
+    headers: { Authorization: "Bearer synthetic" },
+  });
+  assert.equal(deleteResponse.status, 200);
+  assert.equal(captured.url, "/v1/orders/order-1");
+});
 test("unsupported API writes and static POST are refused", async () => {
-  assert.equal(
-    (await fetch(base + "/v1/orders", { method: "DELETE" })).status,
-    405,
-  );
+  assert.equal((await fetch(base + "/v1/orders", { method: "PUT" })).status, 405);
   assert.equal((await fetch(base, { method: "POST" })).status, 405);
 });
 test("SPA subroutes work without exposing other extensions", async () => {

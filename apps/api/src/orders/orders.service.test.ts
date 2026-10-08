@@ -1,5 +1,13 @@
-import { ConflictException, ForbiddenException } from "@nestjs/common";
-import { OrderStatus, ReservationStatus } from "@prisma/client";
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
+import {
+  OrderStatus,
+  ReservationStatus,
+  TechnicianReviewStatus,
+} from "@prisma/client";
 import type { OrderCreate } from "@zydj/contracts";
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -297,6 +305,140 @@ describe("OrdersService", () => {
       where: { id: "reservation-1", status: ReservationStatus.HOLD },
       data: { status: ReservationStatus.RELEASED },
     });
+  });
+
+  it("omits customer-hidden orders from the customer list", async () => {
+    const prisma = {
+      order: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+    await expect(service.listOwn(principal)).resolves.toEqual([]);
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { customerId: principal.userId, customerHiddenAt: null },
+        include: {
+          items: true,
+          technicianReview: { select: { status: true } },
+        },
+      }),
+    );
+  });
+
+  it("returns the existing review status with an owned order", async () => {
+    const prisma = {
+      order: {
+        findUnique: vi.fn().mockResolvedValue(
+          orderRecord({
+            technicianReview: {
+              status: TechnicianReviewStatus.PENDING_REVIEW,
+            },
+          }),
+        ),
+      },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(service.getOwn(principal, "order-1")).resolves.toMatchObject({
+      id: "order-1",
+      reviewStatus: TechnicianReviewStatus.PENDING_REVIEW,
+    });
+    expect(prisma.order.findUnique).toHaveBeenCalledWith({
+      where: { id: "order-1" },
+      include: {
+        items: true,
+        technicianReview: { select: { status: true } },
+      },
+    });
+  });
+
+  it("soft-hides a cancelled order while preserving its server record", async () => {
+    const cancelled = orderRecord({
+      status: OrderStatus.CANCELLED,
+      customerHiddenAt: null,
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(cancelled),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderEvent: { create: vi.fn().mockResolvedValue({}) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+    const now = new Date("2026-10-03T01:00:00.000Z");
+
+    await expect(service.hideOwn(principal, cancelled.id, now)).resolves.toEqual(
+      {
+        orderId: cancelled.id,
+        hiddenAt: now.toISOString(),
+      },
+    );
+    expect(tx.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: cancelled.id,
+        customerId: principal.userId,
+        customerHiddenAt: null,
+        status: { in: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+      },
+      data: { customerHiddenAt: now },
+    });
+    expect(tx.orderEvent.create).toHaveBeenCalledOnce();
+    expect(tx.auditLog.create).toHaveBeenCalledOnce();
+  });
+
+  it("refuses to hide a non-terminal order or reveal an already hidden order", async () => {
+    const active = orderRecord({
+      status: OrderStatus.ASSIGNED,
+      customerHiddenAt: null,
+    });
+    const hidden = orderRecord({
+      status: OrderStatus.CANCELLED,
+      customerHiddenAt: new Date("2026-10-03T01:00:00.000Z"),
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: { findUnique: vi.fn().mockResolvedValueOnce(active) },
+    };
+    const prisma = {
+      order: { findUnique: vi.fn().mockResolvedValue(hidden) },
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(service.hideOwn(principal, active.id)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(service.getOwn(principal, hidden.id)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
   it("does not release a reservation when a WeChat intent appeared while cancellation waited for the order lock", async () => {
     const current = orderRecord();
