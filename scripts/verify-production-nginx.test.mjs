@@ -23,3 +23,9 @@ test("production nginx keeps unknown API paths closed", () => {
   assert.match(config, /return 404/);
   assert.doesNotMatch(config, /location \/v1\/ \{/);
 });
+
+test("production nginx exposes exact payment creation and callback routes", () => {
+  assert.ok(config.includes("/v1/orders/[^/]+/payment-intent"));
+  assert.ok(config.includes("/v1/payments/wechat/(?:notify|refund-notify)"));
+  assert.match(config, /limit_except POST \{ deny all; \}/);
+});
