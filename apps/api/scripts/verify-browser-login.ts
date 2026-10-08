@@ -157,7 +157,7 @@ try {
   const preview = await call("/auth/browser-login/inspect", staff.token, {
     pairCode: p.pairCode,
   });
-  assert.equal(preview.audience, "中原到家运营后台");
+  assert.equal(preview.audience, "中原到家工作人员端");
   assert.equal(JSON.stringify(preview).includes(p.confirmationCode), false);
   await call("/auth/browser-login/claim", "", proof(p), 409);
   await call(
