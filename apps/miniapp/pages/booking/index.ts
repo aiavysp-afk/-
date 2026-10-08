@@ -20,13 +20,34 @@ import {
   reverseGeocode,
   suggestAddress,
 } from "../../utils/amap";
+import {
+  AppointmentMode,
+  pickSlotIndex,
+  quoteDisplay,
+  shanghaiDate,
+} from "../../utils/booking";
+
+type QuoteDisplay = ReturnType<typeof quoteDisplay>;
+
+const categoryNames: Record<ServiceItem["category"], string> = {
+  MASSAGE: "按摩舒缓",
+  SPA_RELAXATION: "SPA 放松",
+  FOOT_CARE: "足部养护",
+};
+
 Page({
   data: {
     service: null as ServiceItem | null,
     price: "",
+    categoryName: "",
+    quantity: 1,
+    appointmentMode: "soon" as AppointmentMode,
     date: "",
+    minDate: "",
+    maxDate: "",
     slots: [] as (AvailabilitySlot & { label: string; key: string })[],
     selected: -1,
+    selectedSlotLabel: "",
     contactName: "",
     phone: "",
     detail: "",
@@ -47,7 +68,7 @@ Page({
     consent: false,
     reservationId: "",
     orderKey: "",
-    quote: "",
+    quoteDetails: null as QuoteDisplay | null,
     loggedIn: false,
     phoneVerified: false,
     loginBusy: false,
@@ -70,9 +91,10 @@ Page({
       this.setData({
         service,
         price: money(service.priceFen),
-        date: new Date(Date.now() + 8 * 3600_000 + 86400_000)
-          .toISOString()
-          .slice(0, 10),
+        categoryName: categoryNames[service.category],
+        date: shanghaiDate(),
+        minDate: shanghaiDate(),
+        maxDate: shanghaiDate(30),
       });
       await this.loadSlots();
     } catch (error) {
@@ -134,17 +156,18 @@ Page({
       );
       const slotViews = slots.map((slot) => ({
         ...slot,
-        label: shanghaiTime(slot.startsAt),
+        label: shanghaiTime(slot.startsAt).slice(11),
         key: `${slot.therapistId}-${slot.startsAt}`,
       }));
-      const preferredIndex = this.data.preferredTherapistId
-        ? slotViews.findIndex(
-            (slot) => slot.therapistId === this.data.preferredTherapistId,
-          )
-        : -1;
+      const selected = pickSlotIndex(
+        slotViews,
+        this.data.preferredTherapistId,
+        this.data.appointmentMode,
+      );
       this.setData({
         slots: slotViews,
-        selected: preferredIndex,
+        selected,
+        selectedSlotLabel: slotViews[selected]?.label ?? "",
       });
     } catch (error) {
       this.fail(error);
@@ -152,12 +175,47 @@ Page({
   },
   async dateChanged(e: { detail: { value: string } }) {
     if (this.data.reservationId) return;
-    this.setData({ date: e.detail.value });
+    this.setData({
+      date: e.detail.value,
+      selected: -1,
+      selectedSlotLabel: "",
+      quoteDetails: null,
+    });
     await this.loadSlots();
   },
+  async setAppointmentMode(e: {
+    currentTarget: { dataset: { mode: AppointmentMode } };
+  }) {
+    if (this.data.reservationId) return;
+    const appointmentMode = e.currentTarget.dataset.mode;
+    if (appointmentMode === this.data.appointmentMode) return;
+    this.setData({
+      appointmentMode,
+      date:
+        appointmentMode === "soon" ? shanghaiDate() : shanghaiDate(1),
+      selected: -1,
+      selectedSlotLabel: "",
+      quoteDetails: null,
+      error: "",
+    });
+    await this.loadSlots();
+  },
+  quantityNotice() {
+    wx.showToast({
+      title: "当前每笔预约仅支持 1 项服务",
+      icon: "none",
+    });
+  },
   select(e: { currentTarget: { dataset: { index: number } } }) {
-    if (!this.data.reservationId)
-      this.setData({ selected: Number(e.currentTarget.dataset.index) });
+    if (!this.data.reservationId) {
+      const selected = Number(e.currentTarget.dataset.index);
+      this.setData({
+        selected,
+        selectedSlotLabel: this.data.slots[selected]?.label ?? "",
+        quoteDetails: null,
+        error: "",
+      });
+    }
   },
   input(e: {
     currentTarget: { dataset: { field: string } };
@@ -176,6 +234,7 @@ Page({
               addressVerificationId: "",
               latitude: null,
               longitude: null,
+              quoteDetails: null,
             }
           : {}),
       });
@@ -192,6 +251,7 @@ Page({
         longitude: point.longitude,
         coordinateSystem: "GCJ-02",
         addressVerificationId: "",
+        quoteDetails: null,
       });
       wx.showToast({ title: "已定位并转为中文地址", icon: "success" });
     } catch (error) {
@@ -243,15 +303,15 @@ Page({
       coordinateSystem: "GCJ-02",
       suggestions: [],
       addressVerificationId: "",
+      quoteDetails: null,
     });
   },
   consentChanged(e: { detail: { value: string[] } }) {
     this.setData({ consent: e.detail.value.includes("agree") });
   },
-  async create() {
-    if (this.data.busy) return;
-    const slot = this.data.slots[this.data.selected],
-      service = this.data.service;
+  validDraft() {
+    const slot = this.data.slots[this.data.selected];
+    const service = this.data.service;
     if (
       !service ||
       !slot ||
@@ -263,12 +323,19 @@ Page({
       this.fail(
         new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"),
       );
-      return;
+      return null;
     }
     if (this.data.latitude === null || this.data.longitude === null) {
       this.fail(new Error("请先使用定位或高德地址搜索选择上门坐标"));
-      return;
+      return null;
     }
+    return { service, slot };
+  },
+  async prepareOrder() {
+    if (this.data.busy) return;
+    const draft = this.validDraft();
+    if (!draft) return;
+    const { service, slot } = draft;
     this.setData({ busy: true, error: "" });
     try {
       let session = getStoredSession();
@@ -309,11 +376,38 @@ Page({
         );
         this.setData({ addressVerificationId: verification.id });
       }
-      if (!this.data.quote) {
-        const quote = await api<OrderQuote>("/orders/quote", "POST", {
-          reservationId: this.data.reservationId,
+      const quote = await api<OrderQuote>("/orders/quote", "POST", {
+        reservationId: this.data.reservationId,
+      });
+      this.setData({ quoteDetails: quoteDisplay(quote) });
+      wx.showToast({ title: "价格已由服务器核定", icon: "success" });
+    } catch (error) {
+      this.fail(error);
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+  async create() {
+    if (this.data.busy) return;
+    if (!this.data.quoteDetails) {
+      await this.prepareOrder();
+      return;
+    }
+    if (!this.validDraft() || !this.data.reservationId) return;
+    this.setData({ busy: true, error: "" });
+    try {
+      let session = getStoredSession();
+      if (!session) {
+        session = await loginWithWechat();
+        this.setData({
+          loggedIn: true,
+          phoneVerified: session.user.phoneVerified === true,
+          loginError: "",
         });
-        this.setData({ quote: money(quote.payableFen) });
+      }
+      if (needsPhoneVerification(session)) {
+        goToPhoneVerification();
+        return;
       }
       // Once an order request leaves the device, keep the request immutable so
       // an uncertain network result can be retried with the same fingerprint.
@@ -341,6 +435,7 @@ Page({
         reservationId: "",
         orderKey: "",
         addressVerificationId: "",
+        quoteDetails: null,
         orderSubmissionAttempted: false,
       });
       wx.showToast({ title: "订单已创建，请到订单页支付", icon: "none" });
@@ -360,6 +455,7 @@ Page({
       longitude: null,
       suggestions: [],
       addressVerificationId: "",
+      quoteDetails: null,
       orderSubmissionAttempted: false,
     });
   },

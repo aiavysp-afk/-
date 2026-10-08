@@ -1,0 +1,78 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+
+const require = createRequire(import.meta.url);
+const {
+  pickSlotIndex,
+  quoteDisplay,
+  shanghaiDate,
+} = require("../apps/miniapp/utils/booking.js");
+
+const slot = (therapistId, startsAt) => ({
+  therapistId,
+  startsAt,
+  endsAt: new Date(Date.parse(startsAt) + 3_600_000).toISOString(),
+});
+
+test("soon mode chooses the earliest real slot without inventing availability", () => {
+  const slots = [
+    slot("tech-b", "2026-10-08T04:00:00.000Z"),
+    slot("tech-a", "2026-10-08T05:00:00.000Z"),
+  ];
+  assert.equal(pickSlotIndex(slots, "", "soon"), 0);
+  assert.equal(pickSlotIndex(slots, "tech-a", "soon"), 1);
+  assert.equal(pickSlotIndex(slots, "missing-tech", "soon"), -1);
+  assert.equal(pickSlotIndex([], "", "soon"), -1);
+});
+
+test("scheduled mode requires an explicit slot unless a technician was selected", () => {
+  const slots = [slot("tech-a", "2026-10-09T04:00:00.000Z")];
+  assert.equal(pickSlotIndex(slots, "", "schedule"), -1);
+  assert.equal(pickSlotIndex(slots, "tech-a", "schedule"), 0);
+});
+
+test("server quote fields are displayed in yuan with no client-side recalculation", () => {
+  assert.deepEqual(
+    quoteDisplay({
+      reservationId: "hold-1",
+      serviceAmountFen: 19_800,
+      travelFeeFen: 2_000,
+      discountFen: 1_500,
+      payableFen: 20_300,
+      currency: "CNY",
+      moneyUnit: "fen",
+    }),
+    {
+      serviceAmount: "198.00",
+      travelFee: "20.00",
+      discount: "15.00",
+      payable: "203.00",
+    },
+  );
+});
+
+test("Shanghai booking dates do not depend on the device timezone", () => {
+  assert.equal(
+    shanghaiDate(0, Date.parse("2026-10-07T17:00:00.000Z")),
+    "2026-10-08",
+  );
+  assert.equal(
+    shanghaiDate(1, Date.parse("2026-10-07T17:00:00.000Z")),
+    "2026-10-09",
+  );
+});
+
+test("booking page uses a two-step server quote flow and discloses one-item limit", () => {
+  const page = readFileSync(
+    new URL("../apps/miniapp/pages/booking/index.wxml", import.meta.url),
+    "utf8",
+  );
+  assert.match(page, /核对订单与价格/);
+  assert.match(page, /最终金额由服务器核价/);
+  assert.match(page, /当前预约系统每单支持 1 项服务/);
+  assert.match(page, /尽快上门/);
+  assert.match(page, /预约时间/);
+  assert.doesNotMatch(page, /划线原价|虚构优惠|免出行费/);
+});

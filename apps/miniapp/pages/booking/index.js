@@ -3,13 +3,25 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
 const amap_1 = require("../../utils/amap");
+const booking_1 = require("../../utils/booking");
+const categoryNames = {
+    MASSAGE: "按摩舒缓",
+    SPA_RELAXATION: "SPA 放松",
+    FOOT_CARE: "足部养护",
+};
 Page({
     data: {
         service: null,
         price: "",
+        categoryName: "",
+        quantity: 1,
+        appointmentMode: "soon",
         date: "",
+        minDate: "",
+        maxDate: "",
         slots: [],
         selected: -1,
+        selectedSlotLabel: "",
         contactName: "",
         phone: "",
         detail: "",
@@ -30,7 +42,7 @@ Page({
         consent: false,
         reservationId: "",
         orderKey: "",
-        quote: "",
+        quoteDetails: null,
         loggedIn: false,
         phoneVerified: false,
         loginBusy: false,
@@ -53,9 +65,10 @@ Page({
             this.setData({
                 service,
                 price: (0, api_1.money)(service.priceFen),
-                date: new Date(Date.now() + 8 * 3600000 + 86400000)
-                    .toISOString()
-                    .slice(0, 10),
+                categoryName: categoryNames[service.category],
+                date: (0, booking_1.shanghaiDate)(),
+                minDate: (0, booking_1.shanghaiDate)(),
+                maxDate: (0, booking_1.shanghaiDate)(30),
             });
             await this.loadSlots();
         }
@@ -114,6 +127,7 @@ Page({
         });
     },
     async loadSlots() {
+        var _a, _b;
         if (!this.data.service)
             return;
         this.setData({ error: "", selected: -1 });
@@ -121,15 +135,14 @@ Page({
             const slots = await (0, api_1.api)(`/availability/slots?serviceId=${encodeURIComponent(this.data.service.id)}&date=${this.data.date}`);
             const slotViews = slots.map((slot) => ({
                 ...slot,
-                label: (0, api_1.shanghaiTime)(slot.startsAt),
+                label: (0, api_1.shanghaiTime)(slot.startsAt).slice(11),
                 key: `${slot.therapistId}-${slot.startsAt}`,
             }));
-            const preferredIndex = this.data.preferredTherapistId
-                ? slotViews.findIndex((slot) => slot.therapistId === this.data.preferredTherapistId)
-                : -1;
+            const selected = (0, booking_1.pickSlotIndex)(slotViews, this.data.preferredTherapistId, this.data.appointmentMode);
             this.setData({
                 slots: slotViews,
-                selected: preferredIndex,
+                selected,
+                selectedSlotLabel: (_b = (_a = slotViews[selected]) === null || _a === void 0 ? void 0 : _a.label) !== null && _b !== void 0 ? _b : "",
             });
         }
         catch (error) {
@@ -139,12 +152,47 @@ Page({
     async dateChanged(e) {
         if (this.data.reservationId)
             return;
-        this.setData({ date: e.detail.value });
+        this.setData({
+            date: e.detail.value,
+            selected: -1,
+            selectedSlotLabel: "",
+            quoteDetails: null,
+        });
         await this.loadSlots();
     },
+    async setAppointmentMode(e) {
+        if (this.data.reservationId)
+            return;
+        const appointmentMode = e.currentTarget.dataset.mode;
+        if (appointmentMode === this.data.appointmentMode)
+            return;
+        this.setData({
+            appointmentMode,
+            date: appointmentMode === "soon" ? (0, booking_1.shanghaiDate)() : (0, booking_1.shanghaiDate)(1),
+            selected: -1,
+            selectedSlotLabel: "",
+            quoteDetails: null,
+            error: "",
+        });
+        await this.loadSlots();
+    },
+    quantityNotice() {
+        wx.showToast({
+            title: "当前每笔预约仅支持 1 项服务",
+            icon: "none",
+        });
+    },
     select(e) {
-        if (!this.data.reservationId)
-            this.setData({ selected: Number(e.currentTarget.dataset.index) });
+        var _a, _b;
+        if (!this.data.reservationId) {
+            const selected = Number(e.currentTarget.dataset.index);
+            this.setData({
+                selected,
+                selectedSlotLabel: (_b = (_a = this.data.slots[selected]) === null || _a === void 0 ? void 0 : _a.label) !== null && _b !== void 0 ? _b : "",
+                quoteDetails: null,
+                error: "",
+            });
+        }
     },
     input(e) {
         const field = e.currentTarget.dataset.field;
@@ -158,6 +206,7 @@ Page({
                         addressVerificationId: "",
                         latitude: null,
                         longitude: null,
+                        quoteDetails: null,
                     }
                     : {}),
             });
@@ -175,6 +224,7 @@ Page({
                 longitude: point.longitude,
                 coordinateSystem: "GCJ-02",
                 addressVerificationId: "",
+                quoteDetails: null,
             });
             wx.showToast({ title: "已定位并转为中文地址", icon: "success" });
         }
@@ -225,15 +275,15 @@ Page({
             coordinateSystem: "GCJ-02",
             suggestions: [],
             addressVerificationId: "",
+            quoteDetails: null,
         });
     },
     consentChanged(e) {
         this.setData({ consent: e.detail.value.includes("agree") });
     },
-    async create() {
-        if (this.data.busy)
-            return;
-        const slot = this.data.slots[this.data.selected], service = this.data.service;
+    validDraft() {
+        const slot = this.data.slots[this.data.selected];
+        const service = this.data.service;
         if (!service ||
             !slot ||
             !this.data.consent ||
@@ -241,12 +291,21 @@ Page({
             !/^1\d{10}$/.test(this.data.phone) ||
             this.data.detail.trim().length < 5) {
             this.fail(new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"));
-            return;
+            return null;
         }
         if (this.data.latitude === null || this.data.longitude === null) {
             this.fail(new Error("请先使用定位或高德地址搜索选择上门坐标"));
-            return;
+            return null;
         }
+        return { service, slot };
+    },
+    async prepareOrder() {
+        if (this.data.busy)
+            return;
+        const draft = this.validDraft();
+        if (!draft)
+            return;
+        const { service, slot } = draft;
         this.setData({ busy: true, error: "" });
         try {
             let session = (0, auth_1.getStoredSession)();
@@ -281,11 +340,42 @@ Page({
                 });
                 this.setData({ addressVerificationId: verification.id });
             }
-            if (!this.data.quote) {
-                const quote = await (0, api_1.api)("/orders/quote", "POST", {
-                    reservationId: this.data.reservationId,
+            const quote = await (0, api_1.api)("/orders/quote", "POST", {
+                reservationId: this.data.reservationId,
+            });
+            this.setData({ quoteDetails: (0, booking_1.quoteDisplay)(quote) });
+            wx.showToast({ title: "价格已由服务器核定", icon: "success" });
+        }
+        catch (error) {
+            this.fail(error);
+        }
+        finally {
+            this.setData({ busy: false });
+        }
+    },
+    async create() {
+        if (this.data.busy)
+            return;
+        if (!this.data.quoteDetails) {
+            await this.prepareOrder();
+            return;
+        }
+        if (!this.validDraft() || !this.data.reservationId)
+            return;
+        this.setData({ busy: true, error: "" });
+        try {
+            let session = (0, auth_1.getStoredSession)();
+            if (!session) {
+                session = await (0, auth_1.loginWithWechat)();
+                this.setData({
+                    loggedIn: true,
+                    phoneVerified: session.user.phoneVerified === true,
+                    loginError: "",
                 });
-                this.setData({ quote: (0, api_1.money)(quote.payableFen) });
+            }
+            if ((0, auth_1.needsPhoneVerification)(session)) {
+                (0, auth_1.goToPhoneVerification)();
+                return;
             }
             // Once an order request leaves the device, keep the request immutable so
             // an uncertain network result can be retried with the same fingerprint.
@@ -308,6 +398,7 @@ Page({
                 reservationId: "",
                 orderKey: "",
                 addressVerificationId: "",
+                quoteDetails: null,
                 orderSubmissionAttempted: false,
             });
             wx.showToast({ title: "订单已创建，请到订单页支付", icon: "none" });
@@ -329,6 +420,7 @@ Page({
             longitude: null,
             suggestions: [],
             addressVerificationId: "",
+            quoteDetails: null,
             orderSubmissionAttempted: false,
         });
     },
