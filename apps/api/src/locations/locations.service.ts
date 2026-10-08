@@ -104,6 +104,42 @@ export class LocationsService {
     });
   }
 
+  async geocode(principal: AuthPrincipal, detail: string, now = new Date()) {
+    this.assertEnabled();
+    await this.take(
+      "manual-geocode-user-minute",
+      principal.userId,
+      6,
+      60_000,
+      now,
+    );
+    await this.take(
+      "manual-geocode-user-day",
+      principal.userId,
+      60,
+      86_400_000,
+      now,
+    );
+    await this.take("manual-geocode-global-minute", "all", 120, 60_000, now);
+    await this.take(
+      "manual-geocode-global-day",
+      "all",
+      3_000,
+      86_400_000,
+      now,
+    );
+    const result = await this.maps.geocode({
+      address: detail,
+      city: this.config.get("SERVICE_CITY", { infer: true }),
+    });
+    if (!this.allowedAdcodes().has(result.adcode))
+      throw new UnprocessableEntityException("该地址暂不在已配置服务范围内");
+    await this.prisma.mapRequestRateLimit.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
+    return result;
+  }
+
   async verify(
     principal: AuthPrincipal,
     input: {

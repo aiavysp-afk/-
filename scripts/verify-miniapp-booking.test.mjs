@@ -93,6 +93,27 @@ test("created orders immediately prepare a verified WeChat payment and query the
   assert.match(source, /intent\.amountFen !== order\.payableFen/);
 });
 
+test("handwritten addresses are geocoded before quote and location/search remain available", () => {
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/booking/index.ts", import.meta.url),
+    "utf8",
+  );
+  const page = readFileSync(
+    new URL("../apps/miniapp/pages/booking/index.wxml", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /\/locations\/address-geocodes/);
+  assert.match(source, /await this\.ensureAddressCoordinates\(\)/);
+  assert.match(source, /fullAddress\(\)/);
+  assert.doesNotMatch(
+    source,
+    /请先使用定位或高德地址搜索选择上门坐标/,
+  );
+  assert.match(page, /可手动填写，也可用高德自动定位/);
+  assert.match(page, /楼栋、单元、门牌号/);
+  assert.match(page, /高德定位当前地址/);
+});
+
 test("customer order status keeps synchronizing from the shared backend while visible", () => {
   const orders = readFileSync(
     new URL("../apps/miniapp/pages/orders/index.ts", import.meta.url),

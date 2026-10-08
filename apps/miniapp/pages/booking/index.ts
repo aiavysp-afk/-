@@ -6,6 +6,7 @@ import type {
   PaymentIntent,
   AddressSuggestion,
   AddressVerification,
+  GeocodedAddress,
   PublicConfig,
   ServiceItem,
 } from "@zydj/contracts";
@@ -53,6 +54,7 @@ Page({
     contactName: "",
     phone: "",
     detail: "",
+    doorNumber: "",
     latitude: null as number | null,
     longitude: null as number | null,
     coordinateSystem: "GCJ-02" as const,
@@ -226,18 +228,19 @@ Page({
   }) {
     const field = e.currentTarget.dataset.field;
     if (
-      ["contactName", "phone", "detail"].includes(field) &&
+      ["contactName", "phone", "detail", "doorNumber"].includes(field) &&
       !this.data.orderSubmissionAttempted
     )
       this.setData({
         [field]: e.detail.value,
-        ...(field === "detail"
+        ...(["detail", "doorNumber"].includes(field)
           ? {
               suggestions: [],
               addressVerificationId: "",
-              latitude: null,
-              longitude: null,
               quoteDetails: null,
+              ...(field === "detail"
+                ? { latitude: null, longitude: null }
+                : {}),
             }
           : {}),
       });
@@ -249,7 +252,7 @@ Page({
       const point = await getGcj02Location();
       const address = await reverseGeocode(this.data.amapMiniappKey, point);
       this.setData({
-        detail: address.detail,
+        detail: address.detail.slice(0, 140),
         latitude: point.latitude,
         longitude: point.longitude,
         coordinateSystem: "GCJ-02",
@@ -298,7 +301,7 @@ Page({
     if (!suggestion) return;
     const detail = `${suggestion.title} ${suggestion.address}`
       .trim()
-      .slice(0, 200);
+      .slice(0, 140);
     this.setData({
       detail,
       latitude: suggestion.latitude,
@@ -311,6 +314,31 @@ Page({
   },
   consentChanged(e: { detail: { value: string[] } }) {
     this.setData({ consent: e.detail.value.includes("agree") });
+  },
+  fullAddress() {
+    return `${this.data.detail.trim()} ${this.data.doorNumber.trim()}`.trim();
+  },
+  async ensureAddressCoordinates() {
+    if (this.data.latitude !== null && this.data.longitude !== null)
+      return {
+        latitude: this.data.latitude,
+        longitude: this.data.longitude,
+        coordinateSystem: "GCJ-02" as const,
+      };
+    const geocoded = await api<GeocodedAddress>(
+      "/locations/address-geocodes",
+      "POST",
+      { detail: this.data.detail.trim() },
+    );
+    this.setData({
+      latitude: geocoded.latitude,
+      longitude: geocoded.longitude,
+      coordinateSystem: "GCJ-02",
+      addressVerificationId: "",
+      quoteDetails: null,
+    });
+    wx.showToast({ title: "手填地址已用高德识别", icon: "success" });
+    return geocoded;
   },
   validDraft() {
     const slot = this.data.slots[this.data.selected];
@@ -326,10 +354,6 @@ Page({
       this.fail(
         new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"),
       );
-      return null;
-    }
-    if (this.data.latitude === null || this.data.longitude === null) {
-      this.fail(new Error("请先使用定位或高德地址搜索选择上门坐标"));
       return null;
     }
     return { service, slot };
@@ -354,6 +378,7 @@ Page({
         goToPhoneVerification();
         return;
       }
+      const addressPoint = await this.ensureAddressCoordinates();
       if (!this.data.reservationId) {
         const hold = await api<BookingHold>("/booking-holds", "POST", {
           serviceId: service.id,
@@ -371,9 +396,9 @@ Page({
           "POST",
           {
             reservationId: this.data.reservationId,
-            detail: this.data.detail.trim(),
-            latitude: this.data.latitude,
-            longitude: this.data.longitude,
+            detail: this.fullAddress(),
+            latitude: addressPoint.latitude,
+            longitude: addressPoint.longitude,
             coordinateSystem: "GCJ-02",
           },
         );
@@ -423,7 +448,7 @@ Page({
           address: {
             contactName: this.data.contactName.trim(),
             phone: this.data.phone,
-            detail: this.data.detail.trim(),
+            detail: this.fullAddress(),
             latitude: this.data.latitude,
             longitude: this.data.longitude,
             coordinateSystem: "GCJ-02",
@@ -563,6 +588,7 @@ Page({
       contactName: "",
       phone: "",
       detail: "",
+      doorNumber: "",
       latitude: null,
       longitude: null,
       suggestions: [],

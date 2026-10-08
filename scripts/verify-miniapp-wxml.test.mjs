@@ -201,6 +201,16 @@ test("profile exposes only the native WeChat customer-service channel", () => {
   );
   assert.doesNotMatch(source, /企业微信客服|openCustomerService/);
   assert.match(source, /open-type="contact"/);
+  assert.doesNotMatch(source, /profile-header/);
+});
+
+test("home keeps the quick online service entry without a duplicate header button", () => {
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/home/index.wxml", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /home-header/);
+  assert.match(source, /session-from="home-quick"/);
 });
 
 test("compiled miniapp points real-device previews at the configured HTTPS API", () => {

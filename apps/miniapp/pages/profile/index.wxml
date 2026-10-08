@@ -1,5 +1,5 @@
 <view class="page">
-  <view class="header"><text>我的</text><button open-type="contact" show-message-card session-from="profile-header"><text>◌</text><text>客服</text></button></view>
+  <view class="header"><text>我的</text></view>
   <view class="profile-card">
     <view class="profile-main"><view class="avatar">客</view><view class="identity"><text class="profile-name">{{displayName}}</text><text>{{loggedIn ? (phoneVerified ? '已登录 · 手机号已验证' : '已登录 · 待验证手机号') : '登录后管理预约与售后'}}</text><text class="level">中原到家用户</text></view></view>
     <button wx:if="{{!loggedIn}}" class="login-action" bindtap="openLogin">微信授权登录</button>

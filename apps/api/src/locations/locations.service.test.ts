@@ -68,6 +68,11 @@ function harness(overrides: Record<string, string> = {}) {
       adcode: "410102",
       formattedAddress: "河南省郑州市中原区测试路1号",
     }),
+    geocode: vi.fn().mockResolvedValue({
+      detail: "河南省郑州市中原区测试路1号",
+      adcode: "410102",
+      ...coordinate,
+    }),
   };
   const maps = mapsMock as unknown as AmapClient;
   const config = new ConfigService<AppEnv, true>(
@@ -135,6 +140,38 @@ describe("LocationsService", () => {
     expect(create.detailHash).toMatch(/^[0-9a-f]{64}$/);
     expect(create).not.toHaveProperty("detail");
     expect(create).toMatchObject(coordinate);
+  });
+
+  it("turns a handwritten address into an in-area GCJ-02 point", async () => {
+    const { service, mapsMock, prismaMock } = harness();
+    await expect(
+      service.geocode(
+        principal,
+        "郑州市中原区测试路1号A座",
+        new Date("2026-10-05T10:00:00.000Z"),
+      ),
+    ).resolves.toEqual({
+      detail: "河南省郑州市中原区测试路1号",
+      adcode: "410102",
+      ...coordinate,
+    });
+    expect(mapsMock.geocode).toHaveBeenCalledWith({
+      address: "郑州市中原区测试路1号A座",
+      city: "郑州市",
+    });
+    expect(prismaMock.mapRequestRateLimit.upsert).toHaveBeenCalledTimes(4);
+  });
+
+  it("rejects a handwritten address outside the configured service area", async () => {
+    const { service, mapsMock } = harness();
+    mapsMock.geocode.mockResolvedValue({
+      detail: "北京市东城区测试地址1号",
+      adcode: "110101",
+      ...coordinate,
+    });
+    await expect(
+      service.geocode(principal, "北京市东城区测试地址1号"),
+    ).rejects.toThrow("不在已配置服务范围");
   });
 
   it("rejects other users and out-of-area coordinates before issuing a usable proof", async () => {

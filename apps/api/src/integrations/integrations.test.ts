@@ -297,6 +297,38 @@ describe("SMS internal submission", () => {
 });
 
 describe("Amap integration primitives", () => {
+  it("geocodes a handwritten address with the fixed Web Service endpoint", async () => {
+    fetcher.mockResolvedValue(
+      json({
+        status: "1",
+        info: "OK",
+        infocode: "10000",
+        geocodes: [
+          {
+            formatted_address: "河南省郑州市中原区建设路1号",
+            adcode: "410102",
+            location: "113.650000,34.750000",
+          },
+        ],
+      }),
+    );
+    await expect(
+      new AmapClient(config()).geocode({
+        address: "郑州市中原区建设路1号A座",
+        city: "郑州市",
+      }),
+    ).resolves.toEqual({
+      detail: "河南省郑州市中原区建设路1号",
+      adcode: "410102",
+      latitude: 34.75,
+      longitude: 113.65,
+      coordinateSystem: "GCJ-02",
+    });
+    const target = new URL(String(fetcher.mock.calls[0]?.[0]));
+    expect(target.hostname).toBe("restapi.amap.com");
+    expect(target.pathname).toBe("/v3/geocode/geo");
+    expect(target.searchParams.get("city")).toBe("郑州市");
+  });
   it("supports fixed-host POI suggestions restricted to the selected city", async () => {
     fetcher.mockResolvedValue(
       json({

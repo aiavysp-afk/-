@@ -19,6 +19,13 @@ const principal: AuthPrincipal = {
   memberships: [],
 };
 const service = {
+  geocode: vi.fn().mockResolvedValue({
+    detail: "河南省郑州市中原区测试路1号",
+    adcode: "410102",
+    latitude: 34.75,
+    longitude: 113.65,
+    coordinateSystem: "GCJ-02",
+  }),
   suggest: vi.fn().mockResolvedValue([
     {
       id: "poi-1",
@@ -103,6 +110,28 @@ describe("Locations HTTP boundary", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().meta.total).toBe(1);
     expect(service.suggest).toHaveBeenCalledWith(principal, "中原");
+  });
+
+  it("accepts only a bounded handwritten address for server geocoding", async () => {
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/v1/locations/address-geocodes",
+      headers: { authorization: "Bearer test" },
+      payload: { detail: "短", city: "北京" },
+    });
+    expect(invalid.statusCode).toBe(400);
+    const valid = await app.inject({
+      method: "POST",
+      url: "/v1/locations/address-geocodes",
+      headers: { authorization: "Bearer test" },
+      payload: { detail: "郑州市中原区测试路1号" },
+    });
+    expect(valid.statusCode).toBe(201);
+    expect(valid.json().data.coordinateSystem).toBe("GCJ-02");
+    expect(service.geocode).toHaveBeenCalledWith(
+      principal,
+      "郑州市中原区测试路1号",
+    );
   });
 
   it("requires a strict reservation-bound address verification body", async () => {

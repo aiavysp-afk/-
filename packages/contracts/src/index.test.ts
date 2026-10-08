@@ -5,6 +5,8 @@ import {
   AvailabilityQuerySchema,
   AddressSuggestionQuerySchema,
   AddressSuggestionSchema,
+  GeocodedAddressSchema,
+  ManualAddressGeocodeSchema,
   BookingHoldCreateSchema,
   IdempotencyKeySchema,
   MoneyFenSchema,
@@ -317,6 +319,25 @@ describe("address suggestion contracts", () => {
     expect(() =>
       AddressSuggestionQuerySchema.parse({ keyword: "中原", city: "北京" }),
     ).toThrow();
+  });
+});
+
+describe("manual address geocoding contracts", () => {
+  it("accepts a bounded handwritten address and a normalized GCJ-02 result", () => {
+    expect(
+      ManualAddressGeocodeSchema.parse({
+        detail: " 郑州市中原区建设路 1 号 A 座 ",
+      }),
+    ).toEqual({ detail: "郑州市中原区建设路 1 号 A 座" });
+    expect(
+      GeocodedAddressSchema.parse({
+        detail: "河南省郑州市中原区建设路1号",
+        adcode: "410102",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "GCJ-02",
+      }).coordinateSystem,
+    ).toBe("GCJ-02");
   });
 });
 

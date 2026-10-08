@@ -32,6 +32,19 @@ const ReverseGeocodeResponse = AmapBase.extend({
     .optional(),
 });
 
+const GeocodeResponse = AmapBase.extend({
+  geocodes: z
+    .array(
+      z.object({
+        formatted_address: z.string().min(1).max(300),
+        adcode: z.string().regex(/^\d{6}$/),
+        location: z.string(),
+      }),
+    )
+    .max(20)
+    .optional(),
+});
+
 const InputTipsResponse = AmapBase.extend({
   tips: z
     .array(
@@ -139,6 +152,42 @@ export class AmapClient {
       adcode: parsed.data.regeocode.addressComponent.adcode,
       latitude: input.latitude,
       longitude: input.longitude,
+      coordinateSystem: "GCJ-02" as const,
+    };
+  }
+
+  async geocode(input: { address: string; city: string }) {
+    const address = input.address.trim();
+    const city = input.city.trim();
+    if (
+      address.length < 5 ||
+      address.length > 200 ||
+      Buffer.byteLength(address) > 600 ||
+      city.length < 2 ||
+      city.length > 32 ||
+      /[\x00-\x1f]/.test(address + city)
+    )
+      throw new BadRequestException("手动地址无效");
+    const parsed = GeocodeResponse.safeParse(
+      await this.request("/v3/geocode/geo", {
+        address,
+        city,
+      }),
+    );
+    if (!parsed.success)
+      throw new BadGatewayException("高德地图地址解析响应无效");
+    const match = (parsed.data.geocodes ?? []).flatMap((item) => {
+      const point = coordinate(item.location);
+      return point ? [{ item, point }] : [];
+    })[0];
+    if (!match)
+      throw new BadRequestException(
+        "无法识别该手动地址，请补充区、道路、小区或改用高德定位",
+      );
+    return {
+      detail: match.item.formatted_address,
+      adcode: match.item.adcode,
+      ...match.point,
       coordinateSystem: "GCJ-02" as const,
     };
   }

@@ -25,6 +25,7 @@ Page({
         contactName: "",
         phone: "",
         detail: "",
+        doorNumber: "",
         latitude: null,
         longitude: null,
         coordinateSystem: "GCJ-02",
@@ -200,17 +201,18 @@ Page({
     },
     input(e) {
         const field = e.currentTarget.dataset.field;
-        if (["contactName", "phone", "detail"].includes(field) &&
+        if (["contactName", "phone", "detail", "doorNumber"].includes(field) &&
             !this.data.orderSubmissionAttempted)
             this.setData({
                 [field]: e.detail.value,
-                ...(field === "detail"
+                ...(["detail", "doorNumber"].includes(field)
                     ? {
                         suggestions: [],
                         addressVerificationId: "",
-                        latitude: null,
-                        longitude: null,
                         quoteDetails: null,
+                        ...(field === "detail"
+                            ? { latitude: null, longitude: null }
+                            : {}),
                     }
                     : {}),
             });
@@ -223,7 +225,7 @@ Page({
             const point = await (0, amap_1.getGcj02Location)();
             const address = await (0, amap_1.reverseGeocode)(this.data.amapMiniappKey, point);
             this.setData({
-                detail: address.detail,
+                detail: address.detail.slice(0, 140),
                 latitude: point.latitude,
                 longitude: point.longitude,
                 coordinateSystem: "GCJ-02",
@@ -271,7 +273,7 @@ Page({
             return;
         const detail = `${suggestion.title} ${suggestion.address}`
             .trim()
-            .slice(0, 200);
+            .slice(0, 140);
         this.setData({
             detail,
             latitude: suggestion.latitude,
@@ -285,6 +287,27 @@ Page({
     consentChanged(e) {
         this.setData({ consent: e.detail.value.includes("agree") });
     },
+    fullAddress() {
+        return `${this.data.detail.trim()} ${this.data.doorNumber.trim()}`.trim();
+    },
+    async ensureAddressCoordinates() {
+        if (this.data.latitude !== null && this.data.longitude !== null)
+            return {
+                latitude: this.data.latitude,
+                longitude: this.data.longitude,
+                coordinateSystem: "GCJ-02",
+            };
+        const geocoded = await (0, api_1.api)("/locations/address-geocodes", "POST", { detail: this.data.detail.trim() });
+        this.setData({
+            latitude: geocoded.latitude,
+            longitude: geocoded.longitude,
+            coordinateSystem: "GCJ-02",
+            addressVerificationId: "",
+            quoteDetails: null,
+        });
+        wx.showToast({ title: "手填地址已用高德识别", icon: "success" });
+        return geocoded;
+    },
     validDraft() {
         const slot = this.data.slots[this.data.selected];
         const service = this.data.service;
@@ -295,10 +318,6 @@ Page({
             !/^1\d{10}$/.test(this.data.phone) ||
             this.data.detail.trim().length < 5) {
             this.fail(new Error("请选择时段，填写有效地址与手机号码，并确认服务边界"));
-            return null;
-        }
-        if (this.data.latitude === null || this.data.longitude === null) {
-            this.fail(new Error("请先使用定位或高德地址搜索选择上门坐标"));
             return null;
         }
         return { service, slot };
@@ -325,6 +344,7 @@ Page({
                 (0, auth_1.goToPhoneVerification)();
                 return;
             }
+            const addressPoint = await this.ensureAddressCoordinates();
             if (!this.data.reservationId) {
                 const hold = await (0, api_1.api)("/booking-holds", "POST", {
                     serviceId: service.id,
@@ -337,9 +357,9 @@ Page({
                 !this.data.addressVerificationId) {
                 const verification = await (0, api_1.api)("/locations/address-verifications", "POST", {
                     reservationId: this.data.reservationId,
-                    detail: this.data.detail.trim(),
-                    latitude: this.data.latitude,
-                    longitude: this.data.longitude,
+                    detail: this.fullAddress(),
+                    latitude: addressPoint.latitude,
+                    longitude: addressPoint.longitude,
                     coordinateSystem: "GCJ-02",
                 });
                 this.setData({ addressVerificationId: verification.id });
@@ -389,7 +409,7 @@ Page({
                 address: {
                     contactName: this.data.contactName.trim(),
                     phone: this.data.phone,
-                    detail: this.data.detail.trim(),
+                    detail: this.fullAddress(),
                     latitude: this.data.latitude,
                     longitude: this.data.longitude,
                     coordinateSystem: "GCJ-02",
@@ -509,6 +529,7 @@ Page({
             contactName: "",
             phone: "",
             detail: "",
+            doorNumber: "",
             latitude: null,
             longitude: null,
             suggestions: [],

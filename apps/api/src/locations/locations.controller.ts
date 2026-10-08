@@ -10,6 +10,7 @@ import {
 import {
   AddressSuggestionQuerySchema,
   AddressVerificationCreateSchema,
+  ManualAddressGeocodeSchema,
 } from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
@@ -30,6 +31,16 @@ export class LocationsController {
     if (!parsed.success) throw new BadRequestException("地址关键词无效");
     const data = await this.locations.suggest(principal, parsed.data.keyword);
     return { data, meta: { total: data.length } };
+  }
+
+  @Post("address-geocodes")
+  async geocode(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = ManualAddressGeocodeSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("手动地址无效");
+    return { data: await this.locations.geocode(principal, parsed.data.detail) };
   }
 
   @Post("address-verifications")

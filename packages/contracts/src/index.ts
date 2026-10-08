@@ -131,6 +131,20 @@ export const AddressSuggestionQuerySchema = z
   })
   .strict();
 
+export const ManualAddressGeocodeSchema = z
+  .object({
+    detail: z.string().trim().min(5).max(200),
+  })
+  .strict();
+
+export const GeocodedAddressSchema = z.object({
+  detail: z.string().min(1).max(300),
+  adcode: z.string().regex(/^\d{6}$/),
+  latitude: z.number().finite().min(-90).max(90),
+  longitude: z.number().finite().min(-180).max(180),
+  coordinateSystem: z.literal("GCJ-02"),
+});
+
 export const AddressSuggestionSchema = z.object({
   id: z.string().min(1).max(128),
   title: z.string().min(1).max(200),
@@ -813,6 +827,7 @@ export type BookingHold = z.infer<typeof BookingHoldSchema>;
 export type Gcj02Coordinate = z.infer<typeof Gcj02CoordinateSchema>;
 export type ServiceAddress = z.infer<typeof ServiceAddressSchema>;
 export type AddressSuggestion = z.infer<typeof AddressSuggestionSchema>;
+export type GeocodedAddress = z.infer<typeof GeocodedAddressSchema>;
 export type AddressVerification = z.infer<typeof AddressVerificationSchema>;
 export type OrderQuoteRequest = z.infer<typeof OrderQuoteRequestSchema>;
 export type OrderCreate = z.infer<typeof OrderCreateSchema>;
