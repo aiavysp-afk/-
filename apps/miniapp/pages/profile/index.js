@@ -8,12 +8,6 @@ const tab_bar_1 = require("../../utils/tab-bar");
 // compile-time fallback makes emergency/contact access survive API maintenance.
 // A successful public-config response remains authoritative and replaces them.
 const PUBLIC_CONTACT_FALLBACK = {
-    customerService: {
-        provider: "wecom",
-        available: true,
-        corpId: "ww715e0d876d9f3cb4",
-        url: "https://work.weixin.qq.com/kfid/kfca6852bf5e57656af",
-    },
     emergencyContact: {
         configured: true,
         phone: "18018181799",
@@ -25,7 +19,6 @@ Page({
         phoneVerified: false,
         displayName: "微信用户",
         stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
-        customerService: PUBLIC_CONTACT_FALLBACK.customerService,
         emergencyContact: PUBLIC_CONTACT_FALLBACK.emergencyContact,
     },
     onLoad() {
@@ -51,13 +44,11 @@ Page({
         // Public, compile-time safety channels remain available during API maintenance.
         // Any successful server response is authoritative and replaces this fallback.
         this.setData({
-            customerService: PUBLIC_CONTACT_FALLBACK.customerService,
             emergencyContact: PUBLIC_CONTACT_FALLBACK.emergencyContact,
         });
         try {
             const config = await (0, api_1.api)("/config/public");
             this.setData({
-                customerService: config.customerService,
                 emergencyContact: config.emergencyContact,
             });
         }
@@ -85,9 +76,6 @@ Page({
                 stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
             });
         }
-    },
-    openCustomerService() {
-        (0, customer_service_1.openWecomCustomerService)(this.data.customerService);
     },
     callEmergency() {
         (0, customer_service_1.callEmergencyDuty)(this.data.emergencyContact);

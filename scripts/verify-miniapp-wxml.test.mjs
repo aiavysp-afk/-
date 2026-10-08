@@ -154,22 +154,15 @@ test("compiled services empty state distinguishes successful empty category from
   );
 });
 
-test("profile keeps confirmed public contact fallbacks when the API is unavailable", async () => {
+test("profile keeps the confirmed emergency fallback when the API is unavailable", async () => {
   await host(
     async () => {
       const page = loadPage("../apps/miniapp/pages/profile/index.js");
-      assert.deepEqual(page.data.customerService, {
-        provider: "wecom",
-        available: true,
-        corpId: "ww715e0d876d9f3cb4",
-        url: "https://work.weixin.qq.com/kfid/kfca6852bf5e57656af",
-      });
       assert.deepEqual(page.data.emergencyContact, {
         configured: true,
         phone: "18018181799",
       });
       await page.onShow();
-      assert.equal(page.data.customerService.available, true);
       assert.equal(page.data.emergencyContact.configured, true);
     },
     (input) => input.fail({ errMsg: "synthetic maintenance failure" }),
@@ -177,7 +170,7 @@ test("profile keeps confirmed public contact fallbacks when the API is unavailab
   );
 });
 
-test("a successful public-config response replaces the compile-time contact fallback", async () => {
+test("a successful public-config response replaces the emergency fallback", async () => {
   const serverConfig = {
     customerService: {
       provider: "none",
@@ -191,7 +184,6 @@ test("a successful public-config response replaces the compile-time contact fall
     async () => {
       const page = loadPage("../apps/miniapp/pages/profile/index.js");
       await page.onShow();
-      assert.deepEqual(page.data.customerService, serverConfig.customerService);
       assert.deepEqual(
         page.data.emergencyContact,
         serverConfig.emergencyContact,
@@ -200,6 +192,15 @@ test("a successful public-config response replaces the compile-time contact fall
     (input) => input.success({ statusCode: 200, data: { data: serverConfig } }),
     session,
   );
+});
+
+test("profile exposes only the native WeChat customer-service channel", () => {
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/profile/index.wxml", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /企业微信客服|openCustomerService/);
+  assert.match(source, /open-type="contact"/);
 });
 
 test("compiled miniapp points real-device previews at the configured HTTPS API", () => {
