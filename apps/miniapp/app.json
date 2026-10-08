@@ -3,6 +3,7 @@
     "pages/home/index",
     "pages/services/index",
     "pages/therapists/index",
+    "pages/therapist-detail/index",
     "pages/orders/index",
     "pages/profile/index",
     "pages/booking/index",

@@ -1,16 +1,41 @@
 <view class="page">
-  <view class="header">
-    <text class="eyebrow">平台资料审核</text>
-    <text class="header-title serif">认真服务，也安心选择</text>
-    <text class="header-desc">不展示未经授权的人员姓名、证件或实时位置</text>
+  <view class="topbar"><view><text class="top-title">服务技师</text><text class="top-subtitle">真实排班 · 安心选择</text></view><button open-type="contact" show-message-card session-from="therapists">客服</button></view>
+  <view class="hero">
+    <view><text class="hero-kicker">ZHONGYUAN CARE</text><text class="hero-title">专业守护每一次放松</text><text class="hero-copy">仅展示未来两日真实可预约人员，不使用虚构姓名、照片、评分或订单量</text></view>
+    <view class="hero-seal"><text>中原</text><text>甄选</text></view>
   </view>
-  <view class="standard" wx:for="{{standards}}" wx:key="title">
-    <view class="standard-index">0{{index + 1}}</view>
-    <view>
-      <text class="standard-title">{{item.title}}</text>
-      <text class="standard-detail">{{item.detail}}</text>
+  <scroll-view scroll-x class="filters" show-scrollbar="{{false}}"><view class="filter-row"><text wx:for="{{filters}}" wx:key="key" class="filter {{activeFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectFilter">{{item.label}}</text></view></scroll-view>
+
+  <view wx:if="{{loading}}" class="state-card"><view class="loading-ring"/><text>正在读取真实排班…</text></view>
+  <view wx:elif="{{error}}" class="state-card error-card"><text>{{error}}</text><button bindtap="load">重新加载</button></view>
+  <view wx:elif="{{!visibleTherapists.length}}" class="state-card empty-card"><text class="empty-symbol">◇</text><text>当前筛选暂无可约技师</text><text>技师离线或未排班时不会开放下单</text></view>
+
+  <view wx:else class="therapist-list">
+    <view wx:for="{{visibleTherapists}}" wx:key="id" class="therapist-card {{item.bookable ? '' : 'disabled'}}" data-id="{{item.id}}" bindtap="openDetail">
+      <view class="avatar-wrap tone-{{item.avatarIndex}}"><view class="avatar-head"/><view class="avatar-body"/><text>{{item.badge}}</text><view class="status-dot {{item.statusTone}}"/></view>
+      <view class="card-content">
+        <view class="name-row"><text class="name">{{item.alias}}</text><text class="status {{item.statusTone}}">{{item.statusLabel}}</text></view>
+        <view class="tag-row"><text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+        <text class="store">{{item.storeLabel}}</text>
+        <view class="data-row"><text>{{item.ratingLabel}}</text><text>·</text><text>{{item.orderCountLabel}}</text></view>
+        <view class="time-row"><text>最早可约</text><text>{{item.earliestLabel}}</text></view>
+        <text class="travel">{{item.travelLabel}}</text>
+      </view>
+      <button class="book-button" data-id="{{item.id}}" catchtap="openBooking" disabled="{{!item.bookable}}">去下单</button>
     </view>
   </view>
-  <view class="notice">可约人员与服务时段会在预约页根据真实排班返回；未取得公开展示授权前，不使用虚构或演示技师资料。</view>
-  <button bindtap="openServices">查看服务与可约时段</button>
+  <view class="disclosure"><text>资料说明</text><text>公开评分、相册、证书与历史单量须取得本人授权并由后台发布；暂无数据时如实标注，不使用演示内容。</text></view>
+  <view class="safe-bottom" />
+
+  <view wx:if="{{bookingOpen}}" class="sheet-mask" bindtap="closeBooking">
+    <view class="booking-sheet" catchtap="keepBookingOpen">
+      <view class="sheet-handle"/>
+      <view class="sheet-head"><view><text>选择服务项目</text><text>{{selectedTherapist.alias}} · {{selectedTherapist.earliestLabel}}</text></view><text bindtap="closeBooking">×</text></view>
+      <view class="service-option" wx:for="{{selectedTherapist.services}}" wx:key="id" data-slug="{{item.slug}}" bindtap="chooseService">
+        <view><text>{{item.name}}</text><text>{{item.subtitle}}</text><view><text>{{item.durationMinutes}}分钟</text><text>{{item.slots.length}}个可约时段</text></view></view>
+        <view class="service-price"><text>¥</text><text>{{item.price}}</text><text>›</text></view>
+      </view>
+      <text class="sheet-note">进入确认页后选择具体时间、填写服务地址并查看最终价格明细</text>
+    </view>
+  </view>
 </view>

@@ -52,12 +52,14 @@ Page({
     phoneVerified: false,
     loginBusy: false,
     loginError: "",
+    preferredTherapistId: "",
   },
-  async onLoad(options: { slug?: string }) {
+  async onLoad(options: { slug?: string; therapistId?: string }) {
     const session = getStoredSession();
     this.setData({
       loggedIn: Boolean(session),
       phoneVerified: session?.user.phoneVerified === true,
+      preferredTherapistId: options.therapistId ?? "",
     });
     void this.loadMapConfig();
     try {
@@ -130,12 +132,19 @@ Page({
       const slots = await api<AvailabilitySlot[]>(
         `/availability/slots?serviceId=${encodeURIComponent(this.data.service.id)}&date=${this.data.date}`,
       );
+      const slotViews = slots.map((slot) => ({
+        ...slot,
+        label: shanghaiTime(slot.startsAt),
+        key: `${slot.therapistId}-${slot.startsAt}`,
+      }));
+      const preferredIndex = this.data.preferredTherapistId
+        ? slotViews.findIndex(
+            (slot) => slot.therapistId === this.data.preferredTherapistId,
+          )
+        : -1;
       this.setData({
-        slots: slots.map((slot) => ({
-          ...slot,
-          label: shanghaiTime(slot.startsAt),
-          key: `${slot.therapistId}-${slot.startsAt}`,
-        })),
+        slots: slotViews,
+        selected: preferredIndex,
       });
     } catch (error) {
       this.fail(error);

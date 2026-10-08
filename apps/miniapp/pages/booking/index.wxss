@@ -35,6 +35,17 @@
   background: #245b4d;
   color: white;
 }
+.preferred-note {
+  color: #245b4d;
+  background: #e5efeb;
+  border-radius: 14rpx;
+  padding: 14rpx 18rpx;
+  font-size: 21rpx;
+}
+.preferred-note.warning {
+  color: #80601f;
+  background: #fff3d8;
+}
 .boundary {
   background: #efe8db;
   padding: 24rpx;

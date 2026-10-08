@@ -1,0 +1,18 @@
+<view class="detail-page">
+  <view class="nav"><text bindtap="back">‹</text><text>技师详情</text><view/></view>
+  <view wx:if="{{loading}}" class="detail-state">正在读取真实排班…</view>
+  <view wx:elif="{{error}}" class="detail-state error">{{error}}</view>
+  <view wx:elif="{{therapist}}">
+    <view class="profile-hero">
+      <view class="portrait tone-{{therapist.avatarIndex}}"><view class="head"/><view class="body"/></view>
+      <view class="profile-copy"><view><text class="name">{{therapist.alias}}</text><text class="status {{therapist.statusTone}}">{{therapist.statusLabel}}</text></view><view class="tags"><text wx:for="{{therapist.tags}}" wx:key="*this">{{item}}</text></view><text class="platform">{{therapist.storeLabel}}</text><text class="earliest">最早可约 {{therapist.earliestLabel}}</text></view>
+    </view>
+    <view class="summary"><view><text>{{therapist.ratingLabel}}</text><text>用户评价</text></view><view><text>{{therapist.services.length}}</text><text>可约项目</text></view><view><text>{{therapist.todaySlotCount + therapist.tomorrowSlotCount}}</text><text>近两日时段</text></view></view>
+    <view class="section"><text class="section-title">技师简介</text><text class="section-body">{{therapist.profile}}</text></view>
+    <view class="section"><view class="section-head"><text class="section-title">服务相册</text><text>待本人授权</text></view><view class="empty-panel"><text>◇</text><text>暂无公开服务相册</text><text>平台不会使用网络图片冒充真实技师照片</text></view></view>
+    <view class="section"><view class="section-head"><text class="section-title">资质证书</text><text>后台核验</text></view><view class="certificate"><view>证</view><view><text>资料由平台留存核验</text><text>证书名称与影像须经本人授权后才会公开展示</text></view></view></view>
+    <view class="section"><view class="section-head"><text class="section-title">可预约时间</text><text>未来两日</text></view><view class="service-slots" wx:for="{{therapist.services}}" wx:key="id"><view class="service-head"><view><text>{{item.name}}</text><text>{{item.durationMinutes}}分钟 · ¥{{item.price}}</text></view><button data-slug="{{item.slug}}" bindtap="book">去下单</button></view><scroll-view scroll-x show-scrollbar="{{false}}"><view class="slot-row"><text wx:for="{{item.slots}}" wx:key="startsAt">{{item.dayLabel}} {{item.timeLabel}}</text></view></scroll-view></view></view>
+    <view class="section"><view class="section-head"><text class="section-title">用户评价</text><text>真实订单完成后开放</text></view><view class="empty-panel review-empty"><text>暂无已公开评价</text><text>页面不展示虚构评分或评论</text></view></view>
+    <text class="travel-note">{{therapist.travelLabel}}，最终金额以下单地址的服务器报价为准。</text>
+  </view>
+</view>
