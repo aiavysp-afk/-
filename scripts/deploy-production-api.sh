@@ -4,6 +4,7 @@ set -euo pipefail
 umask 077
 
 base=/opt/zhongyuan-daojia
+web_base=/var/www/zhongyuan-daojia-technician
 release_id=${1:?Pass the exact lowercase 40-character main commit SHA}
 [[ $EUID == 0 && $release_id =~ ^[0-9a-f]{40}$ ]] || exit 1
 [[ -L "$base/current" && -d "$base/releases" && -d "$base/backups" ]] || exit 1
@@ -12,7 +13,8 @@ release_id=${1:?Pass the exact lowercase 40-character main commit SHA}
 
 release="$base/releases/$release_id"
 archive="$base/$release_id.tar.gz"
-[[ ! -e "$release" && ! -e "$archive" ]] || { echo "Release already exists"; exit 1; }
+web_release="$web_base/releases/$release_id"
+[[ ! -e "$release" && ! -e "$archive" && ! -e "$web_release" ]] || { echo "Release already exists"; exit 1; }
 free_kib=$(df -Pk "$base" | awk 'NR==2 {print $4}')
 (( free_kib > 3145728 )) || { echo "Insufficient disk reserve"; exit 1; }
 
@@ -47,6 +49,14 @@ cd "$release"
 VITE_API_BASE_URL=https://api.mtsc.top/v1 \
   "$pnpm_bin" --filter @zydj/workbench-h5 build
 [[ -f "$release/apps/workbench-h5/dist/index.html" ]] || exit 1
+getent group www-data >/dev/null
+install -d -o root -g www-data -m 0755 "$web_base" "$web_base/releases"
+[[ ! -e "$web_base/current" || -L "$web_base/current" ]] || exit 1
+install -d -o root -g www-data -m 0755 "$web_release"
+cp -a "$release/apps/workbench-h5/dist/." "$web_release/"
+chown -R root:www-data "$web_release"
+find "$web_release" -type d -exec chmod 0755 {} +
+find "$web_release" -type f -exec chmod 0644 {} +
 
 set -a
 source /etc/zhongyuan-daojia/api.env
@@ -59,12 +69,22 @@ mv "$backup.partial" "$backup"
 "$pnpm_bin" --filter @zydj/api exec prisma migrate status
 
 previous=$(readlink -f "$base/current")
+previous_web=""
+if [[ -L "$web_base/current" ]]; then
+  previous_web=$(readlink -f "$web_base/current")
+fi
 printf '%s\n' "$previous" > "$base/backups/previous-release-$release_id.txt"
 chown -R root:zydj "$release"
 chmod -R g+rX "$release"
+ln -sfn "$web_release" "$web_base/current"
 ln -sfn "$release" "$base/current"
 if ! systemctl restart zhongyuan-daojia-api.service; then
   ln -sfn "$previous" "$base/current"
+  if [[ -n "$previous_web" ]]; then
+    ln -sfn "$previous_web" "$web_base/current"
+  else
+    rm -f "$web_base/current"
+  fi
   systemctl restart zhongyuan-daojia-api.service
   exit 1
 fi
@@ -76,6 +96,11 @@ for _ in {1..20}; do
   sleep 1
 done
 ln -sfn "$previous" "$base/current"
+if [[ -n "$previous_web" ]]; then
+  ln -sfn "$previous_web" "$web_base/current"
+else
+  rm -f "$web_base/current"
+fi
 systemctl restart zhongyuan-daojia-api.service
 echo "Health check failed; application symlink rolled back"
 exit 1

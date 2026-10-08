@@ -54,9 +54,17 @@ test("root-domain maintenance config publishes only the technician client subtre
     "utf8",
   );
   assert.ok(maintenance.includes("location = /technician/"));
-  assert.ok(maintenance.includes("apps/workbench-h5/dist/index.html"));
+  assert.ok(
+    maintenance.includes(
+      "/var/www/zhongyuan-daojia-technician/current/index.html",
+    ),
+  );
   assert.ok(maintenance.includes("location ^~ /technician/assets/"));
-  assert.ok(maintenance.includes("apps/workbench-h5/dist/assets/"));
+  assert.ok(
+    maintenance.includes(
+      "/var/www/zhongyuan-daojia-technician/current/assets/",
+    ),
+  );
   assert.ok(maintenance.includes("connect-src https://api.mtsc.top"));
   assert.match(maintenance, /location \/ \{ error_page 503/);
 });
@@ -69,4 +77,6 @@ test("production release builds the technician client against the live API", () 
   assert.ok(deploy.includes("--filter '@zydj/workbench-h5...'"));
   assert.ok(deploy.includes("VITE_API_BASE_URL=https://api.mtsc.top/v1"));
   assert.ok(deploy.includes("apps/workbench-h5/dist/index.html"));
+  assert.ok(deploy.includes("web_base=/var/www/zhongyuan-daojia-technician"));
+  assert.ok(deploy.includes('ln -sfn "$web_release" "$web_base/current"'));
 });
