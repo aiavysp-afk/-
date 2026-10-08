@@ -42,7 +42,7 @@ Page({
         });
         try {
             if (!/^[A-Za-z0-9_-]{22}$/.test(this.data.pairCode))
-                throw Error("请输入自己电脑显示的22位配对码");
+                throw Error("请输入本人工作人员端显示的22位配对码");
             const session = await (0, auth_1.loginWithWechat)();
             const preview = await (0, api_1.api)("/auth/browser-login/inspect", "POST", { pairCode: this.data.pairCode });
             this.sourceToken = session.accessToken;
@@ -67,7 +67,7 @@ Page({
         try {
             const confirmed = await new Promise((resolve) => wx.showModal({
                 title: "确认是你自己的电脑",
-                content: `即将授权${this.data.preview.audience}登录。仅确认本人主动发起的请求，不接受客服或陌生人提供的配对码；电脑还须独立完成MFA。`,
+                content: `即将授权${this.data.preview.audience}登录。仅确认本人主动发起的请求，不接受客服或陌生人提供的配对码；运营后台还须独立完成MFA。`,
                 success: (r) => resolve(r.confirm),
                 fail: () => resolve(false),
             }));

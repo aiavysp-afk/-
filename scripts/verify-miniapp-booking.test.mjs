@@ -74,5 +74,32 @@ test("booking page uses a two-step server quote flow and discloses one-item limi
   assert.match(page, /当前预约系统每单支持 1 项服务/);
   assert.match(page, /尽快上门/);
   assert.match(page, /预约时间/);
+  assert.match(page, /提交订单并支付/);
+  assert.match(page, /立即打开微信支付/);
+  assert.doesNotMatch(page, /创建订单不会自动扣款/);
   assert.doesNotMatch(page, /划线原价|虚构优惠|免出行费/);
+});
+
+test("created orders immediately prepare a verified WeChat payment and query the original result", () => {
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/booking/index.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /const order = await api<OrderView>/);
+  assert.match(source, /await this\.payCreatedOrder\(order\)/);
+  assert.match(source, /`\/orders\/\$\{order\.id\}\/payment-intent`/);
+  assert.match(source, /wx\.requestPayment/);
+  assert.match(source, /`\/payments\/\$\{intent\.id\}\/reconcile`/);
+  assert.match(source, /intent\.amountFen !== order\.payableFen/);
+});
+
+test("customer order status keeps synchronizing from the shared backend while visible", () => {
+  const orders = readFileSync(
+    new URL("../apps/miniapp/pages/orders/index.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(orders, /setInterval\(\(\) => void this\.load\(true\), 5_000\)/);
+  assert.match(orders, /onHide\(\)[\s\S]*stopOrderRefresh\(\)/);
+  assert.match(orders, /onUnload\(\)[\s\S]*stopOrderRefresh\(\)/);
+  assert.match(orders, /if \(loadInFlight\) return/);
 });

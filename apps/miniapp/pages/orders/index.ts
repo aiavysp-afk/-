@@ -50,6 +50,15 @@ const technicianLocationStatuses: Record<string, string> = {
   STALE: "技师位置已超过 5 分钟未更新",
   AVAILABLE: "技师位置已更新",
 };
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let ordersPageVisible = false;
+let loadInFlight = false;
+
+function stopOrderRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = undefined;
+}
+
 Page({
   data: {
     orders: [] as Row[],
@@ -61,9 +70,22 @@ Page({
     showEmptyOrders: false,
   },
   async onShow() {
+    ordersPageVisible = true;
+    stopOrderRefresh();
     if (!requireVerifiedCustomerAccess()) return;
     syncCustomTabBar(this, 3);
     await this.load();
+    if (ordersPageVisible) {
+      refreshTimer = setInterval(() => void this.load(true), 5_000);
+    }
+  },
+  onHide() {
+    ordersPageVisible = false;
+    stopOrderRefresh();
+  },
+  onUnload() {
+    ordersPageVisible = false;
+    stopOrderRefresh();
   },
   async login() {
     try {
@@ -83,21 +105,27 @@ Page({
       error: error instanceof Error ? error.message : "请求失败",
     });
   },
-  async load() {
+  async load(silent = false) {
+    if (loadInFlight) return;
+    loadInFlight = true;
     const session = getStoredSession();
     const loggedIn = Boolean(session);
     const phoneVerified = session?.user.phoneVerified === true;
     this.setData({
       loggedIn,
       phoneVerified,
-      loading: loggedIn,
+      loading: silent ? this.data.loading : loggedIn,
       error: "",
-      orders: [],
-      showEmptyOrders: false,
+      orders: silent ? this.data.orders : [],
+      showEmptyOrders: silent ? this.data.showEmptyOrders : false,
     });
-    if (!loggedIn) return;
+    if (!loggedIn) {
+      loadInFlight = false;
+      return;
+    }
     if (!phoneVerified) {
       this.setData({ error: "请先完成手机号验证后查看订单" });
+      loadInFlight = false;
       return;
     }
     try {
@@ -160,6 +188,7 @@ Page({
     } catch (error) {
       this.fail(error);
     } finally {
+      loadInFlight = false;
       this.setData({
         loading: false,
         showEmptyOrders:

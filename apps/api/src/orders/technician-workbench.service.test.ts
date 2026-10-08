@@ -74,6 +74,17 @@ describe("TechnicianWorkbenchService", () => {
         where: expect.objectContaining({
           organizationId: { in: ["org-1"] },
           therapistId: "therapist-1",
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              status: {
+                in: expect.arrayContaining([
+                  OrderStatus.PAID,
+                  OrderStatus.DISPATCHING,
+                  OrderStatus.ASSIGNED,
+                ]),
+              },
+            }),
+          ]),
         }),
       }),
     );
@@ -247,6 +258,73 @@ describe("TechnicianWorkbenchService", () => {
       action: "DEPART",
       previousStatus: OrderStatus.ASSIGNED,
       status: OrderStatus.EN_ROUTE,
+      idempotentReplay: false,
+    });
+  });
+
+  it("lets the selected technician accept a paid future appointment exactly once", async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "order-paid",
+          organizationId: "org-1",
+          therapistId: "therapist-1",
+          status: OrderStatus.PAID,
+          appointmentStart: new Date("2026-10-09T06:00:00.000Z"),
+          appointmentEnd: new Date("2026-10-09T07:00:00.000Z"),
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderEvent: { create: vi.fn().mockResolvedValue({}) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      outboxEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const service = new TechnicianWorkbenchService(
+      {
+        $transaction: vi.fn(async (operation: (client: typeof tx) => unknown) =>
+          operation(tx),
+        ),
+      } as never,
+      { assertPermission: vi.fn() } as never,
+      new OrderStateMachine(),
+    );
+
+    const result = await service.advance(
+      therapist,
+      "order-paid",
+      { action: "ACCEPT" },
+      new Date("2026-10-08T05:00:00.000Z"),
+    );
+
+    expect(tx.order.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "order-paid",
+        therapistId: "therapist-1",
+        status: OrderStatus.PAID,
+      },
+      data: { status: OrderStatus.DISPATCHING },
+    });
+    expect(tx.order.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "order-paid",
+        therapistId: "therapist-1",
+        status: OrderStatus.DISPATCHING,
+      },
+      data: { status: OrderStatus.ASSIGNED },
+    });
+    expect(tx.orderEvent.create).toHaveBeenCalledTimes(2);
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "ORDER_TECHNICIAN_ACCEPTED",
+        resourceId: "order-paid",
+      }),
+    });
+    expect(result).toEqual({
+      orderId: "order-paid",
+      action: "ACCEPT",
+      previousStatus: OrderStatus.PAID,
+      status: OrderStatus.ASSIGNED,
       idempotentReplay: false,
     });
   });

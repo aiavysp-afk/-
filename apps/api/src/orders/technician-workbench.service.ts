@@ -40,7 +40,7 @@ const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
 ];
 
 const ACTIONS: Record<
-  TechnicianOrderAction["action"],
+  Exclude<TechnicianOrderAction["action"], "ACCEPT">,
   {
     expected: OrderStatus;
     event: OrderTransitionEvent;
@@ -99,7 +99,13 @@ export class TechnicianWorkbenchService {
         where: {
           organizationId: { in: organizationIds },
           therapistId: principal.userId,
-          appointmentStart: { gte: start, lt: end },
+          OR: [
+            { appointmentStart: { gte: start, lt: end } },
+            {
+              status: { in: ACTIVE_ORDER_STATUSES },
+              appointmentEnd: { gt: now },
+            },
+          ],
         },
         include: {
           items: {
@@ -127,17 +133,21 @@ export class TechnicianWorkbenchService {
       }),
     ]);
 
+    const todayOrders = orders.filter(
+      (order) =>
+        order.appointmentStart >= start && order.appointmentStart < end,
+    );
     return {
       displayName: principal.displayName,
       day,
       timeZone: "Asia/Shanghai",
       generatedAt: now.toISOString(),
       metrics: {
-        todayOrders: orders.length,
-        activeOrders: orders.filter((order) =>
+        todayOrders: todayOrders.length,
+        activeOrders: todayOrders.filter((order) =>
           ACTIVE_ORDER_STATUSES.includes(order.status),
         ).length,
-        completedOrders: orders.filter(
+        completedOrders: todayOrders.filter(
           (order) => order.status === OrderStatus.COMPLETED,
         ).length,
         weeklyShifts: weeklyShifts.length,
@@ -262,7 +272,6 @@ export class TechnicianWorkbenchService {
     input: TechnicianOrderAction,
     now = new Date(),
   ): Promise<TechnicianOrderActionResult> {
-    const action = ACTIONS[input.action];
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
       const order = await tx.order.findUnique({
@@ -273,6 +282,7 @@ export class TechnicianWorkbenchService {
           therapistId: true,
           status: true,
           appointmentStart: true,
+          appointmentEnd: true,
         },
       });
       if (!order) throw new NotFoundException("履约订单不存在");
@@ -290,6 +300,100 @@ export class TechnicianWorkbenchService {
         "orders.read",
         order.organizationId,
       );
+
+      if (input.action === "ACCEPT") {
+        if (order.status === OrderStatus.ASSIGNED) {
+          return {
+            orderId: order.id,
+            action: input.action,
+            previousStatus: OrderStatus.PAID,
+            status: OrderStatus.ASSIGNED,
+            idempotentReplay: true,
+          };
+        }
+        if (
+          order.appointmentEnd <= now ||
+          (order.status !== OrderStatus.PAID &&
+            order.status !== OrderStatus.DISPATCHING)
+        ) {
+          throw new ConflictException("当前预约不可接单，请刷新工作台");
+        }
+        const previousStatus = order.status;
+        let currentStatus: OrderStatus = order.status;
+        if (currentStatus === OrderStatus.PAID) {
+          const dispatching = this.stateMachine.transition(
+            currentStatus,
+            "DISPATCH_STARTED",
+          );
+          const started = await tx.order.updateMany({
+            where: {
+              id: order.id,
+              therapistId: principal.userId,
+              status: currentStatus,
+            },
+            data: { status: dispatching },
+          });
+          if (started.count !== 1)
+            throw new ConflictException("订单接单状态已变化");
+          await tx.orderEvent.create({
+            data: {
+              orderId: order.id,
+              type: "DISPATCH_STARTED",
+              actorId: principal.userId,
+              payload: { source: "TECHNICIAN_WORKBENCH" },
+            },
+          });
+          currentStatus = dispatching;
+        }
+        const assigned = this.stateMachine.transition(
+          currentStatus,
+          "THERAPIST_ASSIGNED",
+        );
+        const accepted = await tx.order.updateMany({
+          where: {
+            id: order.id,
+            therapistId: principal.userId,
+            status: currentStatus,
+          },
+          data: { status: assigned },
+        });
+        if (accepted.count !== 1)
+          throw new ConflictException("订单接单状态已变化");
+        await tx.orderEvent.create({
+          data: {
+            orderId: order.id,
+            type: "THERAPIST_ASSIGNED",
+            actorId: principal.userId,
+            payload: { source: "TECHNICIAN_ACCEPTED" },
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: principal.userId,
+            organizationId: order.organizationId,
+            action: "ORDER_TECHNICIAN_ACCEPTED",
+            resourceType: "Order",
+            resourceId: order.id,
+            metadata: {},
+          },
+        });
+        await tx.outboxEvent.create({
+          data: {
+            aggregateId: order.id,
+            type: "ORDER_TECHNICIAN_ACCEPTED",
+            payload: { orderId: order.id, therapistId: principal.userId },
+          },
+        });
+        return {
+          orderId: order.id,
+          action: input.action,
+          previousStatus,
+          status: assigned,
+          idempotentReplay: false,
+        };
+      }
+
+      const action = ACTIONS[input.action];
 
       const { start, end } = this.shanghaiPeriods(now);
       if (order.appointmentStart < start || order.appointmentStart >= end) {

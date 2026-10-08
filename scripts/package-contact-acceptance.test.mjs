@@ -60,6 +60,7 @@ function config(overrides = {}) {
     customerService: { ...fixtureContact },
     emergencyContact: { ...fixtureEmergency },
     integrations: { payment: "mock", sms: "mock", map: "mock" },
+    map: { coordinateSystem: "GCJ-02", miniappKey: "fixture-amap-key" },
     features: {
       addressSuggestionAvailable: false,
       addressVerificationRequired: false,

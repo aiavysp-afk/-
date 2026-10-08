@@ -70,8 +70,8 @@
 
     <text class="error" wx:if="{{error}}">{{error}}</text>
     <button wx:if="{{!quoteDetails}}" class="primary action" bindtap="prepareOrder" loading="{{busy}}" disabled="{{busy || !slots.length}}">{{reservationId?'重新获取服务器报价':'核对订单与价格'}}</button>
-    <button wx:else class="primary action" bindtap="create" loading="{{busy}}" disabled="{{busy}}">{{orderSubmissionAttempted?'使用原幂等键重试提交':'确认订单 · ¥'+quoteDetails.payable}}</button>
-    <text class="payment-note">创建订单不会自动扣款；创建成功后请到订单页核对并发起微信支付。</text>
+    <button wx:else class="primary action" bindtap="create" loading="{{busy}}" disabled="{{busy}}">{{orderSubmissionAttempted?'使用原幂等键重试提交':'提交订单并支付 · ¥'+quoteDetails.payable}}</button>
+    <text class="payment-note">提交成功后将立即打开微信支付；支付结果只以微信支付通知和服务器原单查询为准。</text>
     <navigator class="help-link" url="/pages/profile/index" open-type="switchTab">需要帮助？前往“我的”联系客服 ›</navigator>
     <view class="safe-bottom" />
   </view>

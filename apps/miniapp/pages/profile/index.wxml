@@ -12,7 +12,7 @@
   <view class="menus">
     <button open-type="contact" show-message-card session-from="profile-menu"><view><text class="menu-icon customer">•••</text><text>微信在线客服</text></view><text>立即咨询 ›</text></button>
     <view bindtap="callEmergency"><view><text class="menu-icon phone">☎</text><text>商家紧急值班电话</text></view><text>{{emergencyContact.configured ? '拨号' : '待配置'}} ›</text></view>
-    <view bindtap="openAdminLogin"><view><text class="menu-icon staff">盾</text><text>工作人员登录确认</text></view><text>›</text></view>
+    <view bindtap="openAdminLogin"><view><text class="menu-icon staff">盾</text><text>技师/工作人员登录确认</text></view><text>›</text></view>
     <view bindtap="openMfaRecovery"><view><text class="menu-icon safe">钥</text><text>验证器丢失恢复</text></view><text>›</text></view>
   </view>
   <button wx:if="{{loggedIn}}" class="logout" bindtap="logout">安全退出当前账号</button>

@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactDOM from "react-dom/client";
 import type {
   AuthSession,
@@ -56,6 +62,8 @@ const actionByStatus: Partial<
     }
   >
 > = {
+  PAID: { action: "ACCEPT", label: "立即接单" },
+  DISPATCHING: { action: "ACCEPT", label: "立即接单" },
   ASSIGNED: { action: "DEPART", label: "确认出发" },
   EN_ROUTE: { action: "ARRIVE", label: "确认已到达" },
   ARRIVED: {
@@ -71,6 +79,14 @@ const actionByStatus: Partial<
 };
 
 type WorkbenchView = "today" | "orders" | "shifts" | "profile";
+type StaffLoginChallenge = {
+  pairCode: string;
+  browserSecret: string;
+  confirmationCode: string;
+  expiresAt: string;
+  pollIntervalSeconds: number;
+  audience: string;
+};
 
 const viewHeadings: Record<WorkbenchView, { eyebrow: string; title: string }> =
   {
@@ -141,6 +157,14 @@ function App() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [view, setView] = useState<WorkbenchView>("today");
+  const [loginChallenge, setLoginChallenge] =
+    useState<StaffLoginChallenge | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [incomingOrders, setIncomingOrders] = useState<
+    TechnicianWorkbenchOrder[]
+  >([]);
+  const dismissedIncoming = useRef(new Set<string>());
+  const loadingRequest = useRef(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -159,46 +183,154 @@ function App() {
     return () => abort.abort();
   }, []);
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    try {
-      const [workbenchResponse, earningsResponse] = await Promise.all([
-        apiRequest<{ data: TechnicianWorkbench }>(
-          "/technician/workbench",
-          {},
-          token,
-        ),
-        apiRequest<{ data: TechnicianEarnings }>(
-          "/technician/workbench/earnings",
-          {},
-          token,
-        ),
-      ]);
-      setWorkbench(workbenchResponse.data);
-      setEarnings(earningsResponse.data);
-    } catch (caught) {
-      const failure = caught as Error & { status?: number };
-      setWorkbench(null);
-      setEarnings(null);
-      setError(failure.message || "工作台加载失败");
-      if (failure.status === 401) {
-        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-        setToken("");
+  const load = useCallback(
+    async (silent = false) => {
+      if (!token || loadingRequest.current) return;
+      loadingRequest.current = true;
+      if (!silent) {
+        setLoading(true);
+        setError("");
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+      try {
+        const [workbenchResponse, earningsResponse] = await Promise.all([
+          apiRequest<{ data: TechnicianWorkbench }>(
+            "/technician/workbench",
+            {},
+            token,
+          ),
+          apiRequest<{ data: TechnicianEarnings }>(
+            "/technician/workbench/earnings",
+            {},
+            token,
+          ),
+        ]);
+        setWorkbench(workbenchResponse.data);
+        setEarnings(earningsResponse.data);
+        const incoming = workbenchResponse.data.orders.filter((order) =>
+          ["PAID", "DISPATCHING"].includes(order.status),
+        );
+        setIncomingOrders((current) => {
+          const known = new Set(current.map((order) => order.id));
+          return [
+            ...current.filter((order) =>
+              incoming.some((candidate) => candidate.id === order.id),
+            ),
+            ...incoming.filter(
+              (order) =>
+                !known.has(order.id) &&
+                !dismissedIncoming.current.has(order.id),
+            ),
+          ];
+        });
+      } catch (caught) {
+        const failure = caught as Error & { status?: number };
+        setWorkbench(null);
+        setEarnings(null);
+        if (!silent) setError(failure.message || "工作台加载失败");
+        if (failure.status === 401) {
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          setToken("");
+        }
+      } finally {
+        loadingRequest.current = false;
+        if (!silent) setLoading(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!token) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [load, token]);
+
+  useEffect(() => {
+    if (!loginChallenge || token) return;
+    let stopped = false;
+    const poll = async () => {
+      if (Date.parse(loginChallenge.expiresAt) <= Date.now()) {
+        setLoginChallenge(null);
+        setError("微信登录配对已过期，请重新发起");
+        return;
+      }
+      try {
+        const response = await apiRequest<{ data: { status: string } }>(
+          "/auth/browser-login/poll",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              pairCode: loginChallenge.pairCode,
+              browserSecret: loginChallenge.browserSecret,
+            }),
+          },
+        );
+        if (response.data.status !== "APPROVED" || stopped) return;
+        const claimed = await apiRequest<{ data: AuthSession }>(
+          "/auth/browser-login/claim",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              pairCode: loginChallenge.pairCode,
+              browserSecret: loginChallenge.browserSecret,
+            }),
+          },
+        );
+        if (
+          !claimed.data.user.memberships.some(
+            (membership) => membership.role === "THERAPIST",
+          )
+        ) {
+          throw new Error("当前微信账号尚未在管理后台绑定为技师");
+        }
+        sessionStorage.setItem(TOKEN_STORAGE_KEY, claimed.data.accessToken);
+        setToken(claimed.data.accessToken);
+        setLoginChallenge(null);
+        setMessage("微信登录成功，正在同步后台订单。");
+      } catch (caught) {
+        const failure = caught as Error & { status?: number };
+        if (failure.status !== 429 && !stopped) {
+          setError(failure.message || "微信登录状态读取失败");
+        }
+      }
+    };
+    void poll();
+    const timer = window.setInterval(
+      () => void poll(),
+      Math.max(2_100, loginChallenge.pollIntervalSeconds * 1_000 + 100),
+    );
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [loginChallenge, token]);
+
   function refresh() {
     setMessage("");
     void load();
+  }
+
+  async function startWechatLogin() {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    setError("");
+    try {
+      const response = await apiRequest<{ data: StaffLoginChallenge }>(
+        "/auth/browser-login/create",
+        { method: "POST", body: "{}" },
+      );
+      setLoginChallenge(response.data);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "微信登录发起失败");
+    } finally {
+      setLoginBusy(false);
+    }
   }
 
   async function developmentLogin() {
@@ -233,13 +365,15 @@ function App() {
     setError("");
     setMessage("");
     setView("today");
+    setIncomingOrders([]);
+    dismissedIncoming.current.clear();
   }
 
   async function advanceOrder(order: TechnicianWorkbenchOrder) {
     const operation = actionByStatus[order.status];
-    if (!operation) return;
+    if (!operation) return false;
     if (operation.confirmation && !window.confirm(operation.confirmation)) {
-      return;
+      return false;
     }
     setSavingOrderId(order.id);
     setError("");
@@ -255,11 +389,29 @@ function App() {
       );
       setMessage(`${operation.label}成功，履约状态已更新。`);
       await load();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "履约状态更新失败");
+      return false;
     } finally {
       setSavingOrderId("");
     }
+  }
+
+  async function acceptIncomingOrder(order: TechnicianWorkbenchOrder) {
+    const accepted = await advanceOrder(order);
+    if (!accepted) return;
+    dismissedIncoming.current.add(order.id);
+    setIncomingOrders((current) =>
+      current.filter((candidate) => candidate.id !== order.id),
+    );
+  }
+
+  function dismissIncomingOrder(order: TechnicianWorkbenchOrder) {
+    dismissedIncoming.current.add(order.id);
+    setIncomingOrders((current) =>
+      current.filter((candidate) => candidate.id !== order.id),
+    );
   }
 
   async function reportAndRoute(order: TechnicianWorkbenchOrder) {
@@ -324,7 +476,7 @@ function App() {
           </p>
           <h1>{workbench ? viewHeadings[view].title : "技师工作台"}</h1>
         </div>
-        <button aria-label="通知功能尚未接入" disabled>
+        <button aria-label="刷新后台订单" onClick={refresh} disabled={!token}>
           <Bell size={19} />
         </button>
       </header>
@@ -333,7 +485,32 @@ function App() {
           <section className="workbench-gate">
             <ShieldAlert size={24} />
             <h2>需要技师身份</h2>
-            <p>未登录时不展示订单、排班或客户服务信息。</p>
+            <p>使用本人微信登录；账号须已在管理后台绑定为有效技师。</p>
+            {!loginChallenge && (
+              <button
+                onClick={() => void startWechatLogin()}
+                disabled={loginBusy}
+              >
+                {loginBusy ? "正在生成登录码…" : "微信登录技师端"}
+              </button>
+            )}
+            {loginChallenge && (
+              <div className="pairing-card">
+                <strong>请在“中原到家”小程序确认</strong>
+                <span>我的 → 工作人员登录确认</span>
+                <label>配对码</label>
+                <code>{loginChallenge.pairCode}</code>
+                <label>六位核对数字</label>
+                <b>{loginChallenge.confirmationCode}</b>
+                <small>确认后本页会自动登录，无需刷新。</small>
+                <button
+                  className="secondary"
+                  onClick={() => setLoginChallenge(null)}
+                >
+                  取消本次登录
+                </button>
+              </div>
+            )}
             {import.meta.env.DEV && (
               <button
                 onClick={() => void developmentLogin()}
@@ -399,6 +576,45 @@ function App() {
           </>
         )}
       </main>
+      {incomingOrders[0] && (
+        <div className="incoming-backdrop" role="dialog" aria-modal="true">
+          <section className="incoming-order">
+            <Bell size={26} />
+            <span className="incoming-kicker">新预约已付款</span>
+            <h2>请及时确认接单</h2>
+            <p>{incomingOrders[0].serviceName}</p>
+            <dl>
+              <div>
+                <dt>预约日期</dt>
+                <dd>{formatDay(incomingOrders[0].appointmentStart)}</dd>
+              </div>
+              <div>
+                <dt>上门时间</dt>
+                <dd>{formatTime(incomingOrders[0].appointmentStart)}</dd>
+              </div>
+              <div>
+                <dt>订单编号</dt>
+                <dd>{incomingOrders[0].orderNo}</dd>
+              </div>
+            </dl>
+            <button
+              onClick={() => void acceptIncomingOrder(incomingOrders[0]!)}
+              disabled={savingOrderId === incomingOrders[0].id}
+            >
+              {savingOrderId === incomingOrders[0].id
+                ? "正在接单…"
+                : "立即接单"}
+            </button>
+            <button
+              className="secondary"
+              onClick={() => dismissIncomingOrder(incomingOrders[0]!)}
+              disabled={savingOrderId === incomingOrders[0].id}
+            >
+              稍后在订单页处理
+            </button>
+          </section>
+        </div>
+      )}
       <button
         className="sos"
         aria-label="拨打商家紧急值班电话"
@@ -469,7 +685,7 @@ function TodayView({
   loading: boolean;
   savingOrderId: string;
   onRefresh: () => void;
-  onAdvance: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  onAdvance: (order: TechnicianWorkbenchOrder) => Promise<boolean>;
   routeByOrder: Record<string, TechnicianRoute>;
   onReportAndRoute: (order: TechnicianWorkbenchOrder) => Promise<void>;
   onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;
@@ -499,7 +715,7 @@ function TodayView({
             <span>已完成</span>
           </div>
         </div>
-        <small>开发环境 · 数据来自本地测试数据库</small>
+        <small>订单、排班与技师资料均实时读取管理后台同一数据库</small>
       </section>
 
       {earnings && <EarningsCard earnings={earnings} compact />}
@@ -652,7 +868,7 @@ function OrdersView({
 }: {
   workbench: TechnicianWorkbench;
   savingOrderId: string;
-  onAdvance: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  onAdvance: (order: TechnicianWorkbenchOrder) => Promise<boolean>;
   routeByOrder: Record<string, TechnicianRoute>;
   onReportAndRoute: (order: TechnicianWorkbenchOrder) => Promise<void>;
   onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;
@@ -759,7 +975,7 @@ function NextOrder({
 }: {
   order: TechnicianWorkbenchOrder;
   busy: boolean;
-  onAdvance: (order: TechnicianWorkbenchOrder) => Promise<void>;
+  onAdvance: (order: TechnicianWorkbenchOrder) => Promise<boolean>;
   route?: TechnicianRoute;
   onReportAndRoute: (order: TechnicianWorkbenchOrder) => Promise<void>;
   onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;

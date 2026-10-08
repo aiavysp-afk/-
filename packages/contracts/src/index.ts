@@ -326,7 +326,13 @@ export const TechnicianEarningsSchema = z.object({
 
 export const TechnicianOrderActionSchema = z
   .object({
-    action: z.enum(["DEPART", "ARRIVE", "START_SERVICE", "FINISH_SERVICE"]),
+    action: z.enum([
+      "ACCEPT",
+      "DEPART",
+      "ARRIVE",
+      "START_SERVICE",
+      "FINISH_SERVICE",
+    ]),
   })
   .strict();
 

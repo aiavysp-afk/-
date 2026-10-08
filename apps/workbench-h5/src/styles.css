@@ -1,4 +1,115 @@
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap");
+.pairing-card {
+  background: #f3f7f5;
+  border: 1px solid #dce8e2;
+  border-radius: 14px;
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  padding: 16px;
+  text-align: left;
+}
+.pairing-card strong {
+  color: #1f4d40;
+  font-size: 13px;
+}
+.pairing-card span,
+.pairing-card small,
+.pairing-card label {
+  color: #77857f;
+  font-size: 10px;
+}
+.pairing-card code {
+  background: #fff;
+  border: 1px dashed #aac2b8;
+  border-radius: 8px;
+  color: #173e35;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 9px;
+  text-align: center;
+}
+.pairing-card b {
+  color: #1c5d4b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 26px;
+  letter-spacing: 5px;
+  text-align: center;
+}
+.incoming-backdrop {
+  align-items: center;
+  background: #0b211bbf;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 100;
+}
+.incoming-order {
+  background: #fffdf7;
+  border-radius: 24px;
+  box-shadow: 0 24px 60px #071a1459;
+  max-width: 360px;
+  padding: 26px 22px 20px;
+  text-align: center;
+  width: 100%;
+}
+.incoming-order > svg {
+  color: #b88a38;
+}
+.incoming-kicker {
+  color: #a57628;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-top: 8px;
+}
+.incoming-order h2 {
+  color: #173e35;
+  font-size: 21px;
+  margin: 8px 0;
+}
+.incoming-order > p {
+  color: #65736e;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+.incoming-order dl {
+  background: #f3f6f4;
+  border-radius: 14px;
+  margin: 0 0 16px;
+  padding: 7px 13px;
+}
+.incoming-order dl div {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+.incoming-order dt {
+  color: #81908a;
+  font-size: 10px;
+}
+.incoming-order dd {
+  color: #29493f;
+  font-size: 11px;
+  font-weight: 600;
+  margin: 0;
+}
+.incoming-order button {
+  background: #1d5b49;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  margin-top: 8px;
+  padding: 13px;
+  width: 100%;
+}
+.incoming-order button.secondary {
+  background: #edf2ef;
+  color: #486158;
+}
 .success-banner {
   margin-top: -24px;
   margin-bottom: 16px;

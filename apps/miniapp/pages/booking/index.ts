@@ -3,6 +3,7 @@ import type {
   BookingHold,
   OrderQuote,
   OrderView,
+  PaymentIntent,
   AddressSuggestion,
   AddressVerification,
   PublicConfig,
@@ -194,8 +195,7 @@ Page({
     if (appointmentMode === this.data.appointmentMode) return;
     this.setData({
       appointmentMode,
-      date:
-        appointmentMode === "soon" ? shanghaiDate() : shanghaiDate(1),
+      date: appointmentMode === "soon" ? shanghaiDate() : shanghaiDate(1),
       selected: -1,
       selectedSlotLabel: "",
       quoteDetails: null,
@@ -415,7 +415,7 @@ Page({
       // Once an order request leaves the device, keep the request immutable so
       // an uncertain network result can be retried with the same fingerprint.
       this.setData({ orderSubmissionAttempted: true });
-      await api<OrderView>(
+      const order = await api<OrderView>(
         "/orders",
         "POST",
         {
@@ -441,13 +441,122 @@ Page({
         quoteDetails: null,
         orderSubmissionAttempted: false,
       });
-      wx.showToast({ title: "订单已创建，请到订单页支付", icon: "none" });
+      await this.payCreatedOrder(order);
       wx.switchTab({ url: "/pages/orders/index" });
     } catch (error) {
       this.fail(error);
     } finally {
       this.setData({ busy: false });
     }
+  },
+  async payCreatedOrder(order: OrderView) {
+    if (order.status !== "PENDING_PAYMENT") return;
+    let intent: PaymentIntent;
+    try {
+      intent = await api<PaymentIntent>(
+        `/orders/${order.id}/payment-intent`,
+        "POST",
+        {},
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "微信支付暂时无法发起";
+      wx.showModal({
+        title: "订单已创建",
+        content: `${message}。订单已安全保存，可在“订单”页继续支付。`,
+        confirmText: "查看订单",
+        showCancel: false,
+      });
+      return;
+    }
+    if (
+      !intent ||
+      typeof intent.id !== "string" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(intent.id) ||
+      intent.orderId !== order.id ||
+      !Number.isSafeInteger(intent.amountFen) ||
+      intent.amountFen <= 0 ||
+      intent.amountFen !== order.payableFen
+    ) {
+      wx.showModal({
+        title: "订单已创建",
+        content: "支付订单或金额核验失败。请在订单页刷新后重试，切勿重复下单。",
+        confirmText: "查看订单",
+        showCancel: false,
+      });
+      return;
+    }
+    if (intent.provider !== "WECHAT") {
+      wx.showToast({ title: "订单已创建，请在订单页继续支付", icon: "none" });
+      return;
+    }
+    if (
+      intent.status !== "PENDING" ||
+      intent.prepayState !== "READY" ||
+      !intent.wechatPayParameters
+    ) {
+      try {
+        const result = await api<{ status: string }>(
+          `/payments/${intent.id}/reconcile`,
+          "POST",
+          {},
+        );
+        if (result.status === "SUCCEEDED") {
+          wx.showToast({ title: "支付已确认", icon: "success" });
+          return;
+        }
+      } catch {
+        /* The order page remains the only safe retry surface. */
+      }
+      wx.showModal({
+        title: "订单已创建",
+        content:
+          "微信预下单结果待确认。请在订单页刷新或查询原单，切勿重复下单。",
+        confirmText: "查看订单",
+        showCancel: false,
+      });
+      return;
+    }
+    const confirmed = await new Promise<boolean>((resolve) =>
+      wx.showModal({
+        title: "确认微信支付",
+        content: `本次预约应付 ¥${money(intent.amountFen)}，确认后将打开微信支付。最终结果以微信支付通知和原单查询为准。`,
+        confirmText: "去支付",
+        success: (result) => resolve(result.confirm === true),
+        fail: () => resolve(false),
+      }),
+    );
+    if (!confirmed) {
+      wx.showToast({ title: "订单已保留，可稍后继续支付", icon: "none" });
+      return;
+    }
+    const sdkResult = await new Promise<"success" | "cancel" | "failure">(
+      (resolve) =>
+        wx.requestPayment({
+          ...intent.wechatPayParameters!,
+          success: () => resolve("success"),
+          fail: (error) =>
+            resolve(error.errMsg.includes("cancel") ? "cancel" : "failure"),
+        }),
+    );
+    try {
+      const result = await api<{ status: string }>(
+        `/payments/${intent.id}/reconcile`,
+        "POST",
+        {},
+      );
+      if (result.status === "SUCCEEDED") {
+        wx.showToast({ title: "支付成功，预约已生效", icon: "success" });
+        return;
+      }
+    } catch {
+      /* Notification/query may arrive after the native SDK returns. */
+    }
+    if (sdkResult === "cancel") {
+      wx.showToast({ title: "已取消支付，订单仍为待付款", icon: "none" });
+      return;
+    }
+    wx.showToast({ title: "支付结果确认中，请在订单页刷新", icon: "none" });
   },
   onUnload() {
     this.setData({

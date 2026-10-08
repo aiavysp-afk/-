@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy one exact public main commit to the existing production API only.
+# Deploy one exact public main commit to the production API and technician H5.
 set -euo pipefail
 umask 077
 
@@ -37,10 +37,16 @@ export PATH="$node_root/bin:$(dirname "$pnpm_bin"):$PATH"
 export NPM_CONFIG_CACHE="$base/npm-cache"
 [[ -x "$node_root/bin/node" && -x "$pnpm_bin" ]] || exit 1
 cd "$release"
-"$pnpm_bin" install --frozen-lockfile --ignore-scripts --filter '@zydj/api...' --store-dir "$base/store"
+"$pnpm_bin" install --frozen-lockfile --ignore-scripts \
+  --filter '@zydj/api...' \
+  --filter '@zydj/workbench-h5...' \
+  --store-dir "$base/store"
 "$pnpm_bin" --filter @zydj/contracts build
 "$pnpm_bin" --filter @zydj/api exec prisma generate
 "$pnpm_bin" --filter @zydj/api build
+VITE_API_BASE_URL=https://api.mtsc.top/v1 \
+  "$pnpm_bin" --filter @zydj/workbench-h5 build
+[[ -f "$release/apps/workbench-h5/dist/index.html" ]] || exit 1
 
 set -a
 source /etc/zhongyuan-daojia/api.env

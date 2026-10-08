@@ -30,7 +30,7 @@ export class BrowserLoginService {
     return {
       enabled,
       provider: this.config.get("AUTH_PROVIDER"),
-      audience: "中原到家运营后台",
+      audience: "中原到家工作人员端",
       expiresInSeconds: 180,
     };
   }
