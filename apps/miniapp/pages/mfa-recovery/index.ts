@@ -1,4 +1,8 @@
-import { getStoredSession, loginWithWechat } from "../../utils/auth";
+import {
+  getStoredSession,
+  loginWithWechat,
+  requireVerifiedCustomerAccess,
+} from "../../utils/auth";
 import { api } from "../../utils/api";
 
 type Membership = { organizationId: string; role: string };
@@ -19,6 +23,7 @@ Page({
     error: "",
   },
   async onLoad() {
+    if (!requireVerifiedCustomerAccess()) return;
     await this.refresh();
   },
   async refresh() {

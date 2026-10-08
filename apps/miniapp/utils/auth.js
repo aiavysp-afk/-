@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.confirmSmsPhoneVerification = exports.requestSmsPhoneVerification = exports.verifyWechatPhone = exports.loginWithWechat = exports.goToPhoneVerification = exports.needsPhoneVerification = exports.clearStoredSession = exports.getStoredSession = void 0;
+exports.confirmSmsPhoneVerification = exports.requestSmsPhoneVerification = exports.verifyWechatPhone = exports.loginWithWechat = exports.goToPhoneVerification = exports.requireVerifiedCustomerAccess = exports.redirectToCustomerLogin = exports.hasVerifiedCustomerSession = exports.needsPhoneVerification = exports.clearStoredSession = exports.getStoredSession = void 0;
 const STORAGE_KEY = "zydj.auth.session";
+const CUSTOMER_LOGIN_URL = "/pages/phone-verification/index?required=1";
+let customerLoginRedirecting = false;
 const getStoredSession = () => {
     const value = wx.getStorageSync(STORAGE_KEY);
     if (!value || typeof value !== "object")
@@ -20,6 +22,27 @@ const clearStoredSession = () => wx.removeStorageSync(STORAGE_KEY);
 exports.clearStoredSession = clearStoredSession;
 const needsPhoneVerification = (session = (0, exports.getStoredSession)()) => Boolean(session && session.user.phoneVerified !== true);
 exports.needsPhoneVerification = needsPhoneVerification;
+const hasVerifiedCustomerSession = () => { var _a; return ((_a = (0, exports.getStoredSession)()) === null || _a === void 0 ? void 0 : _a.user.phoneVerified) === true; };
+exports.hasVerifiedCustomerSession = hasVerifiedCustomerSession;
+const redirectToCustomerLogin = () => {
+    if (customerLoginRedirecting)
+        return;
+    customerLoginRedirecting = true;
+    wx.reLaunch({
+        url: CUSTOMER_LOGIN_URL,
+        complete: () => {
+            customerLoginRedirecting = false;
+        },
+    });
+};
+exports.redirectToCustomerLogin = redirectToCustomerLogin;
+const requireVerifiedCustomerAccess = () => {
+    if ((0, exports.hasVerifiedCustomerSession)())
+        return true;
+    (0, exports.redirectToCustomerLogin)();
+    return false;
+};
+exports.requireVerifiedCustomerAccess = requireVerifiedCustomerAccess;
 const goToPhoneVerification = () => wx.navigateTo({ url: "/pages/phone-verification/index" });
 exports.goToPhoneVerification = goToPhoneVerification;
 const loginWithWechat = async () => {

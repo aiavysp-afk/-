@@ -1,5 +1,6 @@
 import type { ServiceItem } from "@zydj/contracts";
 import { api, money } from "../../utils/api";
+import { requireVerifiedCustomerAccess } from "../../utils/auth";
 import { syncCustomTabBar } from "../../utils/tab-bar";
 type Card = ServiceItem & { price: string };
 Page({
@@ -13,6 +14,7 @@ Page({
     showEmptyServices: false,
   },
   async onShow() {
+    if (!requireVerifiedCustomerAccess()) return;
     syncCustomTabBar(this, 1);
     await this.load();
   },

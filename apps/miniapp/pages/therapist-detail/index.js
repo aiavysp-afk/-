@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const therapists_1 = require("../../utils/therapists");
+const auth_1 = require("../../utils/auth");
 Page({
     data: {
         error: "",
@@ -8,6 +9,8 @@ Page({
         therapist: null,
     },
     async onLoad(options) {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         if (!options.id) {
             this.setData({ error: "缺少技师参数", loading: false });
             return;

@@ -5,6 +5,8 @@ import type {
 } from "@zydj/contracts";
 
 const STORAGE_KEY = "zydj.auth.session";
+const CUSTOMER_LOGIN_URL = "/pages/phone-verification/index?required=1";
+let customerLoginRedirecting = false;
 
 interface AppContext {
   globalData: {
@@ -34,6 +36,26 @@ export const clearStoredSession = () => wx.removeStorageSync(STORAGE_KEY);
 
 export const needsPhoneVerification = (session = getStoredSession()) =>
   Boolean(session && session.user.phoneVerified !== true);
+
+export const hasVerifiedCustomerSession = () =>
+  getStoredSession()?.user.phoneVerified === true;
+
+export const redirectToCustomerLogin = () => {
+  if (customerLoginRedirecting) return;
+  customerLoginRedirecting = true;
+  wx.reLaunch({
+    url: CUSTOMER_LOGIN_URL,
+    complete: () => {
+      customerLoginRedirecting = false;
+    },
+  });
+};
+
+export const requireVerifiedCustomerAccess = () => {
+  if (hasVerifiedCustomerSession()) return true;
+  redirectToCustomerLogin();
+  return false;
+};
 
 export const goToPhoneVerification = () =>
   wx.navigateTo({ url: "/pages/phone-verification/index" });

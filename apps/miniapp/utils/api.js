@@ -16,8 +16,10 @@ function api(path, method = "GET", data, key) {
             ...(key ? { "Idempotency-Key": key } : {}),
         },
         success: (result) => {
-            if (result.statusCode === 401)
+            if (result.statusCode === 401) {
                 (0, auth_1.clearStoredSession)();
+                (0, auth_1.redirectToCustomerLogin)();
+            }
             if (result.statusCode >= 200 &&
                 result.statusCode < 300 &&
                 result.data.data !== undefined)

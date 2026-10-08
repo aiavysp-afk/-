@@ -14,6 +14,7 @@ import {
   goToPhoneVerification,
   loginWithWechat,
   needsPhoneVerification,
+  requireVerifiedCustomerAccess,
 } from "../../utils/auth";
 import {
   getGcj02Location,
@@ -76,6 +77,7 @@ Page({
     preferredTherapistId: "",
   },
   async onLoad(options: { slug?: string; therapistId?: string }) {
+    if (!requireVerifiedCustomerAccess()) return;
     const session = getStoredSession();
     this.setData({
       loggedIn: Boolean(session),
@@ -102,6 +104,7 @@ Page({
     }
   },
   onShow() {
+    if (!requireVerifiedCustomerAccess()) return;
     const session = getStoredSession();
     this.setData({
       loggedIn: Boolean(session),

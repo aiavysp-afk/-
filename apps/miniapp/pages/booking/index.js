@@ -51,6 +51,8 @@ Page({
     },
     async onLoad(options) {
         var _a;
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         const session = (0, auth_1.getStoredSession)();
         this.setData({
             loggedIn: Boolean(session),
@@ -77,6 +79,8 @@ Page({
         }
     },
     onShow() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         const session = (0, auth_1.getStoredSession)();
         this.setData({
             loggedIn: Boolean(session),

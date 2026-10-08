@@ -1,4 +1,8 @@
-import { getStoredSession, loginWithWechat } from "../../utils/auth";
+import {
+  getStoredSession,
+  loginWithWechat,
+  requireVerifiedCustomerAccess,
+} from "../../utils/auth";
 import { api } from "../../utils/api";
 type Preview = { audience: string; expiresAt: string; provider: string };
 Page({
@@ -11,6 +15,9 @@ Page({
     approved: false,
   },
   sourceToken: "",
+  onLoad() {
+    requireVerifiedCustomerAccess();
+  },
   onPairInput(event: { detail: { value: string } }) {
     this.sourceToken = "";
     this.setData({

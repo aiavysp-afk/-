@@ -33,6 +33,8 @@ Page({
         showEmptyOrders: false,
     },
     async onShow() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         (0, tab_bar_1.syncCustomTabBar)(this, 3);
         await this.load();
     },

@@ -2,6 +2,7 @@ import {
   clearStoredSession,
   goToPhoneVerification,
   getStoredSession,
+  requireVerifiedCustomerAccess,
 } from "../../utils/auth";
 import { api } from "../../utils/api";
 import type { OrderView, PublicConfig } from "@zydj/contracts";
@@ -48,6 +49,7 @@ Page({
       });
   },
   async onShow() {
+    if (!requireVerifiedCustomerAccess()) return;
     syncCustomTabBar(this, 4);
     const session = getStoredSession();
     this.setData({

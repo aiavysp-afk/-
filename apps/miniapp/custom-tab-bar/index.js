@@ -1,4 +1,6 @@
 "use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const auth_1 = require("../utils/auth");
 Component({
     data: {
         selected: 0,
@@ -12,6 +14,8 @@ Component({
     },
     methods: {
         switchTab(event) {
+            if (!(0, auth_1.requireVerifiedCustomerAccess)())
+                return;
             const index = Number(event.currentTarget.dataset.index);
             const item = this.data.list[index];
             if (!item || index === this.data.selected)

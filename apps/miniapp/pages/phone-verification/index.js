@@ -15,21 +15,23 @@ Page({
         smsCode: "",
         smsCountdown: 0,
         smsRequested: false,
+        wechatReady: false,
+        requiredEntry: false,
     },
     countdownTimer: undefined,
-    onLoad() {
+    onLoad(options) {
+        this.setData({ requiredEntry: options.required === "1" });
         const session = (0, auth_1.getStoredSession)();
         if (session && !(0, auth_1.needsPhoneVerification)(session)) {
-            this.setData({ completed: true });
+            this.setData({ completed: true, wechatReady: true });
+        }
+        else if (session) {
+            this.setData({ wechatReady: true });
         }
     },
     onUnload() {
         if (this.countdownTimer)
             clearInterval(this.countdownTimer);
-    },
-    async ensureWechatSession() {
-        var _a;
-        return (_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (0, auth_1.loginWithWechat)();
     },
     ensureAgreementAccepted() {
         if (this.data.accepted)
@@ -37,30 +39,24 @@ Page({
         this.setData({ error: "请先阅读并同意用户协议、隐私政策与上门服务公约" });
         return false;
     },
-    async quickLogin(event) {
-        var _a, _b;
+    async authorizeWechat() {
+        var _a;
         if (this.data.busy || !this.ensureAgreementAccepted())
             return;
-        const code = event.detail.code;
-        if (!code) {
-            this.setData({
-                error: ((_a = event.detail.errMsg) === null || _a === void 0 ? void 0 : _a.includes("deny")) ||
-                    ((_b = event.detail.errMsg) === null || _b === void 0 ? void 0 : _b.includes("cancel"))
-                    ? "你已取消手机号授权，也可以使用下方短信验证码登录"
-                    : "微信未返回手机号授权凭证，请重试",
-            });
-            return;
-        }
-        this.setData({ busy: true, error: "", loginMode: "QUICK" });
+        this.setData({ busy: true, error: "", loginMode: "WECHAT" });
         try {
-            await this.ensureWechatSession();
-            const result = await (0, auth_1.verifyWechatPhone)(code);
-            this.setData({ completed: true, maskedPhone: result.maskedPhone });
-            wx.showToast({ title: "登录成功", icon: "success" });
+            const session = (_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (await (0, auth_1.loginWithWechat)());
+            if (!(0, auth_1.needsPhoneVerification)(session)) {
+                this.setData({ completed: true, wechatReady: true });
+                wx.showToast({ title: "账号已登录", icon: "success" });
+                return;
+            }
+            this.setData({ wechatReady: true, phoneFocused: true });
+            wx.showToast({ title: "微信授权成功，请验证手机号", icon: "none" });
         }
         catch (error) {
             this.setData({
-                error: error instanceof Error ? error.message : "手机号登录失败",
+                error: error instanceof Error ? error.message : "微信授权登录失败",
             });
         }
         finally {
@@ -114,9 +110,15 @@ Page({
             this.setData({ error: "请输入正确的 11 位手机号" });
             return;
         }
+        if (!(0, auth_1.getStoredSession)()) {
+            this.setData({
+                wechatReady: false,
+                error: "微信登录已失效，请先重新完成微信授权",
+            });
+            return;
+        }
         this.setData({ busy: true, error: "", loginMode: "SMS" });
         try {
-            await this.ensureWechatSession();
             const result = await (0, auth_1.requestSmsPhoneVerification)(this.data.phone);
             this.setData({
                 smsRequested: true,
@@ -157,9 +159,15 @@ Page({
             this.setData({ error: "请输入短信中的 4–6 位验证码" });
             return;
         }
+        if (!(0, auth_1.getStoredSession)()) {
+            this.setData({
+                wechatReady: false,
+                error: "微信登录已失效，请先重新完成微信授权",
+            });
+            return;
+        }
         this.setData({ busy: true, error: "", loginMode: "SMS" });
         try {
-            await this.ensureWechatSession();
             const result = await (0, auth_1.confirmSmsPhoneVerification)(this.data.phone, this.data.smsCode);
             this.setData({ completed: true, maskedPhone: result.maskedPhone });
             wx.showToast({ title: "登录成功", icon: "success" });
@@ -177,6 +185,8 @@ Page({
         wx.switchTab({ url: "/pages/home/index" });
     },
     finish() {
+        if (this.data.requiredEntry)
+            return;
         wx.navigateBack({ delta: 1 });
     },
 });

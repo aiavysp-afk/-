@@ -2,6 +2,7 @@ import {
   loadPublicTherapists,
   type PublicTherapistView,
 } from "../../utils/therapists";
+import { requireVerifiedCustomerAccess } from "../../utils/auth";
 
 Page({
   data: {
@@ -10,6 +11,7 @@ Page({
     therapist: null as PublicTherapistView | null,
   },
   async onLoad(options: { id?: string }) {
+    if (!requireVerifiedCustomerAccess()) return;
     if (!options.id) {
       this.setData({ error: "缺少技师参数", loading: false });
       return;

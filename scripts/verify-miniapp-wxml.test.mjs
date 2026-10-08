@@ -72,6 +72,7 @@ async function host(callback, request, session) {
   globalThis.wx = {
     getStorageSync: () => session,
     removeStorageSync() {},
+    reLaunch: ({ complete }) => complete?.(),
     request,
   };
   try {
@@ -172,7 +173,7 @@ test("profile keeps confirmed public contact fallbacks when the API is unavailab
       assert.equal(page.data.emergencyContact.configured, true);
     },
     (input) => input.fail({ errMsg: "synthetic maintenance failure" }),
-    undefined,
+    session,
   );
 });
 
@@ -197,7 +198,7 @@ test("a successful public-config response replaces the compile-time contact fall
       );
     },
     (input) => input.success({ statusCode: 200, data: { data: serverConfig } }),
-    undefined,
+    session,
   );
 });
 
@@ -275,7 +276,12 @@ test("custom tab bar matches app configuration and routes every item", () => {
   assert.equal(component.data.list.length, 5);
   const routed = [];
   const previousWx = globalThis.wx;
-  globalThis.wx = { switchTab: ({ url }) => routed.push(url) };
+  globalThis.wx = {
+    getStorageSync: () => session,
+    removeStorageSync() {},
+    reLaunch: ({ complete }) => complete?.(),
+    switchTab: ({ url }) => routed.push(url),
+  };
   try {
     for (let index = 0; index < component.data.list.length; index += 1) {
       const context = {

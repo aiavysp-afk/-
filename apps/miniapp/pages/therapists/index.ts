@@ -1,4 +1,5 @@
 import { syncCustomTabBar } from "../../utils/tab-bar";
+import { requireVerifiedCustomerAccess } from "../../utils/auth";
 import {
   loadPublicTherapists,
   type PublicTherapistView,
@@ -21,6 +22,7 @@ Page({
     visibleTherapists: [] as PublicTherapistView[],
   },
   async onShow() {
+    if (!requireVerifiedCustomerAccess()) return;
     syncCustomTabBar(this, 2);
     await this.load();
   },

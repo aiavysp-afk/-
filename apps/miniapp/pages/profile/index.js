@@ -39,6 +39,8 @@ Page({
     },
     async onShow() {
         var _a;
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         (0, tab_bar_1.syncCustomTabBar)(this, 4);
         const session = (0, auth_1.getStoredSession)();
         this.setData({

@@ -10,6 +10,8 @@ Page({
         error: "",
     },
     async onLoad() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         await this.refresh();
     },
     async refresh() {

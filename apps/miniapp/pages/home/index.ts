@@ -1,5 +1,6 @@
 import type { PublicConfig, ServiceItem } from "@zydj/contracts";
 import { api, money } from "../../utils/api";
+import { requireVerifiedCustomerAccess } from "../../utils/auth";
 import { syncCustomTabBar } from "../../utils/tab-bar";
 
 type HomeService = ServiceItem & {
@@ -16,6 +17,7 @@ Page({
     serviceCity: "郑州市",
   },
   async onShow() {
+    if (!requireVerifiedCustomerAccess()) return;
     syncCustomTabBar(this, 0);
     await Promise.all([this.loadServices(), this.loadPublicConfig()]);
   },

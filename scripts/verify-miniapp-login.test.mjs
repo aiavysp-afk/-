@@ -64,10 +64,25 @@ function installWx({ requests = [], storedSession } = {}) {
         });
         return;
       }
-      if (options.url.endsWith("/auth/wechat-phone")) {
+      if (options.url.endsWith("/auth/sms-phone/request")) {
         options.success({
           statusCode: 200,
-          data: { data: { phoneVerified: true, maskedPhone: "138****8000" } },
+          data: {
+            data: {
+              status: "ACCEPTED",
+              expiresAt: "2099-01-01T00:05:00.000Z",
+              retryAfterSeconds: 60,
+            },
+          },
+        });
+        return;
+      }
+      if (options.url.endsWith("/auth/sms-phone/confirm")) {
+        options.success({
+          statusCode: 200,
+          data: {
+            data: { phoneVerified: true, maskedPhone: "138****8000" },
+          },
         });
         return;
       }
@@ -106,12 +121,12 @@ test("login page defaults to all three agreements accepted and opens each docume
   }
 });
 
-test("unchecked agreements stop login before any account or phone request", async () => {
+test("unchecked agreements stop WeChat authorization before any account request", async () => {
   const host = installWx();
   try {
     const page = createPage();
     page.data.accepted = false;
-    await page.quickLogin({ detail: { code: "phone-code" } });
+    await page.authorizeWechat();
     assert.equal(host.requests.length, 0);
     assert.match(page.data.error, /请先阅读并同意/);
   } finally {
@@ -119,29 +134,77 @@ test("unchecked agreements stop login before any account or phone request", asyn
   }
 });
 
-test("one-tap phone login reuses WeChat auto-registration then verifies the phone", async () => {
+test("WeChat authorization completes step one without silently requesting a phone", async () => {
   const host = installWx();
   try {
     const page = createPage();
-    await page.quickLogin({ detail: { code: "phone-code" } });
+    await page.authorizeWechat();
     assert.deepEqual(
       host.requests.map((request) => request.url),
-      [
-        "https://api.fixture.test/v1/auth/wechat-miniapp",
-        "https://api.fixture.test/v1/auth/wechat-phone",
-      ],
+      ["https://api.fixture.test/v1/auth/wechat-miniapp"],
     );
-    assert.equal(host.requests[1].data.code, "phone-code");
-    assert.match(host.requests[1].header.Authorization, /^Bearer /);
-    assert.equal(page.data.completed, true);
-    assert.equal(page.data.maskedPhone, "138****8000");
+    assert.equal(page.data.wechatReady, true);
+    assert.equal(page.data.completed, false);
   } finally {
     host.restore();
   }
 });
 
-test("invalid SMS phone is rejected locally without starting WeChat login", async () => {
+test("SMS verification runs only after WeChat authorization and completes login", async () => {
   const host = installWx();
+  try {
+    const page = createPage();
+    await page.authorizeWechat();
+    page.data.phone = "13800138000";
+    await page.requestSmsCode();
+    page.data.smsCode = "123456";
+    await page.confirmSmsCode();
+    assert.deepEqual(
+      host.requests.map((request) => request.url),
+      [
+        "https://api.fixture.test/v1/auth/wechat-miniapp",
+        "https://api.fixture.test/v1/auth/sms-phone/request",
+        "https://api.fixture.test/v1/auth/sms-phone/confirm",
+      ],
+    );
+    assert.match(host.requests[1].header.Authorization, /^Bearer /);
+    assert.match(host.requests[2].header.Authorization, /^Bearer /);
+    assert.equal(page.data.completed, true);
+    assert.equal(page.data.maskedPhone, "138****8000");
+    page.onUnload();
+  } finally {
+    host.restore();
+  }
+});
+
+test("SMS step cannot silently recreate an expired WeChat session", async () => {
+  const host = installWx();
+  try {
+    const page = createPage();
+    page.data.wechatReady = true;
+    page.data.phone = "13800138000";
+    await page.requestSmsCode();
+    assert.equal(host.requests.length, 0);
+    assert.equal(page.data.wechatReady, false);
+    assert.match(page.data.error, /先重新完成微信授权/);
+  } finally {
+    host.restore();
+  }
+});
+
+test("invalid SMS phone is rejected locally without starting authorization", async () => {
+  const host = installWx({
+    storedSession: {
+      accessToken: "x".repeat(40),
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      user: {
+        id: "fixture-user",
+        displayName: "微信用户",
+        phoneVerified: false,
+        memberships: [],
+      },
+    },
+  });
   try {
     const page = createPage();
     page.data.phone = "123";

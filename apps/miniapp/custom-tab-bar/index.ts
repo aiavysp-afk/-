@@ -1,3 +1,5 @@
+import { requireVerifiedCustomerAccess } from "../utils/auth";
+
 type TabItem = {
   pagePath: string;
   text: string;
@@ -20,6 +22,7 @@ Component({
       this: { data: { list: TabItem[]; selected: number } },
       event: { currentTarget: { dataset: { index: number } } },
     ) {
+      if (!requireVerifiedCustomerAccess()) return;
       const index = Number(event.currentTarget.dataset.index);
       const item = this.data.list[index];
       if (!item || index === this.data.selected) return;

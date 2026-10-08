@@ -12,6 +12,9 @@ Page({
         approved: false,
     },
     sourceToken: "",
+    onLoad() {
+        (0, auth_1.requireVerifiedCustomerAccess)();
+    },
     onPairInput(event) {
         this.sourceToken = "";
         this.setData({

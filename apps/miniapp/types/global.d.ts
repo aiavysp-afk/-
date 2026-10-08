@@ -45,6 +45,7 @@ declare const wx: {
   }): void;
   navigateTo(options: { url: string }): void;
   navigateBack(options?: { delta?: number }): void;
+  reLaunch(options: { url: string; complete?(): void }): void;
   switchTab(options: { url: string }): void;
   showModal(options: {
     title: string;

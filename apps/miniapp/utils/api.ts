@@ -1,4 +1,8 @@
-import { clearStoredSession, getStoredSession } from "./auth";
+import {
+  clearStoredSession,
+  getStoredSession,
+  redirectToCustomerLogin,
+} from "./auth";
 export function api<T>(
   path: string,
   method: "GET" | "POST" = "GET",
@@ -18,7 +22,10 @@ export function api<T>(
         ...(key ? { "Idempotency-Key": key } : {}),
       },
       success: (result) => {
-        if (result.statusCode === 401) clearStoredSession();
+        if (result.statusCode === 401) {
+          clearStoredSession();
+          redirectToCustomerLogin();
+        }
         if (
           result.statusCode >= 200 &&
           result.statusCode < 300 &&

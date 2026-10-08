@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
+const auth_1 = require("../../utils/auth");
 const tab_bar_1 = require("../../utils/tab-bar");
 Page({
     data: {
@@ -13,6 +14,8 @@ Page({
         showEmptyServices: false,
     },
     async onShow() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         (0, tab_bar_1.syncCustomTabBar)(this, 1);
         await this.load();
     },

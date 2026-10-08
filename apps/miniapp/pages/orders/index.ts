@@ -13,6 +13,7 @@ import {
   goToPhoneVerification,
   loginWithWechat,
   needsPhoneVerification,
+  requireVerifiedCustomerAccess,
 } from "../../utils/auth";
 import { syncCustomTabBar } from "../../utils/tab-bar";
 type Row = OrderView & {
@@ -60,6 +61,7 @@ Page({
     showEmptyOrders: false,
   },
   async onShow() {
+    if (!requireVerifiedCustomerAccess()) return;
     syncCustomTabBar(this, 3);
     await this.load();
   },

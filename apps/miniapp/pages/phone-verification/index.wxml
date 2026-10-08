@@ -1,7 +1,8 @@
 <view class="login-page">
   <view class="nav-bar">
-    <text class="nav-back" bindtap="finish">‹</text>
-    <text class="nav-title">登录</text>
+    <text wx:if="{{!requiredEntry}}" class="nav-back" bindtap="finish">‹</text>
+    <view wx:else class="nav-space" />
+    <text class="nav-title">客户登录</text>
     <view class="nav-space" />
   </view>
 
@@ -21,27 +22,38 @@
     <text class="slogan">安心上门 · 悦享松弛</text>
   </view>
 
+  <view wx:if="{{!completed}}" class="step-bar">
+    <view class="step {{wechatReady?'done':'active'}}"><text>{{wechatReady?'✓':'1'}}</text><view><text>微信授权</text><text>{{wechatReady?'已完成':'当前步骤'}}</text></view></view>
+    <view class="step-line {{wechatReady?'active':''}}" />
+    <view class="step {{wechatReady?'active':''}}"><text>2</text><view><text>手机验证</text><text>{{wechatReady?'当前步骤':'下一步骤'}}</text></view></view>
+  </view>
+
   <view wx:if="{{completed}}" class="login-card success-card">
     <view class="success-mark">✓</view>
     <text class="login-title">登录成功</text>
-    <text class="login-subtitle">{{maskedPhone || '手机号已完成验证'}}</text>
+    <text class="login-subtitle">{{maskedPhone || '微信账号与手机号均已完成验证'}}</text>
     <button class="primary-button" bindtap="enterHome">进入中原到家</button>
   </view>
 
-  <view wx:else class="login-card">
-    <text class="login-title">欢迎登录中原到家</text>
-    <text class="login-subtitle">新手机号验证后自动注册，无需单独创建账号</text>
-
+  <view wx:elif="{{!wechatReady}}" class="login-card wechat-card">
+    <text class="stage-kicker">第一步</text>
+    <text class="login-title">微信授权登录</text>
+    <text class="login-subtitle">用于识别你的订单账号；新用户授权后自动创建账号</text>
     <button
-      class="primary-button quick-button"
-      open-type="getPhoneNumber"
-      bindgetphonenumber="quickLogin"
-      loading="{{busy && loginMode === 'QUICK'}}"
+      class="primary-button"
+      bindtap="authorizeWechat"
+      loading="{{busy && loginMode === 'WECHAT'}}"
       disabled="{{busy}}"
-    >手机号一键登录</button>
-    <text class="quick-tip">推荐使用微信官方手机号授权，安全快捷</text>
+    >微信授权登录</button>
+    <view class="flow-note"><text>1</text><text>完成授权后，页面会自动进入手机号短信验证，无需重复返回。</text></view>
+    <text wx:if="{{error}}" class="error-message">{{error}}</text>
+  </view>
 
-    <view class="divider"><view /><text>或使用短信验证码</text><view /></view>
+  <view wx:else class="login-card sms-card">
+    <view class="stage-ready"><text>✓</text><text>微信授权已完成</text></view>
+    <text class="stage-kicker">第二步</text>
+    <text class="login-title">验证联系手机号</text>
+    <text class="login-subtitle">手机号用于预约联系、订单通知与售后核验</text>
 
     <view class="field-shell {{phoneFocused ? 'is-focused' : ''}}">
       <text class="field-prefix">+86</text>
@@ -53,7 +65,8 @@
         bindinput="updatePhone"
         bindfocus="focusPhone"
         bindblur="blurPhone"
-        placeholder="请输入手机号"
+        focus="{{phoneFocused}}"
+        placeholder="请输入本人手机号"
         placeholder-class="field-placeholder"
       />
     </view>
@@ -72,25 +85,25 @@
       <button class="resend-button" bindtap="requestSmsCode" disabled="{{busy || smsCountdown > 0}}">{{smsCountdown > 0 ? smsCountdown + 's' : '重新获取'}}</button>
     </view>
     <button
-      class="sms-button"
+      class="sms-button primary-sms"
       bindtap="handleSmsAction"
       loading="{{busy && loginMode === 'SMS'}}"
       disabled="{{busy}}"
-    >{{smsRequested ? '验证码登录' : '获取验证码'}}</button>
+    >{{smsRequested ? '确认验证码并登录' : '获取短信验证码'}}</button>
 
     <text wx:if="{{error}}" class="error-message">{{error}}</text>
+  </view>
 
-    <view class="agreement-row">
-      <view class="agreement-check {{accepted ? 'checked' : ''}}" bindtap="toggleAccepted"><text wx:if="{{accepted}}">✓</text></view>
-      <view class="agreement-copy">
-        <text bindtap="toggleAccepted">我已阅读并同意</text>
-        <text class="agreement-link" data-type="user" bindtap="openAgreement">《用户协议》</text>
-        <text class="agreement-link" data-type="privacy" bindtap="openAgreement">《隐私政策》</text>
-        <text>及</text>
-        <text class="agreement-link" data-type="service" bindtap="openAgreement">《上门服务公约》</text>
-      </view>
+  <view wx:if="{{!completed}}" class="agreement-row">
+    <view class="agreement-check {{accepted ? 'checked' : ''}}" bindtap="toggleAccepted"><text wx:if="{{accepted}}">✓</text></view>
+    <view class="agreement-copy">
+      <text bindtap="toggleAccepted">我已阅读并同意</text>
+      <text class="agreement-link" data-type="user" bindtap="openAgreement">《用户协议》</text>
+      <text class="agreement-link" data-type="privacy" bindtap="openAgreement">《隐私政策》</text>
+      <text>及</text>
+      <text class="agreement-link" data-type="service" bindtap="openAgreement">《上门服务公约》</text>
     </view>
   </view>
 
-  <view class="security-note"><text class="security-icon">◇</text><text>手机号仅用于预约联系、订单履约与售后核验</text></view>
+  <view class="security-note"><text class="security-icon">◇</text><text>登录分两步完成，不会未经确认获取手机号</text></view>
 </view>
