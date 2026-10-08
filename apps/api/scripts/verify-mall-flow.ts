@@ -1067,6 +1067,7 @@ try {
   const require = createRequire(import.meta.url);
   let captured: any;
   let reLaunchCalls = 0;
+  let redirectedTo = "";
   const globals = globalThis as any;
   const previous = {
     wx: globals.wx,
@@ -1090,6 +1091,9 @@ try {
     login: (options: any) => options.success({ code: customer.code }),
     showToast: () => {},
     navigateTo: () => {},
+    redirectTo: (options: any) => {
+      redirectedTo = options.url;
+    },
     reLaunch: (options: any) => {
       reLaunchCalls++;
       options.complete?.();
@@ -1143,6 +1147,7 @@ try {
     assert.ok(booking.data.quoteDetails);
     await booking.create();
     assert.equal(booking.data.error, "");
+    assert.equal(redirectedTo, "/pages/orders/index");
     require("../../miniapp/pages/orders/index.js");
     orderPage = captured;
     await orderPage.onShow();
