@@ -1,112 +1,187 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const auth_1 = require("../../utils/auth");
 const api_1 = require("../../utils/api");
 const customer_service_1 = require("../../utils/customer-service");
+const customer_center_1 = require("../../utils/customer-center");
+const auth_1 = require("../../utils/auth");
 const tab_bar_1 = require("../../utils/tab-bar");
-// These are public merchant contact channels, not credentials. Keeping a
-// compile-time fallback makes emergency/contact access survive API maintenance.
-// A successful public-config response remains authoritative and replaces them.
-const PUBLIC_CONTACT_FALLBACK = {
-    emergencyContact: {
-        configured: true,
-        phone: "18018181799",
-    },
+const DEFAULT_CONTENT = {
+    levelLabel: "中原到家用户",
+    cityNewsTitle: "城市快讯",
+    cityNewsContent: "中原到家持续为郑州用户提供规范上门服务",
+    appBannerTitle: "中原到家小程序",
+    appBannerSubtitle: "无需下载 APP，微信内即可预约",
+    appDownloadUrl: null,
+    safeguardItems: ["价格透明", "服务留痕", "售后保障"],
 };
+const PUBLIC_CONTACT_FALLBACK = {
+    emergencyContact: { configured: true, phone: "18018181799" },
+};
+const emptyCounts = () => ({
+    pendingPayment: 0,
+    inProgress: 0,
+    pendingReview: 0,
+    cancelled: 0,
+});
 Page({
     data: {
-        loggedIn: false,
-        phoneVerified: false,
+        loading: false,
+        error: "",
         displayName: "微信用户",
-        stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
+        avatarUrl: "",
+        avatarText: "客",
+        levelLabel: DEFAULT_CONTENT.levelLabel,
+        availableCouponCount: 0,
+        availableCardCount: 0,
+        maskedBalance: "****",
+        orders: emptyCounts(),
+        totalOrderCount: 0,
+        cityNewsTitle: DEFAULT_CONTENT.cityNewsTitle,
+        cityNewsContent: DEFAULT_CONTENT.cityNewsContent,
+        appBannerTitle: DEFAULT_CONTENT.appBannerTitle,
+        appBannerSubtitle: DEFAULT_CONTENT.appBannerSubtitle,
+        appDownloadUrl: DEFAULT_CONTENT.appDownloadUrl,
+        safeguardItems: DEFAULT_CONTENT.safeguardItems,
         emergencyContact: PUBLIC_CONTACT_FALLBACK.emergencyContact,
     },
-    onLoad() {
-        const session = (0, auth_1.getStoredSession)();
-        if (session)
-            this.setData({
-                loggedIn: true,
-                phoneVerified: session.user.phoneVerified === true,
-                displayName: session.user.displayName,
-            });
-    },
     async onShow() {
-        var _a;
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
         (0, tab_bar_1.syncCustomTabBar)(this, 4);
         const session = (0, auth_1.getStoredSession)();
+        const displayName = (session === null || session === void 0 ? void 0 : session.user.displayName) || "微信用户";
         this.setData({
-            loggedIn: Boolean(session),
-            phoneVerified: (session === null || session === void 0 ? void 0 : session.user.phoneVerified) === true,
-            displayName: (_a = session === null || session === void 0 ? void 0 : session.user.displayName) !== null && _a !== void 0 ? _a : "微信用户",
+            displayName,
+            avatarText: displayName.trim().slice(0, 1) || "客",
         });
-        // Public, compile-time safety channels remain available during API maintenance.
-        // Any successful server response is authoritative and replaces this fallback.
+        await Promise.all([this.load(), this.loadPublicContact()]);
+    },
+    async loadPublicContact() {
         this.setData({
             emergencyContact: PUBLIC_CONTACT_FALLBACK.emergencyContact,
         });
         try {
             const config = await (0, api_1.api)("/config/public");
-            this.setData({
-                emergencyContact: config.emergencyContact,
-            });
+            this.setData({ emergencyContact: config.emergencyContact });
         }
         catch {
-            /* Unconfigured/unreachable is shown explicitly by the tap handler. */
+            // The confirmed public emergency fallback remains available in maintenance.
         }
-        if (session)
-            await this.loadStats();
     },
-    async loadStats() {
+    async load() {
+        this.setData({ loading: true, error: "" });
         try {
-            const orders = await (0, api_1.api)("/orders");
+            const overview = await (0, customer_center_1.loadCustomerCenterOverview)();
+            this.applyOverview(overview);
+        }
+        catch (error) {
             this.setData({
-                stats: {
-                    upcoming: orders.filter((order) => ["PAID", "DISPATCHING", "ASSIGNED", "EN_ROUTE", "ARRIVED"].includes(order.status)).length,
-                    active: orders.filter((order) => order.status === "IN_SERVICE")
-                        .length,
-                    confirmation: orders.filter((order) => order.status === "AWAITING_CONFIRMATION").length,
-                    afterSale: orders.filter((order) => ["REFUNDING", "REFUNDED"].includes(order.status)).length,
-                },
+                error: error instanceof Error
+                    ? `个人中心部分数据暂未加载：${error.message}`
+                    : "个人中心部分数据暂未加载",
+            });
+            await this.loadOrderFallback();
+        }
+        finally {
+            this.setData({ loading: false });
+        }
+    },
+    applyOverview(overview) {
+        const displayName = overview.profile.displayName || "微信用户";
+        const totalOrderCount = Object.values(overview.orders).reduce((sum, value) => sum + value, 0);
+        this.setData({
+            displayName,
+            avatarUrl: overview.profile.avatarUrl || "",
+            avatarText: displayName.trim().slice(0, 1) || "客",
+            levelLabel: overview.profile.levelLabel,
+            availableCouponCount: overview.benefits.availableCouponCount,
+            availableCardCount: overview.benefits.availableCardCount,
+            maskedBalance: overview.benefits.maskedBalance,
+            orders: overview.orders,
+            totalOrderCount,
+            cityNewsTitle: overview.content.cityNewsTitle,
+            cityNewsContent: overview.content.cityNewsContent,
+            appBannerTitle: overview.content.appBannerTitle,
+            appBannerSubtitle: overview.content.appBannerSubtitle,
+            appDownloadUrl: overview.content.appDownloadUrl,
+            safeguardItems: overview.content.safeguardItems.length > 0
+                ? overview.content.safeguardItems
+                : DEFAULT_CONTENT.safeguardItems,
+        });
+    },
+    async loadOrderFallback() {
+        try {
+            const rows = await (0, api_1.api)("/orders");
+            const orders = {
+                pendingPayment: rows.filter((order) => order.status === "PENDING_PAYMENT").length,
+                inProgress: rows.filter((order) => [
+                    "PAID",
+                    "DISPATCHING",
+                    "ASSIGNED",
+                    "EN_ROUTE",
+                    "ARRIVED",
+                    "IN_SERVICE",
+                    "AWAITING_CONFIRMATION",
+                ].includes(order.status)).length,
+                pendingReview: rows.filter((order) => order.status === "COMPLETED" && order.reviewStatus === null).length,
+                cancelled: rows.filter((order) => ["CANCELLED", "REFUNDED"].includes(order.status)).length,
+            };
+            this.setData({
+                orders,
+                totalOrderCount: Object.values(orders).reduce((sum, value) => sum + value, 0),
             });
         }
         catch {
-            this.setData({
-                stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
-            });
+            this.setData({ orders: emptyCounts(), totalOrderCount: 0 });
         }
+    },
+    openSettings() {
+        wx.navigateTo({ url: "/pages/settings/index" });
+    },
+    openCoupons() {
+        wx.navigateTo({ url: "/pages/coupons/index" });
+    },
+    openStoredValue() {
+        wx.navigateTo({ url: "/pages/stored-value/index" });
+    },
+    openOrders() {
+        wx.navigateTo({ url: "/pages/orders/index" });
+    },
+    openOrderFilter(event) {
+        const status = event.currentTarget.dataset.status;
+        wx.navigateTo({
+            url: `/pages/orders/index?status=${encodeURIComponent(status)}`,
+        });
+    },
+    openRecord(event) {
+        wx.navigateTo({
+            url: `/pages/customer-records/index?kind=${encodeURIComponent(event.currentTarget.dataset.kind)}`,
+        });
+    },
+    quickOrder() {
+        wx.switchTab({ url: "/pages/services/index" });
     },
     callEmergency() {
         (0, customer_service_1.callEmergencyDuty)(this.data.emergencyContact);
     },
-    openLogin() {
-        (0, auth_1.goToPhoneVerification)();
-    },
-    verifyPhone() {
-        (0, auth_1.goToPhoneVerification)();
-    },
-    openAdminLogin() {
-        wx.navigateTo({ url: "/pages/admin-login/index" });
-    },
-    openMfaRecovery() {
-        wx.navigateTo({ url: "/pages/mfa-recovery/index" });
-    },
-    async logout() {
-        try {
-            await (0, api_1.api)("/auth/logout", "POST", {});
-        }
-        catch {
-            wx.showToast({ title: "服务端注销未确认，请稍后重试", icon: "none" });
+    openAppBanner() {
+        const url = this.data.appDownloadUrl;
+        if (!url) {
+            wx.showModal({
+                title: this.data.appBannerTitle,
+                content: `${this.data.appBannerSubtitle}\n\n当前无需下载 APP，可直接在微信小程序完成预约。`,
+                showCancel: false,
+            });
             return;
         }
-        (0, auth_1.clearStoredSession)();
-        this.setData({
-            loggedIn: false,
-            phoneVerified: false,
-            displayName: "微信用户",
-            stats: { upcoming: 0, active: 0, confirmation: 0, afterSale: 0 },
+        wx.showModal({
+            title: "打开官方地址",
+            content: "小程序内不能直接安装 APP，可复制经后台配置并校验的官方 HTTPS 地址后，在浏览器中打开。",
+            confirmText: "复制地址",
+            success: (result) => {
+                if (result.confirm)
+                    wx.setClipboardData({ data: url });
+            },
         });
-        wx.showToast({ title: "会话已安全注销", icon: "success" });
     },
 });

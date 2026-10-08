@@ -1,4 +1,3 @@
-import { syncCustomTabBar } from "../../utils/tab-bar";
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
 import {
   loadPublicTherapists,
@@ -21,9 +20,11 @@ Page({
     therapists: [] as PublicTherapistView[],
     visibleTherapists: [] as PublicTherapistView[],
   },
+  back() {
+    wx.navigateBack({ delta: 1 });
+  },
   async onShow() {
     if (!requireVerifiedCustomerAccess()) return;
-    syncCustomTabBar(this, 2);
     await this.load();
   },
   async load() {

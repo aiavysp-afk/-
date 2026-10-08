@@ -6,10 +6,10 @@ Component({
         selected: 0,
         list: [
             { pagePath: "/pages/home/index", text: "首页", icon: "⌂" },
-            { pagePath: "/pages/services/index", text: "服务", icon: "✦" },
-            { pagePath: "/pages/therapists/index", text: "技师", icon: "人" },
-            { pagePath: "/pages/orders/index", text: "订单", icon: "▤" },
-            { pagePath: "/pages/profile/index", text: "我的", icon: "●" },
+            { pagePath: "/pages/discover/index", text: "发现", icon: "◇" },
+            { pagePath: "/pages/services/index", text: "下单", icon: "约" },
+            { pagePath: "/pages/messages/index", text: "消息", icon: "•••" },
+            { pagePath: "/pages/profile/index", text: "我的", icon: "人" },
         ],
     },
     methods: {

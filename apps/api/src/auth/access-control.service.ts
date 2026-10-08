@@ -11,6 +11,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly (Permission | "*")[]> = {
     "catalog.read",
     "catalog.write",
     "technicians.manage",
+    "customer-center.manage",
     "orders.read",
     "audit.read",
   ],

@@ -2,7 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
-const tab_bar_1 = require("../../utils/tab-bar");
+const filterTitles = {
+    ALL: "全部订单",
+    PENDING_PAYMENT: "待付款订单",
+    IN_PROGRESS: "进行中订单",
+    PENDING_REVIEW: "待评价订单",
+    CANCELLED: "已取消订单",
+};
 const safetyCategories = [
     { label: "人身安全风险", value: "PERSONAL_SAFETY" },
     { label: "身体不适或医疗顾虑", value: "MEDICAL_CONCERN" },
@@ -44,13 +50,22 @@ Page({
         reviewRating: 5,
         reviewRatings: [1, 2, 3, 4, 5],
         reviewContent: "",
+        orderFilter: "ALL",
+        filterTitle: filterTitles.ALL,
+    },
+    onLoad(options) {
+        const requested = options.status;
+        const orderFilter = filterTitles[requested] ? requested : "ALL";
+        this.setData({ orderFilter, filterTitle: filterTitles[orderFilter] });
+    },
+    back() {
+        wx.navigateBack({ delta: 1 });
     },
     async onShow() {
         ordersPageVisible = true;
         stopOrderRefresh();
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
-        (0, tab_bar_1.syncCustomTabBar)(this, 3);
         await this.load();
         if (ordersPageVisible) {
             refreshTimer = setInterval(() => void this.load(true), 5000);
@@ -165,7 +180,7 @@ Page({
                                 : "",
                 };
             }));
-            this.setData({ orders: rows });
+            this.setData({ orders: this.filterOrders(rows) });
         }
         catch (error) {
             this.fail(error);
@@ -177,6 +192,25 @@ Page({
                 showEmptyOrders: loggedIn && !this.data.error && this.data.orders.length === 0,
             });
         }
+    },
+    filterOrders(rows) {
+        if (this.data.orderFilter === "PENDING_PAYMENT")
+            return rows.filter((order) => order.status === "PENDING_PAYMENT");
+        if (this.data.orderFilter === "IN_PROGRESS")
+            return rows.filter((order) => [
+                "PAID",
+                "DISPATCHING",
+                "ASSIGNED",
+                "EN_ROUTE",
+                "ARRIVED",
+                "IN_SERVICE",
+                "AWAITING_CONFIRMATION",
+            ].includes(order.status));
+        if (this.data.orderFilter === "PENDING_REVIEW")
+            return rows.filter((order) => order.status === "COMPLETED" && order.reviewStatus === null);
+        if (this.data.orderFilter === "CANCELLED")
+            return rows.filter((order) => ["CANCELLED", "REFUNDED"].includes(order.status));
+        return rows;
     },
     verifyPhone() {
         (0, auth_1.goToPhoneVerification)();

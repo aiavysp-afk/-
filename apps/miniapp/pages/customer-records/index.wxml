@@ -1,0 +1,37 @@
+<view class="page">
+  <view class="sub-nav"><text bindtap="back">‹</text><text>{{title}}</text><text/></view>
+  <view class="title-block"><text>{{title}}</text><text wx:if="{{kind === 'complaint'}}">提交后同步后台客服处理队列</text><text wx:elif="{{kind === 'feedback'}}">你的建议会同步到后台留痕</text></view>
+
+  <view wx:if="{{kind === 'favorites' || kind === 'history'}}" class="empty">
+    <view class="empty-art"><view/><view/><text>{{kind === 'favorites' ? '♡' : '⌖'}}</text></view>
+    <text>{{kind === 'favorites' ? '暂无收藏记录' : '暂无可展示的浏览足迹'}}</text>
+    <text>当前页面不会用演示数据冒充你的真实记录</text>
+    <button wx:if="{{kind === 'favorites'}}" bindtap="goServices">浏览服务</button>
+    <button wx:else bindtap="goOrders">查看真实订单</button>
+  </view>
+
+  <view wx:if="{{kind === 'complaint' || kind === 'feedback'}}" class="form-card">
+    <text>{{kind === 'complaint' ? '问题与诉求' : '反馈内容'}}</text>
+    <textarea maxlength="2000" value="{{content}}" bindinput="contentChanged" placeholder="请描述具体时间、订单和问题，至少 10 个字" />
+    <text>联系方式（选填）</text>
+    <input maxlength="120" value="{{contact}}" bindinput="contactChanged" placeholder="手机号或其他可联系信息" />
+    <text class="privacy">联系方式只用于本次问题处理，不在本机持久保存。</text>
+    <text wx:if="{{error}}" class="error">{{error}}</text>
+    <button class="submit" bindtap="submit" loading="{{busy}}" disabled="{{busy}}">提交到后台</button>
+    <button wx:if="{{kind === 'complaint'}}" class="contact" open-type="contact" show-message-card session-from="complaint">联系在线客服</button>
+  </view>
+
+  <view wx:if="{{kind === 'about'}}" class="about-card">
+    <view class="brand-mark">中</view>
+    <text>中原到家</text>
+    <text>面向郑州用户的规范上门养护服务平台</text>
+    <view><text>价格透明</text><text>订单留痕</text><text>售后可追踪</text></view>
+    <text class="disclosure">服务项目、技师资料、订单状态与客户中心内容以后台审核并实际发布的数据为准。</text>
+  </view>
+
+  <view wx:if="{{kind === 'news'}}" class="news-card">
+    <text>{{newsTitle}}</text>
+    <text>{{newsContent}}</text>
+    <view><text>中原到家</text><text>内容由后台统一配置</text></view>
+  </view>
+</view>

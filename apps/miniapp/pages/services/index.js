@@ -16,7 +16,7 @@ Page({
     async onShow() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
-        (0, tab_bar_1.syncCustomTabBar)(this, 1);
+        (0, tab_bar_1.syncCustomTabBar)(this, 2);
         await this.load();
     },
     async load() {

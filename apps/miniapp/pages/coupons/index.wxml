@@ -1,0 +1,28 @@
+<view class="page">
+  <view class="sub-nav"><text bindtap="back">‹</text><text>我的优惠券</text><text/></view>
+  <view class="tabs">
+    <view wx:for="{{tabs}}" wx:key="key" class="{{activeStatus === item.key ? 'active' : ''}}" data-status="{{item.key}}" bindtap="changeStatus">{{item.label}}</view>
+  </view>
+  <text wx:if="{{loading}}" class="state">正在读取真实优惠券…</text>
+  <view wx:if="{{error}}" class="error-card"><text>{{error}}</text><button bindtap="load">重新加载</button></view>
+  <view class="coupon-list">
+    <view wx:for="{{coupons}}" wx:key="id" class="coupon-card {{item.status !== 'AVAILABLE' ? 'disabled' : ''}}">
+      <view class="coupon-value"><text>¥</text><text>{{item.amount}}</text><text>现金券</text></view>
+      <view class="dash" />
+      <view class="coupon-main">
+        <text class="coupon-title">{{item.title}}</text>
+        <text class="threshold">{{item.threshold}}</text>
+        <text class="validity">有效期 {{item.validity}}</text>
+        <text class="scope">{{item.applicability}} · {{item.canApplyToTravelFee ? '可抵扣出行费' : '不抵扣出行费'}}</text>
+      </view>
+      <button wx:if="{{item.status === 'AVAILABLE'}}" bindtap="goUse">去使用</button>
+      <text wx:else class="status-label">{{item.statusLabel}}</text>
+    </view>
+  </view>
+  <view wx:if="{{!loading && !error && coupons.length === 0}}" class="empty">
+    <view class="empty-ticket"><view/><view/></view>
+    <text>暂无{{activeStatus === 'AVAILABLE' ? '可用' : activeStatus === 'USED' ? '已使用' : '已过期'}}优惠券</text>
+    <text>优惠券以后台真实发放和使用记录为准</text>
+  </view>
+  <view class="history" bindtap="showUsageHistory">使用记录 ›</view>
+</view>

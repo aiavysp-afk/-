@@ -458,15 +458,9 @@ export const TechnicianProfileUpdateSchema = z
     avatarUrl: PublicHttpsUrlSchema.nullable().optional(),
     galleryUrls: z.array(PublicHttpsUrlSchema).max(12).optional(),
     introduction: z.string().trim().max(2_000).optional(),
-    specialties: z
-      .array(z.string().trim().min(1).max(40))
-      .max(20)
-      .optional(),
+    specialties: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
     serviceYears: z.number().int().min(0).max(60).nullable().optional(),
-    certificates: z
-      .array(z.string().trim().min(1).max(120))
-      .max(20)
-      .optional(),
+    certificates: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "至少提供一个可更新字段");
@@ -909,6 +903,255 @@ export const MfaRecoveryViewSchema = z.object({
   revokedSessions: z.number().int().nonnegative().optional(),
 });
 
+export const CustomerCenterOrganizationQuerySchema = z
+  .object({ organizationId: z.string().trim().min(1).max(128).optional() })
+  .strict();
+
+export const CustomerCenterContentSchema = z.object({
+  levelLabel: z.string().min(1).max(32),
+  customerServicePhone: z.string().nullable(),
+  cityNewsTitle: z.string().min(1).max(80),
+  cityNewsContent: z.string().min(1).max(300),
+  appBannerTitle: z.string().min(1).max(80),
+  appBannerSubtitle: z.string().min(1).max(160),
+  appDownloadUrl: z.string().url().startsWith("https://").nullable(),
+  safeguardItems: z.array(z.string().min(1).max(80)).max(8),
+  updatedAt: IsoDateTimeSchema.nullable(),
+});
+
+export const CustomerCenterConfigUpdateSchema = z
+  .object({
+    levelLabel: z.string().trim().min(1).max(32).optional(),
+    customerServicePhone: z
+      .string()
+      .trim()
+      .regex(/^(?:400\d{7}|0\d{2,3}-?\d{7,8}|1\d{10})$/)
+      .nullable()
+      .optional(),
+    cityNewsTitle: z.string().trim().min(1).max(80).optional(),
+    cityNewsContent: z.string().trim().min(1).max(300).optional(),
+    appBannerTitle: z.string().trim().min(1).max(80).optional(),
+    appBannerSubtitle: z.string().trim().min(1).max(160).optional(),
+    appDownloadUrl: z
+      .string()
+      .url()
+      .startsWith("https://")
+      .nullable()
+      .optional(),
+    safeguardItems: z.array(z.string().trim().min(1).max(80)).max(8).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "至少提供一个可更新字段");
+
+export const CustomerCenterOrderCountsSchema = z.object({
+  pendingPayment: z.number().int().nonnegative(),
+  inProgress: z.number().int().nonnegative(),
+  pendingReview: z.number().int().nonnegative(),
+  cancelled: z.number().int().nonnegative(),
+});
+
+export const CustomerCenterOverviewSchema = z.object({
+  organizationId: z.string(),
+  profile: z.object({
+    userId: z.string(),
+    displayName: z.string(),
+    avatarUrl: z.string().url().nullable(),
+    levelLabel: z.string(),
+    registeredAt: IsoDateTimeSchema,
+    phoneVerified: z.boolean(),
+  }),
+  benefits: z.object({
+    availableCouponCount: z.number().int().nonnegative(),
+    availableCardCount: z.number().int().nonnegative(),
+    maskedBalance: z.literal("****"),
+  }),
+  orders: CustomerCenterOrderCountsSchema,
+  content: CustomerCenterContentSchema,
+});
+
+export const CustomerCouponStatusSchema = z.enum([
+  "AVAILABLE",
+  "USED",
+  "EXPIRED",
+]);
+export const CustomerCouponQuerySchema =
+  CustomerCenterOrganizationQuerySchema.extend({
+    status: CustomerCouponStatusSchema.optional(),
+  }).strict();
+export const CustomerCouponSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  title: z.string(),
+  amountFen: MoneyFenSchema,
+  minimumSpendFen: MoneyFenSchema,
+  applicability: z.string(),
+  canApplyToTravelFee: z.boolean(),
+  validFrom: IsoDateTimeSchema,
+  expiresAt: IsoDateTimeSchema,
+  status: CustomerCouponStatusSchema,
+  usedAt: IsoDateTimeSchema.nullable(),
+});
+
+export const StoredValueCardStatusSchema = z.enum(["AVAILABLE", "UNAVAILABLE"]);
+export const StoredValueCardTypeSchema = z.enum([
+  "PHYSICAL",
+  "DISCOUNT_93",
+  "DISCOUNT_90",
+]);
+export const StoredValueCardQuerySchema =
+  CustomerCenterOrganizationQuerySchema.extend({
+    status: StoredValueCardStatusSchema.optional(),
+    type: StoredValueCardTypeSchema.optional(),
+  }).strict();
+export const StoredValueCardSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: StoredValueCardTypeSchema,
+  balanceFen: MoneyFenSchema,
+  status: StoredValueCardStatusSchema,
+  expiresAt: IsoDateTimeSchema.nullable(),
+});
+export const CustomerWalletSchema = z.object({
+  organizationId: z.string(),
+  balanceFen: MoneyFenSchema,
+  cards: z.array(StoredValueCardSchema),
+  recharge: z.object({
+    enabled: z.literal(false),
+    reason: z.string(),
+  }),
+});
+export const StoredValueTransactionSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  changeFen: z.number().int(),
+  balanceAfterFen: MoneyFenSchema,
+  description: z.string(),
+  occurredAt: IsoDateTimeSchema,
+});
+
+export const CustomerSettingsSchema = z.object({
+  organizationId: z.string(),
+  userId: z.string(),
+  displayName: z.string(),
+  maskedPhone: z.string().nullable(),
+  phoneVerified: z.boolean(),
+  registeredAt: IsoDateTimeSchema,
+  customerServicePhone: z.string().nullable(),
+});
+
+export const CustomerAddressCreateSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(128).optional(),
+    contactName: z.string().trim().min(2).max(40),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^1\d{10}$/),
+    detail: z.string().trim().min(5).max(200),
+    latitude: Gcj02CoordinateSchema.shape.latitude,
+    longitude: Gcj02CoordinateSchema.shape.longitude,
+    coordinateSystem: Gcj02CoordinateSchema.shape.coordinateSystem,
+    isDefault: z.boolean().optional(),
+  })
+  .strict();
+
+export const CustomerAddressUpdateSchema = z
+  .object({
+    contactName: z.string().trim().min(2).max(40).optional(),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^1\d{10}$/)
+      .optional(),
+    detail: z.string().trim().min(5).max(200).optional(),
+    latitude: Gcj02CoordinateSchema.shape.latitude.optional(),
+    longitude: Gcj02CoordinateSchema.shape.longitude.optional(),
+    coordinateSystem: Gcj02CoordinateSchema.shape.coordinateSystem.optional(),
+    isDefault: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "至少提供一个可更新字段")
+  .refine((value) => {
+    const coordinateFields = [
+      value.latitude,
+      value.longitude,
+      value.coordinateSystem,
+    ];
+    const supplied = coordinateFields.filter(
+      (item) => item !== undefined,
+    ).length;
+    return supplied === 0 || supplied === 3;
+  }, "经纬度与坐标系必须同时更新");
+
+export const CustomerAddressSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  contactName: z.string(),
+  phone: z.string(),
+  detail: z.string(),
+  latitude: Gcj02CoordinateSchema.shape.latitude,
+  longitude: Gcj02CoordinateSchema.shape.longitude,
+  coordinateSystem: Gcj02CoordinateSchema.shape.coordinateSystem,
+  isDefault: z.boolean(),
+  createdAt: IsoDateTimeSchema,
+  updatedAt: IsoDateTimeSchema,
+});
+
+export const CustomerFeedbackCreateSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(128).optional(),
+    category: z.enum(["GENERAL", "COMPLAINT", "SERVICE_AFTERCARE"]),
+    content: z.string().trim().min(10).max(2_000),
+    contact: z.string().trim().min(3).max(120).nullable().optional(),
+  })
+  .strict();
+export const CustomerFeedbackSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  category: z.string(),
+  status: z.enum(["OPEN", "RESOLVED"]),
+  createdAt: IsoDateTimeSchema,
+});
+
+export const AccountDeletionRequestCreateSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(128).optional(),
+    reason: z.string().trim().max(500).nullable().optional(),
+    acknowledgedRisk: z.literal(true),
+  })
+  .strict();
+export const AccountDeletionRequestSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  status: z.enum(["PENDING", "CANCELLED", "COMPLETED"]),
+  createdAt: IsoDateTimeSchema,
+  updatedAt: IsoDateTimeSchema,
+  completedAt: IsoDateTimeSchema.nullable(),
+});
+
+export const AdminCustomerCenterSummarySchema = z.object({
+  generatedAt: IsoDateTimeSchema,
+  orders: CustomerCenterOrderCountsSchema,
+  coupons: z.object({
+    available: z.number().int().nonnegative(),
+    used: z.number().int().nonnegative(),
+    expired: z.number().int().nonnegative(),
+  }),
+  wallet: z.object({
+    customerCount: z.number().int().nonnegative(),
+    totalBalanceFen: MoneyFenSchema,
+    transactionCount: z.number().int().nonnegative(),
+  }),
+  feedback: z.object({
+    open: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
+  accountDeletionRequests: z.object({
+    pending: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  }),
+});
+
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 export type AdminServiceItem = z.infer<typeof AdminServiceItemSchema>;
 export type ServiceAdminUpdate = z.infer<typeof ServiceAdminUpdateSchema>;
@@ -985,9 +1228,7 @@ export type TechnicianReviewStatus = z.infer<
   typeof TechnicianReviewStatusSchema
 >;
 export type TechnicianReview = z.infer<typeof TechnicianReviewSchema>;
-export type AdminTechnicianReview = z.infer<
-  typeof AdminTechnicianReviewSchema
->;
+export type AdminTechnicianReview = z.infer<typeof AdminTechnicianReviewSchema>;
 export type TechnicianReviewSummary = z.infer<
   typeof TechnicianReviewSummarySchema
 >;
@@ -1054,6 +1295,42 @@ export type MfaRecoveryView = z.infer<typeof MfaRecoveryViewSchema>;
 export type AuthMembership = z.infer<typeof AuthMembershipSchema>;
 export type AuthUser = z.infer<typeof AuthUserSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
+export type CustomerCenterContent = z.infer<typeof CustomerCenterContentSchema>;
+export type CustomerCenterConfigUpdate = z.infer<
+  typeof CustomerCenterConfigUpdateSchema
+>;
+export type CustomerCenterOrderCounts = z.infer<
+  typeof CustomerCenterOrderCountsSchema
+>;
+export type CustomerCenterOverview = z.infer<
+  typeof CustomerCenterOverviewSchema
+>;
+export type CustomerCouponStatus = z.infer<typeof CustomerCouponStatusSchema>;
+export type CustomerCoupon = z.infer<typeof CustomerCouponSchema>;
+export type StoredValueCardStatus = z.infer<typeof StoredValueCardStatusSchema>;
+export type StoredValueCardType = z.infer<typeof StoredValueCardTypeSchema>;
+export type StoredValueCard = z.infer<typeof StoredValueCardSchema>;
+export type CustomerWallet = z.infer<typeof CustomerWalletSchema>;
+export type StoredValueTransaction = z.infer<
+  typeof StoredValueTransactionSchema
+>;
+export type CustomerSettings = z.infer<typeof CustomerSettingsSchema>;
+export type CustomerAddressCreate = z.infer<typeof CustomerAddressCreateSchema>;
+export type CustomerAddressUpdate = z.infer<typeof CustomerAddressUpdateSchema>;
+export type CustomerAddress = z.infer<typeof CustomerAddressSchema>;
+export type CustomerFeedbackCreate = z.infer<
+  typeof CustomerFeedbackCreateSchema
+>;
+export type CustomerFeedback = z.infer<typeof CustomerFeedbackSchema>;
+export type AccountDeletionRequestCreate = z.infer<
+  typeof AccountDeletionRequestCreateSchema
+>;
+export type AccountDeletionRequest = z.infer<
+  typeof AccountDeletionRequestSchema
+>;
+export type AdminCustomerCenterSummary = z.infer<
+  typeof AdminCustomerCenterSummarySchema
+>;
 
 export const formatMoney = (fen: number): string =>
   `¥${(fen / 100).toFixed(fen % 100 === 0 ? 0 : 2)}`;

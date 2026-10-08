@@ -44,6 +44,22 @@
 
     <view class="panel address-panel">
       <view class="panel-head"><view><text class="panel-title">上门地址</text><text class="panel-note">可手动填写，也可用高德自动定位</text></view><text wx:if="{{latitude!==null}}" class="account-status ok">地址已识别</text></view>
+      <view class="address-book-head">
+        <view><text>我的地址簿</text><text>选择后仍会重新核验服务范围</text></view>
+        <text bindtap="openAddressManager">管理地址 ›</text>
+      </view>
+      <text wx:if="{{addressBookLoading && !addressBookLoaded}}" class="address-book-state">正在读取已保存地址…</text>
+      <text wx:if="{{addressBookError}}" class="address-book-state warning">{{addressBookError}}</text>
+      <scroll-view wx:if="{{savedAddresses.length}}" class="saved-addresses" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="saved-address-track">
+          <button wx:for="{{savedAddresses}}" wx:key="id" class="saved-address {{selectedAddressId===item.id?'selected':''}}" data-id="{{item.id}}" bindtap="chooseSavedAddress" disabled="{{orderSubmissionAttempted}}">
+            <view><text>{{item.contactName}}</text><text wx:if="{{item.isDefault}}">默认</text></view>
+            <text>{{item.phone}}</text>
+            <text>{{item.detail}}</text>
+          </button>
+        </view>
+      </scroll-view>
+      <view wx:if="{{addressBookLoaded && !addressBookLoading && !addressBookError && savedAddresses.length===0}}" class="address-book-empty"><text>暂无已保存地址</text><text bindtap="openAddressManager">去新增 ›</text></view>
       <input class="field" placeholder="联系人（至少2字）" value="{{contactName}}" data-field="contactName" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="40" />
       <input class="field" placeholder="下单联系手机号（11位）" type="number" value="{{phone}}" data-field="phone" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="11" />
       <input class="field" placeholder="手动填写小区/道路，或定位后自动带入" value="{{detail}}" data-field="detail" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="140" />

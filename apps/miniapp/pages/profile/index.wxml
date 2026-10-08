@@ -1,21 +1,71 @@
 <view class="page">
-  <view class="header"><text>我的</text></view>
-  <view class="profile-card">
-    <view class="profile-main"><view class="avatar">客</view><view class="identity"><text class="profile-name">{{displayName}}</text><text>{{loggedIn ? (phoneVerified ? '已登录 · 手机号已验证' : '已登录 · 待验证手机号') : '登录后管理预约与售后'}}</text><text class="level">中原到家用户</text></view></view>
-    <button wx:if="{{!loggedIn}}" class="login-action" bindtap="openLogin">微信授权登录</button>
-    <button wx:elif="{{!phoneVerified}}" class="verify-action" bindtap="verifyPhone">继续验证手机号</button>
-    <view wx:else class="verified"><text>✓</text><text>账号已验证</text></view>
-    <text wx:if="{{!loggedIn}}" class="login-note">微信授权后自动进入手机号短信验证，新用户自动注册</text>
+  <view class="profile-head">
+    <view class="identity">
+      <image wx:if="{{avatarUrl}}" class="avatar image" src="{{avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="avatar">{{avatarText}}</view>
+      <view class="identity-copy">
+        <text class="name">{{displayName}}</text>
+        <text class="level">{{levelLabel}}</text>
+      </view>
+    </view>
+    <view class="head-actions">
+      <button open-type="contact" show-message-card session-from="profile-head" aria-label="在线客服"><text class="head-icon">◌</text><text>客服</text></button>
+      <button bindtap="openSettings" aria-label="设置"><text class="head-icon">⚙</text><text>设置</text></button>
+    </view>
   </view>
-  <view class="stats-card"><view class="stats-title"><text>我的订单</text><navigator url="/pages/orders/index" open-type="switchTab">全部订单 ›</navigator></view><view class="stats"><view><text class="stat-icon mint">□</text><text class="stat-value">{{stats.upcoming}}</text><text>待服务</text></view><view><text class="stat-icon peach">▤</text><text class="stat-value">{{stats.active}}</text><text>进行中</text></view><view><text class="stat-icon lime">✓</text><text class="stat-value">{{stats.confirmation}}</text><text>待确认</text></view><view><text class="stat-icon blue">↺</text><text class="stat-value">{{stats.afterSale}}</text><text>售后</text></view></view><navigator class="order-banner" url="/pages/services/index" open-type="switchTab"><view><text>此刻想放松一下？</text><text>查看正规上门服务</text></view><text>去下单 ›</text></navigator></view>
-  <view class="quick-actions"><navigator url="/pages/services/index" open-type="switchTab"><text>♡</text><text>收藏服务</text></navigator><navigator url="/pages/orders/index" open-type="switchTab"><text>⌖</text><text>服务足迹</text></navigator><button open-type="contact" show-message-card session-from="profile-help"><text>◌</text><text>在线客服</text></button></view>
-  <view class="menus">
-    <button open-type="contact" show-message-card session-from="profile-menu"><view><text class="menu-icon customer">•••</text><text>微信在线客服</text></view><text>立即咨询 ›</text></button>
-    <view bindtap="callEmergency"><view><text class="menu-icon phone">☎</text><text>商家紧急值班电话</text></view><text>{{emergencyContact.configured ? '拨号' : '待配置'}} ›</text></view>
-    <view bindtap="openAdminLogin"><view><text class="menu-icon staff">盾</text><text>技师/工作人员登录确认</text></view><text>›</text></view>
-    <view bindtap="openMfaRecovery"><view><text class="menu-icon safe">钥</text><text>验证器丢失恢复</text></view><text>›</text></view>
+
+  <text wx:if="{{error}}" class="load-note">{{error}}</text>
+
+  <view class="benefit-grid">
+    <view class="benefit-card coupon" bindtap="openCoupons">
+      <view class="benefit-head"><text>优惠券</text><text>更多 ›</text></view>
+      <view wx:if="{{availableCouponCount > 0}}" class="coupon-summary"><text class="coupon-count">{{availableCouponCount}}</text><view><text>张可用优惠券</text><text>下单时按规则抵扣</text></view></view>
+      <view wx:else class="benefit-empty"><text>暂无可用优惠券</text><text>查看优惠券记录</text></view>
+    </view>
+    <view class="benefit-card wallet" bindtap="openStoredValue">
+      <text>储值卡余额</text>
+      <text class="masked">{{maskedBalance}}</text>
+      <text>{{availableCardCount}} 张可用卡</text>
+      <text class="wallet-action">查看余额</text>
+    </view>
   </view>
-  <button wx:if="{{loggedIn}}" class="logout" bindtap="logout">安全退出当前账号</button>
-  <view class="version">中原到家 · 郑州全域正规上门服务</view>
+
+  <view class="orders-card">
+    <view class="section-head"><text>我的订单</text><text bindtap="openOrders">更多 ›</text></view>
+    <view class="order-grid">
+      <view data-status="PENDING_PAYMENT" bindtap="openOrderFilter"><view class="order-icon mint">□</view><text class="count">{{orders.pendingPayment}}</text><text>待付款</text></view>
+      <view data-status="IN_PROGRESS" bindtap="openOrderFilter"><view class="order-icon peach">▤</view><text class="count">{{orders.inProgress}}</text><text>进行中</text></view>
+      <view data-status="PENDING_REVIEW" bindtap="openOrderFilter"><view class="order-icon lime">✓</view><text class="count">{{orders.pendingReview}}</text><text>待评价</text></view>
+      <view data-status="CANCELLED" bindtap="openOrderFilter"><view class="order-icon blue">×</view><text class="count">{{orders.cancelled}}</text><text>已取消</text></view>
+    </view>
+    <view wx:if="{{totalOrderCount === 0}}" class="order-empty">
+      <view class="empty-art"><view class="empty-sheet"/><view class="empty-line one"/><view class="empty-line two"/></view>
+      <view><text>暂无服务中订单</text><text>选一项适合你的正规上门服务</text></view>
+      <button bindtap="quickOrder">去下单 ›</button>
+    </view>
+  </view>
+
+  <view class="shortcut-card">
+    <view data-kind="favorites" bindtap="openRecord"><text>♡</text><text>收藏</text></view>
+    <view data-kind="history" bindtap="openRecord"><text>⌖</text><text>足迹</text></view>
+    <view data-kind="complaint" bindtap="openRecord"><text>盾</text><text>投诉</text></view>
+  </view>
+
+  <view class="news-card" data-kind="news" bindtap="openRecord">
+    <text class="news-title">{{cityNewsTitle}}</text>
+    <text class="news-copy">{{cityNewsContent}}</text>
+    <text>›</text>
+  </view>
+
+  <view class="app-banner" bindtap="openAppBanner">
+    <view><text>{{appBannerTitle}}</text><text>{{appBannerSubtitle}}</text></view>
+    <view class="phone-art"><view class="phone-screen"><text>中</text><view/><view/></view></view>
+  </view>
+
+  <view class="assurance-block">
+    <view class="assurance-title"><view/><text>你的服务 我来保障</text><view/></view>
+    <view class="assurance-list"><view wx:for="{{safeguardItems}}" wx:key="*this"><text>✓</text><text>{{item}}</text></view></view>
+    <button class="emergency-link" bindtap="callEmergency">商家紧急值班电话 · {{emergencyContact.configured ? '可拨号' : '待配置'}}</button>
+  </view>
   <view class="safe-bottom" />
 </view>

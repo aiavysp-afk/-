@@ -4,6 +4,7 @@ const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
 const amap_1 = require("../../utils/amap");
 const booking_1 = require("../../utils/booking");
+const customer_center_1 = require("../../utils/customer-center");
 const categoryNames = {
     MASSAGE: "按摩舒缓",
     SPA_RELAXATION: "SPA 放松",
@@ -49,6 +50,11 @@ Page({
         loginBusy: false,
         loginError: "",
         preferredTherapistId: "",
+        savedAddresses: [],
+        selectedAddressId: "",
+        addressBookLoading: false,
+        addressBookLoaded: false,
+        addressBookError: "",
     },
     async onLoad(options) {
         var _a;
@@ -79,7 +85,7 @@ Page({
             this.fail(error);
         }
     },
-    onShow() {
+    async onShow() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
         const session = (0, auth_1.getStoredSession)();
@@ -87,6 +93,76 @@ Page({
             loggedIn: Boolean(session),
             phoneVerified: (session === null || session === void 0 ? void 0 : session.user.phoneVerified) === true,
         });
+        await this.loadSavedAddresses();
+    },
+    async loadSavedAddresses() {
+        var _a;
+        if (this.data.addressBookLoading || this.data.orderSubmissionAttempted)
+            return;
+        this.setData({ addressBookLoading: true, addressBookError: "" });
+        try {
+            const savedAddresses = await (0, api_1.api)((0, customer_center_1.customerCenterPath)("/customer-center/addresses"));
+            const selectedAddress = savedAddresses.find((item) => item.id === this.data.selectedAddressId);
+            const hasDraft = Boolean(this.data.contactName.trim() ||
+                this.data.phone.trim() ||
+                this.data.detail.trim() ||
+                this.data.doorNumber.trim());
+            this.setData({
+                savedAddresses,
+                addressBookLoaded: true,
+                ...(this.data.selectedAddressId && !selectedAddress
+                    ? { selectedAddressId: "" }
+                    : {}),
+            });
+            if (selectedAddress) {
+                this.applySavedAddress(selectedAddress);
+                return;
+            }
+            if (!hasDraft) {
+                const preferred = (_a = savedAddresses.find((item) => item.isDefault)) !== null && _a !== void 0 ? _a : savedAddresses[0];
+                if (preferred)
+                    this.applySavedAddress(preferred);
+            }
+        }
+        catch (error) {
+            this.setData({
+                addressBookLoaded: true,
+                addressBookError: error instanceof Error
+                    ? `${error.message}，可继续手动填写`
+                    : "地址簿读取失败，可继续手动填写",
+            });
+        }
+        finally {
+            this.setData({ addressBookLoading: false });
+        }
+    },
+    applySavedAddress(address) {
+        if (this.data.orderSubmissionAttempted)
+            return;
+        this.setData({
+            selectedAddressId: address.id,
+            contactName: address.contactName,
+            phone: address.phone,
+            detail: address.detail,
+            doorNumber: "",
+            latitude: address.latitude,
+            longitude: address.longitude,
+            coordinateSystem: "GCJ-02",
+            suggestions: [],
+            addressVerificationId: "",
+            quoteDetails: null,
+            error: "",
+        });
+    },
+    chooseSavedAddress(event) {
+        const address = this.data.savedAddresses.find((item) => item.id === event.currentTarget.dataset.id);
+        if (address)
+            this.applySavedAddress(address);
+    },
+    openAddressManager() {
+        if (this.data.orderSubmissionAttempted)
+            return;
+        wx.navigateTo({ url: "/pages/addresses/index" });
     },
     async login() {
         if (this.data.loginBusy || this.data.loggedIn)
@@ -202,20 +278,22 @@ Page({
     input(e) {
         const field = e.currentTarget.dataset.field;
         if (["contactName", "phone", "detail", "doorNumber"].includes(field) &&
-            !this.data.orderSubmissionAttempted)
+            !this.data.orderSubmissionAttempted) {
+            const addressFieldChanged = ["detail", "doorNumber"].includes(field);
             this.setData({
                 [field]: e.detail.value,
-                ...(["detail", "doorNumber"].includes(field)
+                selectedAddressId: "",
+                ...(addressFieldChanged
                     ? {
                         suggestions: [],
                         addressVerificationId: "",
                         quoteDetails: null,
-                        ...(field === "detail"
-                            ? { latitude: null, longitude: null }
-                            : {}),
+                        latitude: null,
+                        longitude: null,
                     }
                     : {}),
             });
+        }
     },
     async locateAddress() {
         if (this.data.locationBusy || this.data.orderSubmissionAttempted)
@@ -225,6 +303,7 @@ Page({
             const point = await (0, amap_1.getGcj02Location)();
             const address = await (0, amap_1.reverseGeocode)(this.data.amapMiniappKey, point);
             this.setData({
+                selectedAddressId: "",
                 detail: address.detail.slice(0, 140),
                 latitude: point.latitude,
                 longitude: point.longitude,
@@ -275,6 +354,7 @@ Page({
             .trim()
             .slice(0, 140);
         this.setData({
+            selectedAddressId: "",
             detail,
             latitude: suggestion.latitude,
             longitude: suggestion.longitude,
@@ -426,7 +506,7 @@ Page({
                     content: "平台承诺免出行费，该订单未通过金额复核，不会调起支付。请在订单页联系客服处理。",
                     showCancel: false,
                 });
-                wx.switchTab({ url: "/pages/orders/index" });
+                wx.redirectTo({ url: "/pages/orders/index" });
                 return;
             }
             this.setData({
@@ -437,7 +517,7 @@ Page({
                 orderSubmissionAttempted: false,
             });
             await this.payCreatedOrder(order);
-            wx.switchTab({ url: "/pages/orders/index" });
+            wx.redirectTo({ url: "/pages/orders/index" });
         }
         catch (error) {
             this.fail(error);
@@ -544,6 +624,10 @@ Page({
             latitude: null,
             longitude: null,
             suggestions: [],
+            savedAddresses: [],
+            selectedAddressId: "",
+            addressBookLoaded: false,
+            addressBookError: "",
             addressVerificationId: "",
             quoteDetails: null,
             orderSubmissionAttempted: false,

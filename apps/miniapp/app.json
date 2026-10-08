@@ -1,11 +1,19 @@
 {
   "pages": [
     "pages/home/index",
+    "pages/discover/index",
     "pages/services/index",
+    "pages/messages/index",
+    "pages/profile/index",
+    "pages/coupons/index",
+    "pages/stored-value/index",
+    "pages/settings/index",
+    "pages/account-security/index",
+    "pages/addresses/index",
+    "pages/customer-records/index",
     "pages/therapists/index",
     "pages/therapist-detail/index",
     "pages/orders/index",
-    "pages/profile/index",
     "pages/booking/index",
     "pages/phone-verification/index",
     "pages/agreement/index",
@@ -25,9 +33,9 @@
     "borderStyle": "white",
     "list": [
       { "pagePath": "pages/home/index", "text": "首页" },
-      { "pagePath": "pages/services/index", "text": "服务" },
-      { "pagePath": "pages/therapists/index", "text": "技师" },
-      { "pagePath": "pages/orders/index", "text": "订单" },
+      { "pagePath": "pages/discover/index", "text": "发现" },
+      { "pagePath": "pages/services/index", "text": "下单" },
+      { "pagePath": "pages/messages/index", "text": "消息" },
       { "pagePath": "pages/profile/index", "text": "我的" }
     ]
   },

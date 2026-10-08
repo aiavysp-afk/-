@@ -14,7 +14,8 @@ export type Permission =
   | "finance.approve"
   | "safety.respond"
   | "audit.read"
-  | "iam.manage";
+  | "iam.manage"
+  | "customer-center.manage";
 
 export interface AuthMembership {
   organizationId: string;

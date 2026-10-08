@@ -65,12 +65,12 @@ Page({
     openTherapists() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
-        wx.switchTab({ url: "/pages/therapists/index" });
+        wx.navigateTo({ url: "/pages/therapists/index" });
     },
     openOrders() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
-        wx.switchTab({ url: "/pages/orders/index" });
+        wx.navigateTo({ url: "/pages/orders/index" });
     },
     requireAccess() {
         (0, auth_1.requireVerifiedCustomerAccess)();

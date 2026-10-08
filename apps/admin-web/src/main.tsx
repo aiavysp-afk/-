@@ -11,6 +11,7 @@ import {
   LogOut,
   MapPinned,
   MessageCircleWarning,
+  PanelsTopLeft,
   RefreshCw,
   Search,
   Settings,
@@ -31,6 +32,7 @@ import "./styles.css";
 import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
 import { SafetyWorkspace } from "./safety";
+import { CustomerCenterWorkspace } from "./customer-center-workspace";
 import {
   AuditWorkspace,
   SchedulingWorkspace,
@@ -54,6 +56,7 @@ type Section =
   | "area"
   | "audit"
   | "security"
+  | "customerCenter"
   | "settings";
 type CatalogRow = AdminServiceItem | ServiceItem;
 
@@ -66,6 +69,7 @@ const nav: Array<{
   { icon: ClipboardList, label: "订单调度", section: "dispatch" },
   { icon: UsersRound, label: "技师管理", section: "technicians" },
   { icon: Sparkles, label: "服务项目", section: "catalog" },
+  { icon: PanelsTopLeft, label: "客户中心", section: "customerCenter" },
   { icon: CalendarDays, label: "排班中心", section: "scheduling" },
   { icon: CircleDollarSign, label: "退款复核", section: "refunds" },
   { icon: MessageCircleWarning, label: "安全值班", section: "safety" },
@@ -885,21 +889,23 @@ function App() {
                   ? "订单调度"
                   : section === "technicians"
                     ? "技师管理"
-                    : section === "scheduling"
-                      ? "排班中心"
-                      : section === "security"
-                        ? "账户安全"
-                        : section === "safety"
-                          ? "安全值班与升级"
-                          : section === "refunds"
-                            ? "退款申请与复核"
-                            : section === "area"
-                              ? "服务区域"
-                              : section === "audit"
-                                ? "权限审计"
-                                : section === "settings"
-                                  ? "系统设置与上线门禁"
-                                  : "服务目录管理"}
+                    : section === "customerCenter"
+                      ? "客户中心配置与监控"
+                      : section === "scheduling"
+                        ? "排班中心"
+                        : section === "security"
+                          ? "账户安全"
+                          : section === "safety"
+                            ? "安全值班与升级"
+                            : section === "refunds"
+                              ? "退款申请与复核"
+                              : section === "area"
+                                ? "服务区域"
+                                : section === "audit"
+                                  ? "权限审计"
+                                  : section === "settings"
+                                    ? "系统设置与上线门禁"
+                                    : "服务目录管理"}
             </h1>
           </div>
           <div className="header-actions">
@@ -964,6 +970,12 @@ function App() {
             organizationId={organizationId}
             login={() => developmentLogin("local-safety-admin")}
             query={query}
+          />
+        ) : section === "customerCenter" ? (
+          <CustomerCenterWorkspace
+            token={token}
+            organizationId={organizationId}
+            login={() => developmentLogin("local-safety-admin")}
           />
         ) : section === "scheduling" ? (
           <SchedulingWorkspace

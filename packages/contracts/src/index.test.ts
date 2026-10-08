@@ -6,6 +6,12 @@ import {
   AvailabilityQuerySchema,
   AddressSuggestionQuerySchema,
   AddressSuggestionSchema,
+  AccountDeletionRequestCreateSchema,
+  CustomerAddressCreateSchema,
+  CustomerAddressUpdateSchema,
+  CustomerCenterConfigUpdateSchema,
+  CustomerCenterOverviewSchema,
+  CustomerFeedbackCreateSchema,
   GeocodedAddressSchema,
   ManualAddressGeocodeSchema,
   BookingHoldCreateSchema,
@@ -33,6 +39,79 @@ import {
   WechatMiniappLoginRequestSchema,
   formatMoney,
 } from "./index.js";
+
+describe("customer center contracts", () => {
+  it("accepts the integrated overview and requires masked balance on the main page", () => {
+    const overview = CustomerCenterOverviewSchema.parse({
+      organizationId: "org-1",
+      profile: {
+        userId: "customer-1",
+        displayName: "微信用户",
+        avatarUrl: null,
+        levelLabel: "普通用户",
+        registeredAt: "2026-10-09T10:00:00.000Z",
+        phoneVerified: true,
+      },
+      benefits: {
+        availableCouponCount: 0,
+        availableCardCount: 0,
+        maskedBalance: "****",
+      },
+      orders: {
+        pendingPayment: 0,
+        inProgress: 0,
+        pendingReview: 0,
+        cancelled: 0,
+      },
+      content: {
+        levelLabel: "普通用户",
+        customerServicePhone: null,
+        cityNewsTitle: "城市快讯",
+        cityNewsContent: "郑州服务正常开放",
+        appBannerTitle: "中原到家小程序",
+        appBannerSubtitle: "微信内即可预约",
+        appDownloadUrl: null,
+        safeguardItems: ["价格透明"],
+        updatedAt: null,
+      },
+    });
+    expect(overview.benefits.maskedBalance).toBe("****");
+  });
+
+  it("requires GCJ-02 and complete coordinate updates for customer addresses", () => {
+    expect(() =>
+      CustomerAddressCreateSchema.parse({
+        contactName: "张三",
+        phone: "13800138000",
+        detail: "郑州市金水区测试路 1 号",
+        latitude: 34.75,
+        longitude: 113.65,
+        coordinateSystem: "WGS-84",
+      }),
+    ).toThrow();
+    expect(() =>
+      CustomerAddressUpdateSchema.parse({ latitude: 34.75 }),
+    ).toThrow();
+  });
+
+  it("validates safe admin config, feedback and soft account deletion input", () => {
+    expect(
+      CustomerCenterConfigUpdateSchema.parse({
+        cityNewsTitle: "城市快讯",
+        appDownloadUrl: null,
+      }),
+    ).toMatchObject({ appDownloadUrl: null });
+    expect(() =>
+      CustomerFeedbackCreateSchema.parse({
+        category: "GENERAL",
+        content: "太短",
+      }),
+    ).toThrow();
+    expect(() =>
+      AccountDeletionRequestCreateSchema.parse({ acknowledgedRisk: false }),
+    ).toThrow();
+  });
+});
 
 describe("technician profile contracts", () => {
   it("keeps every public technician explicitly free of travel fees", () => {
@@ -82,7 +161,10 @@ describe("technician profile contracts", () => {
 
   it("requires a real bounded rating and review body", () => {
     expect(
-      TechnicianReviewCreateSchema.parse({ rating: 5, content: "服务认真周到" }),
+      TechnicianReviewCreateSchema.parse({
+        rating: 5,
+        content: "服务认真周到",
+      }),
     ).toEqual({ rating: 5, content: "服务认真周到" });
     expect(() =>
       TechnicianReviewCreateSchema.parse({ rating: 6, content: "无效评分" }),

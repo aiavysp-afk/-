@@ -357,6 +357,109 @@
   border-radius: 16rpx;
   font-size: 23rpx;
 }
+.address-book-head,
+.address-book-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-top: 22rpx;
+}
+.address-book-head > view text {
+  display: block;
+}
+.address-book-head > view text:first-child {
+  color: #28493f;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+.address-book-head > view text:last-child {
+  color: #8a9490;
+  font-size: 18rpx;
+  margin-top: 5rpx;
+}
+.address-book-head > text,
+.address-book-empty text:last-child {
+  color: #1f6a55;
+  font-size: 20rpx;
+  white-space: nowrap;
+}
+.address-book-state {
+  display: block;
+  margin-top: 16rpx;
+  color: #71807a;
+  background: #f4f7f5;
+  border-radius: 14rpx;
+  padding: 15rpx 18rpx;
+  font-size: 19rpx;
+}
+.address-book-state.warning {
+  color: #94622a;
+  background: #fbf3e3;
+}
+.saved-addresses {
+  width: 100%;
+  margin-top: 16rpx;
+  white-space: nowrap;
+}
+.saved-address-track {
+  display: inline-flex;
+  gap: 14rpx;
+  padding-right: 12rpx;
+}
+.saved-address {
+  box-sizing: border-box;
+  width: 400rpx;
+  min-height: 160rpx;
+  margin: 0;
+  padding: 18rpx 20rpx;
+  text-align: left;
+  line-height: 1.45;
+  color: #60716a;
+  background: #f5f7f4;
+  border: 1rpx solid transparent;
+  border-radius: 18rpx;
+}
+.saved-address.selected {
+  color: #174f40;
+  background: #e8f4ef;
+  border-color: #82b6a5;
+}
+.saved-address view {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.saved-address view text:first-child {
+  color: #173d33;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+.saved-address view text:last-child {
+  color: #1f6a55;
+  background: #d8eee5;
+  border-radius: 13rpx;
+  padding: 2rpx 9rpx;
+  font-size: 16rpx;
+}
+.saved-address > text {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-size: 19rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-address > text:last-child {
+  margin-top: 5rpx;
+}
+.address-book-empty {
+  color: #84908b;
+  background: #f5f7f4;
+  border-radius: 14rpx;
+  padding: 17rpx 19rpx;
+  font-size: 20rpx;
+}
 .address-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1,6 +1,6 @@
 .page {
   min-height: 100vh;
-  padding: calc(env(safe-area-inset-top) + 16rpx) 24rpx 30rpx;
+  padding: 0 24rpx 30rpx;
   background: linear-gradient(180deg, #e0fcf1 0, #f4f7f6 540rpx);
   box-sizing: border-box;
 }

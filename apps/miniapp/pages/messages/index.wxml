@@ -1,0 +1,22 @@
+<view class="page">
+  <view class="title"><text>消息</text><text>订单状态与平台通知</text></view>
+  <view class="category-card">
+    <view wx:for="{{categories}}" wx:key="key" class="{{activeType === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectCategory">
+      <view class="category-icon {{item.tone}}">{{item.icon}}</view><text>{{item.label}}</text>
+    </view>
+  </view>
+
+  <text wx:if="{{loading}}" class="state">正在读取后台消息…</text>
+  <text wx:if="{{error}}" class="error">{{error}}</text>
+
+  <view wx:if="{{activeType === 'ORDER'}}" class="message-list">
+    <view wx:for="{{messages}}" wx:key="id" class="message-row" bindtap="openOrder"><view class="message-dot"/><view><text>{{item.title}}</text><text>{{item.detail}}</text><text>{{item.time}}</text></view><text>›</text></view>
+  </view>
+
+  <view wx:if="{{activeType === 'SYSTEM' && !loading}}" class="system-card"><view class="system-mark">中</view><view><text>{{systemTitle}}</text><text>{{systemContent}}</text><text>内容由后台统一配置</text></view></view>
+
+  <view wx:if="{{activeType === 'SERVICE'}}" class="service-card"><view class="service-icon">•••</view><text>微信在线客服</text><text>咨询订单、支付、售后或账号问题</text><button open-type="contact" show-message-card session-from="message-center">立即咨询</button></view>
+
+  <view wx:if="{{activeType === 'ACTIVITY' || (activeType === 'ORDER' && !loading && !error && messages.length === 0)}}" class="empty"><view class="bubble"><text>•••</text></view><text>{{activeType === 'ACTIVITY' ? '暂无活动通知' : '暂无订单状态消息'}}</text><text>不会用演示消息冒充真实推送记录</text></view>
+  <view class="safe-bottom" />
+</view>

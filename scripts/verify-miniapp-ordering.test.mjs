@@ -82,6 +82,7 @@ test("verified customer service browsing and order submission stay on the custom
     showModal: ({ complete }) => complete?.(),
     showToast: () => undefined,
     switchTab: ({ url }) => calls.push({ path: url, method: "NAVIGATE" }),
+    redirectTo: ({ url }) => calls.push({ path: url, method: "NAVIGATE" }),
     request: ({ url, method = "GET", data, header, success }) => {
       const path = url.replace("https://api.mtsc.top/v1", "");
       calls.push({ path, method, data, header });
@@ -213,4 +214,133 @@ test("verified customer service browsing and order submission stay on the custom
   assert.match(order.header.Authorization, /^Bearer /);
   assert.match(order.header["Idempotency-Key"], /^miniapp-/);
   assert.equal(order.data.address.coordinateSystem, "GCJ-02");
+});
+
+test("booking applies a default address and still verifies its service area", async () => {
+  const calls = [];
+  const storage = new Map();
+  storage.set("zydj.auth.session", {
+    accessToken: "session-token",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    user: {
+      id: "customer-1",
+      displayName: "微信用户",
+      phoneVerified: true,
+      memberships: [],
+    },
+  });
+  let captured;
+  globalThis.getApp = () => ({
+    globalData: { apiBaseUrl: "https://api.mtsc.top/v1" },
+  });
+  globalThis.Page = (definition) => {
+    captured = definition;
+    definition.setData = (value) => Object.assign(definition.data, value);
+  };
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    removeStorageSync: (key) => storage.delete(key),
+    reLaunch: () => undefined,
+    navigateTo: () => undefined,
+    showToast: () => undefined,
+    request: ({ url, method = "GET", data, header, success }) => {
+      const path = url.replace("https://api.mtsc.top/v1", "");
+      calls.push({ path, method, data, header });
+      const responses = {
+        "/customer-center/addresses": [
+          {
+            id: "address-default",
+            organizationId: "organization-1",
+            contactName: "王女士",
+            phone: "13800138000",
+            detail: "郑州市金水区花园路 8 号",
+            latitude: 34.779,
+            longitude: 113.682,
+            coordinateSystem: "GCJ-02",
+            isDefault: true,
+            createdAt: "2026-10-08T00:00:00.000Z",
+            updatedAt: "2026-10-08T00:00:00.000Z",
+          },
+        ],
+        "/booking-holds": {
+          id: "hold-address",
+          serviceId: "svc-neck-60",
+          therapistId: "therapist-1",
+          startsAt: "2026-10-08T02:00:00.000Z",
+          endsAt: "2026-10-08T03:00:00.000Z",
+          expiresAt: "2026-10-08T01:55:00.000Z",
+          status: "HOLD",
+        },
+        "/locations/address-verifications": { id: "verification-1" },
+        "/orders/quote": {
+          reservationId: "hold-address",
+          serviceAmountFen: 19800,
+          travelFeeFen: 0,
+          discountFen: 0,
+          payableFen: 19800,
+          currency: "CNY",
+          moneyUnit: "fen",
+        },
+      };
+      success({
+        statusCode: path === "/booking-holds" ? 201 : 200,
+        data: { data: responses[path] },
+      });
+    },
+  };
+
+  fresh(
+    fileURLToPath(
+      new URL("../apps/miniapp/pages/booking/index.js", import.meta.url),
+    ),
+  );
+  captured.setData({
+    service: {
+      id: "svc-neck-60",
+      slug: "neck-relax-60",
+      name: "肩颈舒缓",
+      durationMinutes: 60,
+      priceFen: 19800,
+    },
+    slots: [
+      {
+        therapistId: "therapist-1",
+        startsAt: "2026-10-08T02:00:00.000Z",
+        endsAt: "2026-10-08T03:00:00.000Z",
+      },
+    ],
+    selected: 0,
+    consent: true,
+    addressVerificationRequired: true,
+  });
+
+  await captured.onShow();
+  assert.equal(captured.data.selectedAddressId, "address-default");
+  assert.equal(captured.data.contactName, "王女士");
+  assert.equal(captured.data.detail, "郑州市金水区花园路 8 号");
+  assert.equal(captured.data.latitude, 34.779);
+  assert.equal(captured.data.addressVerificationId, "");
+
+  await captured.prepareOrder();
+  const verification = calls.find(
+    (item) => item.path === "/locations/address-verifications",
+  );
+  assert.ok(
+    verification,
+    "saved addresses must not bypass service-area checks",
+  );
+  assert.equal(verification.data.coordinateSystem, "GCJ-02");
+  assert.equal(verification.data.latitude, 34.779);
+  assert.equal(captured.data.addressVerificationId, "verification-1");
+
+  captured.input({
+    currentTarget: { dataset: { field: "doorNumber" } },
+    detail: { value: "2 号楼 301" },
+  });
+  assert.equal(captured.data.selectedAddressId, "");
+  assert.equal(captured.data.latitude, null);
+  assert.equal(captured.data.longitude, null);
+  assert.equal(captured.data.addressVerificationId, "");
+  assert.equal(captured.data.quoteDetails, null);
 });

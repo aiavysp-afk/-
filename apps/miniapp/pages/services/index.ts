@@ -15,7 +15,7 @@ Page({
   },
   async onShow() {
     if (!requireVerifiedCustomerAccess()) return;
-    syncCustomTabBar(this, 1);
+    syncCustomTabBar(this, 2);
     await this.load();
   },
   async load() {

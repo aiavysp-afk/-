@@ -1,0 +1,11 @@
+<view class="page">
+  <view class="sub-nav"><text bindtap="back">‹</text><text>账号与安全</text><text/></view>
+  <view class="security-card">
+    <view><text>手机号码</text><view><text>{{maskedPhone}}</text><text>{{phoneVerified ? '已验证' : '未验证'}}</text></view></view>
+    <view class="deletion-row"><view><text>注销账号</text><text>注销完成后不可恢复，请谨慎操作</text></view><text>›</text></view>
+  </view>
+  <view wx:if="{{requestStatus}}" class="request-card"><text>最近注销申请：{{requestStatus}}</text><text>{{requestTime}}</text><text>后台会保留必要的订单、支付、退款和审计记录，申请不等于立即硬删除。</text></view>
+  <view class="risk-card"><text>注销前请确认</text><text>• 没有待付款、进行中或售后处理中的订单</text><text>• 已妥善处理余额、优惠券等账户权益</text><text>• 已知晓依法需要留存的交易记录不会立即删除</text></view>
+  <text wx:if="{{error}}" class="error">{{error}}</text>
+  <button class="delete-action" bindtap="requestDeletion" loading="{{busy}}" disabled="{{busy || requestStatus === '审核处理中'}}">{{requestStatus === '审核处理中' ? '注销申请审核中' : '申请注销账号'}}</button>
+</view>

@@ -12,6 +12,7 @@ import { IntegrationsModule } from "./integrations/integrations.module.js";
 import { SafetyModule } from "./safety/safety.module.js";
 import { LocationsModule } from "./locations/locations.module.js";
 import { TechniciansModule } from "./technicians/technicians.module.js";
+import { CustomerCenterModule } from "./customer-center/customer-center.module.js";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TechniciansModule } from "./technicians/technicians.module.js";
     SafetyModule,
     LocationsModule,
     TechniciansModule,
+    CustomerCenterModule,
   ],
   controllers: [PublicController],
 })

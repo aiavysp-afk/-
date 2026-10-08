@@ -1,0 +1,37 @@
+<view class="page">
+  <view class="topbar"><view><text>发现</text><text>真实服务 · 正规技师 · 安心保障</text></view></view>
+  <scroll-view class="tabs" scroll-x enhanced show-scrollbar="false"><view class="tab-row"><view wx:for="{{tabs}}" wx:key="*this" class="{{activeTab === index ? 'active' : ''}}" data-index="{{index}}" bindtap="selectTab">{{item}}</view></view></scroll-view>
+
+  <text wx:if="{{loading}}" class="state">正在读取后台发布内容…</text>
+  <view wx:if="{{error}}" class="error-card"><text>{{error}}</text><button bindtap="load">重新加载</button></view>
+
+  <block wx:if="{{activeTab === 0 || activeTab === 1}}">
+    <view class="section-head"><view><text>精选服务</text><text>价格与时长来自统一后台</text></view><text bindtap="openAllServices">更多 ›</text></view>
+    <view class="service-grid">
+      <view wx:for="{{services}}" wx:key="id" class="service-card" data-slug="{{item.slug}}" bindtap="openService">
+        <view class="service-art tone-{{item.tone}}"><view class="orbit"/><view class="stone one"/><view class="stone two"/><text>{{item.badge || '安心到家'}}</text></view>
+        <view class="service-copy"><text>{{item.name}}</text><text>{{item.subtitle}}</text><view><text>{{item.durationMinutes}} 分钟</text><text>¥{{item.price}}</text></view></view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:if="{{activeTab === 0 || activeTab === 2}}">
+    <view class="section-head"><view><text>技师风采</text><text>仅展示后台审核后公开资料</text></view><text bindtap="openAllTherapists">更多 ›</text></view>
+    <scroll-view class="therapist-scroll" scroll-x enhanced show-scrollbar="false"><view class="therapist-row">
+      <view wx:for="{{therapists}}" wx:key="id" class="therapist-card" data-id="{{item.id}}" bindtap="openTherapist">
+        <image wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar-fallback"><view/><view/></view>
+        <text class="therapist-name">{{item.alias}}</text><text class="therapist-status">{{item.statusLabel}}</text><text>{{item.ratingLabel}}</text>
+      </view>
+    </view></scroll-view>
+  </block>
+
+  <view wx:if="{{activeTab === 3}}" class="assurance-cards">
+    <view><text>✓</text><view><text>资料真实</text><text>技师姓名、照片与资质经后台审核后才公开</text></view></view>
+    <view><text>¥</text><view><text>价格透明</text><text>服务价格由统一后台发布，下单前显示明细</text></view></view>
+    <view><text>盾</text><view><text>服务留痕</text><text>订单、支付、履约与售后状态均由后台同步</text></view></view>
+    <view><text>0</text><view><text>免出行费</text><text>技师公开页与订单价格同时校验出行费为零</text></view></view>
+  </view>
+  <view class="disclosure">本页不使用虚构文章、销量或评价；暂无后台数据时会明确显示为空。</view>
+  <view class="safe-bottom" />
+</view>

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 中原到家 API
-  version: 0.10.0
+  version: 0.11.0
   description: M2 开发接口；金额单位固定为人民币分。
 servers:
   - url: http://localhost:3100
@@ -1393,6 +1393,249 @@ paths:
       responses:
         "200": { description: 模拟成功或幂等重复 }
         "404": { description: 非Mock/生产禁止 }
+  /v1/customer-center:
+    get:
+      summary: 获取当前客户个人中心聚合数据
+      description: 仅返回当前会话客户自身数据。organizationId 可省略；显式组织必须有已发布服务或该客户的历史订单。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: organizationId
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200":
+          description: 个人中心资料、订单计数、脱敏余额与运营内容
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/CustomerCenterOverview" }
+        "401": { description: 未登录 }
+        "403": { description: 显式组织不属于可用客户服务范围 }
+  /v1/customer-center/coupons:
+    get:
+      summary: 获取当前客户优惠券
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: query,
+            name: organizationId,
+            required: false,
+            schema: { type: string },
+          }
+        - in: query
+          name: status
+          required: false
+          schema: { type: string, enum: [AVAILABLE, USED, EXPIRED] }
+      responses:
+        "200": { description: 只返回当前客户真实券数据，不自动创建演示券 }
+        "401": { description: 未登录 }
+  /v1/customer-center/wallet:
+    get:
+      summary: 获取当前客户储值账户与卡片
+      description: 只读真实账面数据；recharge.enabled 固定为 false，本接口不提供充值写入能力。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: query,
+            name: organizationId,
+            required: false,
+            schema: { type: string },
+          }
+        - {
+            in: query,
+            name: status,
+            required: false,
+            schema: { type: string, enum: [AVAILABLE, UNAVAILABLE] },
+          }
+        - {
+            in: query,
+            name: type,
+            required: false,
+            schema:
+              { type: string, enum: [PHYSICAL, DISCOUNT_93, DISCOUNT_90] },
+          }
+      responses:
+        "200":
+          description: 当前客户储值账户
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/CustomerWallet" }
+  /v1/customer-center/wallet/ledger:
+    get:
+      summary: 获取当前客户储值账单明细
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: query,
+            name: organizationId,
+            required: false,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 最多返回当前客户最近 100 条真实账单 }
+  /v1/customer-center/settings:
+    get:
+      summary: 获取当前客户设置与账号安全摘要
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: query,
+            name: organizationId,
+            required: false,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 手机号仅返回脱敏值 }
+  /v1/customer-center/addresses:
+    get:
+      summary: 获取当前客户地址簿
+      description: 最多 50 个；联系人、手机号、详细地址仅对本人会话解密返回。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: query,
+            name: organizationId,
+            required: false,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 当前客户地址列表 }
+    post:
+      summary: 新增当前客户地址
+      description: 敏感字段加密存储；每客户每组织最多 50 个地址，坐标必须为 GCJ-02。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerAddressCreate" }
+      responses:
+        "201": { description: 新增后的地址；首个地址自动设为默认 }
+        "400": { description: 参数无效或地址数量达到上限 }
+        "403": { description: 组织不可用于该客户 }
+  /v1/customer-center/addresses/{id}:
+    patch:
+      summary: 修改当前客户自有地址
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerAddressUpdate" }
+      responses:
+        "200": { description: 更新后的地址 }
+        "403": { description: 不能修改其他客户地址 }
+        "404": { description: 地址不存在 }
+    delete:
+      summary: 删除当前客户自有地址
+      description: 删除默认地址时，服务端自动选择同组织最近更新的剩余地址为默认。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 删除成功 }
+        "403": { description: 不能删除其他客户地址 }
+        "404": { description: 地址不存在 }
+  /v1/customer-center/feedback:
+    post:
+      summary: 提交客户意见、投诉或售后反馈
+      description: 正文和联系方式加密存储；按上海自然日每个客户最多 10 次。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerFeedbackCreate" }
+      responses:
+        "201": { description: 已受理，不回显敏感正文或联系方式 }
+        "429": { description: 当日提交次数达到上限 }
+  /v1/customer-center/account-deletion:
+    get:
+      summary: 查询当前平台账号最近的注销申请
+      description: 注销申请按 customerId 全局查询，不因组织不同产生多份待处理申请。
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: 最近申请或 null；不回显加密原因 }
+    post:
+      summary: 提交平台账号软注销申请
+      description: 不硬删除用户、订单或审计；全局已有 PENDING 申请时幂等返回原申请。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/AccountDeletionRequestCreate" }
+      responses:
+        "201": { description: 新建或幂等返回的软注销申请 }
+  /v1/admin/organizations/{organizationId}/customer-center/config:
+    get:
+      summary: 获取客户中心运营配置
+      description: 需要该组织 customer-center.manage 权限；生产环境同时受员工 MFA 门禁约束。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200": { description: 客户中心运营文案配置 }
+        "403": { description: 无组织管理权限或 MFA 未满足 }
+    patch:
+      summary: 更新客户中心运营配置
+      description: 所有修改写入审计；不接受密钥或支付配置。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerCenterConfigUpdate" }
+      responses:
+        "200": { description: 更新后的配置 }
+        "403": { description: 无组织管理权限或 MFA 未满足 }
+  /v1/admin/organizations/{organizationId}/customer-center/summary:
+    get:
+      summary: 获取客户中心运营汇总
+      description: 需要 customer-center.manage；只返回聚合计数和金额，不返回地址、反馈正文、联系方式或注销原因。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - {
+            in: path,
+            name: organizationId,
+            required: true,
+            schema: { type: string },
+          }
+      responses:
+        "200":
+          description: 客户中心运营汇总
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    { $ref: "#/components/schemas/AdminCustomerCenterSummary" }
+        "403": { description: 无组织管理权限或 MFA 未满足 }
 components:
   requestBodies:
     BrowserLoginProof:
@@ -1417,6 +1660,279 @@ components:
       scheme: bearer
       bearerFormat: opaque
   schemas:
+    CustomerCenterContent:
+      type: object
+      required:
+        [
+          levelLabel,
+          customerServicePhone,
+          cityNewsTitle,
+          cityNewsContent,
+          appBannerTitle,
+          appBannerSubtitle,
+          appDownloadUrl,
+          safeguardItems,
+          updatedAt,
+        ]
+      properties:
+        levelLabel: { type: string, minLength: 1, maxLength: 32 }
+        customerServicePhone: { type: [string, "null"] }
+        cityNewsTitle: { type: string, minLength: 1, maxLength: 80 }
+        cityNewsContent: { type: string, minLength: 1, maxLength: 300 }
+        appBannerTitle: { type: string, minLength: 1, maxLength: 80 }
+        appBannerSubtitle: { type: string, minLength: 1, maxLength: 160 }
+        appDownloadUrl:
+          { type: [string, "null"], format: uri, pattern: "^https://" }
+        safeguardItems:
+          type: array
+          maxItems: 8
+          items: { type: string, minLength: 1, maxLength: 80 }
+        updatedAt: { type: [string, "null"], format: date-time }
+    CustomerCenterOrderCounts:
+      type: object
+      required: [pendingPayment, inProgress, pendingReview, cancelled]
+      properties:
+        pendingPayment: { type: integer, minimum: 0 }
+        inProgress: { type: integer, minimum: 0 }
+        pendingReview: { type: integer, minimum: 0 }
+        cancelled: { type: integer, minimum: 0 }
+    CustomerCenterOverview:
+      type: object
+      required: [organizationId, profile, benefits, orders, content]
+      properties:
+        organizationId: { type: string }
+        profile:
+          type: object
+          required:
+            [
+              userId,
+              displayName,
+              avatarUrl,
+              levelLabel,
+              registeredAt,
+              phoneVerified,
+            ]
+          properties:
+            userId: { type: string }
+            displayName: { type: string }
+            avatarUrl: { type: [string, "null"], format: uri }
+            levelLabel: { type: string }
+            registeredAt: { type: string, format: date-time }
+            phoneVerified: { type: boolean }
+        benefits:
+          type: object
+          required: [availableCouponCount, availableCardCount, maskedBalance]
+          properties:
+            availableCouponCount: { type: integer, minimum: 0 }
+            availableCardCount: { type: integer, minimum: 0 }
+            maskedBalance: { type: string, const: "****" }
+        orders: { $ref: "#/components/schemas/CustomerCenterOrderCounts" }
+        content: { $ref: "#/components/schemas/CustomerCenterContent" }
+    CustomerCoupon:
+      type: object
+      required:
+        [
+          id,
+          organizationId,
+          title,
+          amountFen,
+          minimumSpendFen,
+          applicability,
+          canApplyToTravelFee,
+          validFrom,
+          expiresAt,
+          status,
+          usedAt,
+        ]
+      properties:
+        id: { type: string }
+        organizationId: { type: string }
+        title: { type: string }
+        amountFen: { type: integer, minimum: 0 }
+        minimumSpendFen: { type: integer, minimum: 0 }
+        applicability: { type: string }
+        canApplyToTravelFee: { type: boolean }
+        validFrom: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        status: { type: string, enum: [AVAILABLE, USED, EXPIRED] }
+        usedAt: { type: [string, "null"], format: date-time }
+    CustomerWallet:
+      type: object
+      required: [organizationId, balanceFen, cards, recharge]
+      properties:
+        organizationId: { type: string }
+        balanceFen: { type: integer, minimum: 0 }
+        cards:
+          type: array
+          items:
+            type: object
+            required: [id, name, type, balanceFen, status, expiresAt]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              type: { type: string, enum: [PHYSICAL, DISCOUNT_93, DISCOUNT_90] }
+              balanceFen: { type: integer, minimum: 0 }
+              status: { type: string, enum: [AVAILABLE, UNAVAILABLE] }
+              expiresAt: { type: [string, "null"], format: date-time }
+        recharge:
+          type: object
+          required: [enabled, reason]
+          properties:
+            enabled: { type: boolean, const: false }
+            reason: { type: string }
+    CustomerAddressCreate:
+      type: object
+      additionalProperties: false
+      required:
+        [contactName, phone, detail, latitude, longitude, coordinateSystem]
+      properties:
+        organizationId: { type: string, minLength: 1, maxLength: 128 }
+        contactName:
+          { type: string, minLength: 2, maxLength: 40, writeOnly: true }
+        phone: { type: string, pattern: "^1[0-9]{10}$", writeOnly: true }
+        detail: { type: string, minLength: 5, maxLength: 200, writeOnly: true }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, const: GCJ-02 }
+        isDefault: { type: boolean }
+    CustomerAddressUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      dependentRequired:
+        latitude: [longitude, coordinateSystem]
+        longitude: [latitude, coordinateSystem]
+        coordinateSystem: [latitude, longitude]
+      properties:
+        contactName:
+          { type: string, minLength: 2, maxLength: 40, writeOnly: true }
+        phone: { type: string, pattern: "^1[0-9]{10}$", writeOnly: true }
+        detail: { type: string, minLength: 5, maxLength: 200, writeOnly: true }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        coordinateSystem: { type: string, const: GCJ-02 }
+        isDefault: { type: boolean }
+    CustomerAddress:
+      type: object
+      required:
+        [
+          id,
+          organizationId,
+          contactName,
+          phone,
+          detail,
+          latitude,
+          longitude,
+          coordinateSystem,
+          isDefault,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string }
+        organizationId: { type: string }
+        contactName: { type: string, description: 仅当前地址所有者会话可见 }
+        phone: { type: string, description: 仅当前地址所有者会话可见 }
+        detail: { type: string, description: 仅当前地址所有者会话可见 }
+        latitude: { type: number }
+        longitude: { type: number }
+        coordinateSystem: { type: string, const: GCJ-02 }
+        isDefault: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CustomerFeedbackCreate:
+      type: object
+      additionalProperties: false
+      required: [category, content]
+      properties:
+        organizationId: { type: string, minLength: 1, maxLength: 128 }
+        category:
+          { type: string, enum: [GENERAL, COMPLAINT, SERVICE_AFTERCARE] }
+        content:
+          { type: string, minLength: 10, maxLength: 2000, writeOnly: true }
+        contact:
+          {
+            type: [string, "null"],
+            minLength: 3,
+            maxLength: 120,
+            writeOnly: true,
+          }
+    AccountDeletionRequestCreate:
+      type: object
+      additionalProperties: false
+      required: [acknowledgedRisk]
+      properties:
+        organizationId: { type: string, minLength: 1, maxLength: 128 }
+        reason: { type: [string, "null"], maxLength: 500, writeOnly: true }
+        acknowledgedRisk: { type: boolean, const: true }
+    AccountDeletionRequest:
+      type: object
+      required: [id, organizationId, status, createdAt, updatedAt, completedAt]
+      properties:
+        id: { type: string }
+        organizationId:
+          { type: string, description: 创建申请时记录的合规归属组织 }
+        status: { type: string, enum: [PENDING, CANCELLED, COMPLETED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+    CustomerCenterConfigUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        levelLabel: { type: string, minLength: 1, maxLength: 32 }
+        customerServicePhone: { type: [string, "null"] }
+        cityNewsTitle: { type: string, minLength: 1, maxLength: 80 }
+        cityNewsContent: { type: string, minLength: 1, maxLength: 300 }
+        appBannerTitle: { type: string, minLength: 1, maxLength: 80 }
+        appBannerSubtitle: { type: string, minLength: 1, maxLength: 160 }
+        appDownloadUrl:
+          { type: [string, "null"], format: uri, pattern: "^https://" }
+        safeguardItems:
+          type: array
+          maxItems: 8
+          items: { type: string, minLength: 1, maxLength: 80 }
+    AdminCustomerCenterSummary:
+      type: object
+      required:
+        [
+          generatedAt,
+          orders,
+          coupons,
+          wallet,
+          feedback,
+          accountDeletionRequests,
+        ]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        orders: { $ref: "#/components/schemas/CustomerCenterOrderCounts" }
+        coupons:
+          type: object
+          required: [available, used, expired]
+          properties:
+            available: { type: integer, minimum: 0 }
+            used: { type: integer, minimum: 0 }
+            expired: { type: integer, minimum: 0 }
+        wallet:
+          type: object
+          required: [customerCount, totalBalanceFen, transactionCount]
+          properties:
+            customerCount: { type: integer, minimum: 0 }
+            totalBalanceFen: { type: integer, minimum: 0 }
+            transactionCount: { type: integer, minimum: 0 }
+        feedback:
+          type: object
+          required: [open, total]
+          properties:
+            open: { type: integer, minimum: 0 }
+            total: { type: integer, minimum: 0 }
+        accountDeletionRequests:
+          type: object
+          required: [pending, total]
+          properties:
+            pending: { type: integer, minimum: 0 }
+            total: { type: integer, minimum: 0 }
     SafetyDutyRosterUpsert:
       type: object
       additionalProperties: false

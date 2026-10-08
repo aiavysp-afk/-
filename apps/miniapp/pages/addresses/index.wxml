@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="sub-nav"><text bindtap="back">‹</text><text>地址管理</text><text/></view>
+  <view class="intro"><view><text>服务地址</text><text>手动填写或使用高德定位，统一保存 GCJ-02 坐标</text></view><button bindtap="openNew">＋ 新增</button></view>
+  <text wx:if="{{loading}}" class="state">正在读取地址簿…</text>
+  <text wx:if="{{error && !formOpen}}" class="error-card">{{error}}</text>
+  <view class="address-list">
+    <view wx:for="{{addresses}}" wx:key="id" class="address-card">
+      <view class="address-head"><view><text>{{item.contactName}}</text><text>{{item.phone}}</text><text wx:if="{{item.isDefault}}">默认</text></view><text data-id="{{item.id}}" bindtap="openEdit">编辑</text></view>
+      <text class="address-detail">{{item.detail}}</text>
+      <view class="address-foot"><text>{{item.coordinateSystem}} 坐标已保存</text><view><text wx:if="{{!item.isDefault}}" data-id="{{item.id}}" bindtap="setDefault">设为默认</text><text data-id="{{item.id}}" bindtap="remove">删除</text></view></view>
+    </view>
+  </view>
+  <view wx:if="{{!loading && !error && addresses.length === 0}}" class="empty"><view class="pin">⌖</view><text>暂无已保存地址</text><text>新增后下单可直接选择，完整地址不会保存在本机缓存</text><button bindtap="openNew">新增服务地址</button></view>
+
+  <view wx:if="{{formOpen}}" class="mask" bindtap="closeForm">
+    <view class="form-sheet" catchtap="keepFormOpen">
+      <view class="sheet-head"><view><text>{{formTitle}}</text><text>手填地址保存前会由高德服务解析坐标</text></view><text bindtap="closeForm">×</text></view>
+      <view class="field"><text>联系人</text><input maxlength="40" value="{{draft.contactName}}" data-field="contactName" bindinput="inputChanged" placeholder="请输入联系人姓名" /></view>
+      <view class="field"><text>联系电话</text><input maxlength="11" type="number" value="{{draft.phone}}" data-field="phone" bindinput="inputChanged" placeholder="请输入 11 位手机号" /></view>
+      <view class="field address-field"><view><text>详细地址</text><button bindtap="locateCurrent" loading="{{locating}}" disabled="{{locating || busy}}">高德定位当前地址</button></view><textarea maxlength="200" value="{{draft.detail}}" data-field="detail" bindinput="inputChanged" placeholder="请输入郑州市区、道路、小区、楼栋和门牌号" /></view>
+      <view class="coordinate-note"><text>{{draft.latitude !== null ? '✓ 已获得 GCJ-02 坐标' : '保存时自动解析 GCJ-02 坐标'}}</text><text>服务城市：{{serviceCity}}</text></view>
+      <view class="default-row"><view><text>设为默认地址</text><text>新订单优先使用</text></view><switch checked="{{draft.isDefault}}" color="#14BF7D" bindchange="defaultChanged" /></view>
+      <text wx:if="{{error}}" class="form-error">{{error}}</text>
+      <button class="save" bindtap="save" loading="{{busy}}" disabled="{{busy || locating}}">保存地址</button>
+    </view>
+  </view>
+</view>

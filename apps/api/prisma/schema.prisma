@@ -127,21 +127,55 @@ enum TechnicianReviewStatus {
   HIDDEN
 }
 
+enum CustomerCouponStatus {
+  AVAILABLE
+  USED
+  EXPIRED
+}
+
+enum StoredValueCardStatus {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum StoredValueCardType {
+  PHYSICAL
+  DISCOUNT_93
+  DISCOUNT_90
+}
+
+enum CustomerFeedbackStatus {
+  OPEN
+  RESOLVED
+}
+
+enum AccountDeletionRequestStatus {
+  PENDING
+  CANCELLED
+  COMPLETED
+}
+
 model Organization {
-  id                  String                   @id @default(cuid())
-  name                String
-  createdAt           DateTime                 @default(now())
-  users               User[]
-  memberships         StaffMembership[]
-  services            Service[]
-  orders              Order[]
-  shifts              TherapistShift[]
-  reservations        AppointmentReservation[]
-  mfaRecoveryRequests MfaRecoveryRequest[]
-  safetyDutyRosters   SafetyDutyRoster[]
-  safetyIncidents     SafetyIncident[]
-  technicianProfiles  TechnicianProfile[]
-  technicianReviews   TechnicianReview[]
+  id                      String                   @id @default(cuid())
+  name                    String
+  createdAt               DateTime                 @default(now())
+  users                   User[]
+  memberships             StaffMembership[]
+  services                Service[]
+  orders                  Order[]
+  shifts                  TherapistShift[]
+  reservations            AppointmentReservation[]
+  mfaRecoveryRequests     MfaRecoveryRequest[]
+  safetyDutyRosters       SafetyDutyRoster[]
+  safetyIncidents         SafetyIncident[]
+  technicianProfiles      TechnicianProfile[]
+  technicianReviews       TechnicianReview[]
+  customerCenterConfig    CustomerCenterConfig?
+  customerCoupons         CustomerCoupon[]
+  storedValueAccounts     StoredValueAccount[]
+  customerFeedbacks       CustomerFeedback[]
+  accountDeletionRequests AccountDeletionRequest[]
+  customerAddresses       CustomerAddress[]
 }
 
 model User {
@@ -181,6 +215,143 @@ model User {
   reviewedTechnicianProfiles  TechnicianProfile[]          @relation("TechnicianProfileReviewer")
   submittedTechnicianReviews  TechnicianReview[]           @relation("TechnicianReviewCustomer")
   receivedTechnicianReviews   TechnicianReview[]           @relation("TechnicianReviewTechnician")
+  customerCoupons             CustomerCoupon[]
+  storedValueAccounts         StoredValueAccount[]
+  customerFeedbacks           CustomerFeedback[]
+  accountDeletionRequests     AccountDeletionRequest[]
+  customerAddresses           CustomerAddress[]
+}
+
+model CustomerCenterConfig {
+  organizationId       String       @id
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  levelLabel           String       @default("普通用户")
+  customerServicePhone String?
+  cityNewsTitle        String       @default("城市快讯")
+  cityNewsContent      String       @default("中原到家持续为郑州用户提供规范上门服务")
+  appBannerTitle       String       @default("中原到家小程序")
+  appBannerSubtitle    String       @default("无需下载 APP，微信内即可预约")
+  appDownloadUrl       String?
+  safeguardItems       Json         @default("[]")
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model CustomerCoupon {
+  id                  String               @id @default(cuid())
+  organizationId      String
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId          String
+  customer            User                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  title               String
+  amountFen           BigInt
+  minimumSpendFen     BigInt
+  applicability       String               @default("仅限服务项目费")
+  canApplyToTravelFee Boolean              @default(false)
+  validFrom           DateTime             @default(now())
+  expiresAt           DateTime
+  status              CustomerCouponStatus @default(AVAILABLE)
+  usedAt              DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([organizationId, customerId, status, expiresAt])
+}
+
+model StoredValueAccount {
+  id             String                   @id @default(cuid())
+  organizationId String
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId     String
+  customer       User                     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  balanceFen     BigInt                   @default(0)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  cards          StoredValueCard[]
+  transactions   StoredValueTransaction[]
+
+  @@unique([organizationId, customerId])
+  @@index([organizationId, updatedAt])
+}
+
+model StoredValueCard {
+  id         String                @id @default(cuid())
+  accountId  String
+  account    StoredValueAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name       String
+  type       StoredValueCardType
+  balanceFen BigInt                @default(0)
+  status     StoredValueCardStatus @default(AVAILABLE)
+  expiresAt  DateTime?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  @@index([accountId, status, type])
+}
+
+model StoredValueTransaction {
+  id              String             @id @default(cuid())
+  accountId       String
+  account         StoredValueAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  type            String
+  changeFen       BigInt
+  balanceAfterFen BigInt
+  description     String
+  occurredAt      DateTime           @default(now())
+
+  @@index([accountId, occurredAt])
+}
+
+model CustomerFeedback {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId       String
+  customer         User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  category         String
+  contentEncrypted String
+  contactEncrypted String?
+  status           CustomerFeedbackStatus @default(OPEN)
+  createdAt        DateTime               @default(now())
+  resolvedAt       DateTime?
+
+  @@index([organizationId, status, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model AccountDeletionRequest {
+  id              String                       @id @default(cuid())
+  organizationId  String
+  organization    Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId      String
+  customer        User                         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  reasonEncrypted String?
+  status          AccountDeletionRequestStatus @default(PENDING)
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  completedAt     DateTime?
+
+  @@index([organizationId, status, createdAt])
+  @@index([customerId, status, createdAt])
+}
+
+model CustomerAddress {
+  id                   String       @id @default(cuid())
+  organizationId       String
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId           String
+  customer             User         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  contactNameEncrypted String
+  phoneEncrypted       String
+  detailEncrypted      String
+  latitude             Float
+  longitude            Float
+  coordinateSystem     String       @default("GCJ-02")
+  isDefault            Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([organizationId, customerId, isDefault, updatedAt])
 }
 
 model ExternalIdentity {

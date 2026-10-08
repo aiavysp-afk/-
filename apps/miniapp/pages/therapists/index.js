@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const tab_bar_1 = require("../../utils/tab-bar");
 const auth_1 = require("../../utils/auth");
 const therapists_1 = require("../../utils/therapists");
 Page({
@@ -18,10 +17,12 @@ Page({
         therapists: [],
         visibleTherapists: [],
     },
+    back() {
+        wx.navigateBack({ delta: 1 });
+    },
     async onShow() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
-        (0, tab_bar_1.syncCustomTabBar)(this, 2);
         await this.load();
     },
     async load() {

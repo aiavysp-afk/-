@@ -1,6 +1,7 @@
 import type {
   AvailabilitySlot,
   BookingHold,
+  CustomerAddress,
   OrderQuote,
   OrderView,
   PaymentIntent,
@@ -29,6 +30,7 @@ import {
   quoteDisplay,
   shanghaiDate,
 } from "../../utils/booking";
+import { customerCenterPath } from "../../utils/customer-center";
 
 type QuoteDisplay = ReturnType<typeof quoteDisplay>;
 
@@ -78,6 +80,11 @@ Page({
     loginBusy: false,
     loginError: "",
     preferredTherapistId: "",
+    savedAddresses: [] as CustomerAddress[],
+    selectedAddressId: "",
+    addressBookLoading: false,
+    addressBookLoaded: false,
+    addressBookError: "",
   },
   async onLoad(options: { slug?: string; therapistId?: string }) {
     if (!requireVerifiedCustomerAccess()) return;
@@ -106,13 +113,86 @@ Page({
       this.fail(error);
     }
   },
-  onShow() {
+  async onShow() {
     if (!requireVerifiedCustomerAccess()) return;
     const session = getStoredSession();
     this.setData({
       loggedIn: Boolean(session),
       phoneVerified: session?.user.phoneVerified === true,
     });
+    await this.loadSavedAddresses();
+  },
+  async loadSavedAddresses() {
+    if (this.data.addressBookLoading || this.data.orderSubmissionAttempted)
+      return;
+    this.setData({ addressBookLoading: true, addressBookError: "" });
+    try {
+      const savedAddresses = await api<CustomerAddress[]>(
+        customerCenterPath("/customer-center/addresses"),
+      );
+      const selectedAddress = savedAddresses.find(
+        (item) => item.id === this.data.selectedAddressId,
+      );
+      const hasDraft = Boolean(
+        this.data.contactName.trim() ||
+          this.data.phone.trim() ||
+          this.data.detail.trim() ||
+          this.data.doorNumber.trim(),
+      );
+      this.setData({
+        savedAddresses,
+        addressBookLoaded: true,
+        ...(this.data.selectedAddressId && !selectedAddress
+          ? { selectedAddressId: "" }
+          : {}),
+      });
+      if (selectedAddress) {
+        this.applySavedAddress(selectedAddress);
+        return;
+      }
+      if (!hasDraft) {
+        const preferred =
+          savedAddresses.find((item) => item.isDefault) ?? savedAddresses[0];
+        if (preferred) this.applySavedAddress(preferred);
+      }
+    } catch (error) {
+      this.setData({
+        addressBookLoaded: true,
+        addressBookError:
+          error instanceof Error
+            ? `${error.message}，可继续手动填写`
+            : "地址簿读取失败，可继续手动填写",
+      });
+    } finally {
+      this.setData({ addressBookLoading: false });
+    }
+  },
+  applySavedAddress(address: CustomerAddress) {
+    if (this.data.orderSubmissionAttempted) return;
+    this.setData({
+      selectedAddressId: address.id,
+      contactName: address.contactName,
+      phone: address.phone,
+      detail: address.detail,
+      doorNumber: "",
+      latitude: address.latitude,
+      longitude: address.longitude,
+      coordinateSystem: "GCJ-02",
+      suggestions: [],
+      addressVerificationId: "",
+      quoteDetails: null,
+      error: "",
+    });
+  },
+  chooseSavedAddress(event: { currentTarget: { dataset: { id: string } } }) {
+    const address = this.data.savedAddresses.find(
+      (item) => item.id === event.currentTarget.dataset.id,
+    );
+    if (address) this.applySavedAddress(address);
+  },
+  openAddressManager() {
+    if (this.data.orderSubmissionAttempted) return;
+    wx.navigateTo({ url: "/pages/addresses/index" });
   },
   async login() {
     if (this.data.loginBusy || this.data.loggedIn) return;
@@ -230,20 +310,22 @@ Page({
     if (
       ["contactName", "phone", "detail", "doorNumber"].includes(field) &&
       !this.data.orderSubmissionAttempted
-    )
+    ) {
+      const addressFieldChanged = ["detail", "doorNumber"].includes(field);
       this.setData({
         [field]: e.detail.value,
-        ...(["detail", "doorNumber"].includes(field)
+        selectedAddressId: "",
+        ...(addressFieldChanged
           ? {
               suggestions: [],
               addressVerificationId: "",
               quoteDetails: null,
-              ...(field === "detail"
-                ? { latitude: null, longitude: null }
-                : {}),
+              latitude: null,
+              longitude: null,
             }
           : {}),
       });
+    }
   },
   async locateAddress() {
     if (this.data.locationBusy || this.data.orderSubmissionAttempted) return;
@@ -252,6 +334,7 @@ Page({
       const point = await getGcj02Location();
       const address = await reverseGeocode(this.data.amapMiniappKey, point);
       this.setData({
+        selectedAddressId: "",
         detail: address.detail.slice(0, 140),
         latitude: point.latitude,
         longitude: point.longitude,
@@ -303,6 +386,7 @@ Page({
       .trim()
       .slice(0, 140);
     this.setData({
+      selectedAddressId: "",
       detail,
       latitude: suggestion.latitude,
       longitude: suggestion.longitude,
@@ -468,7 +552,7 @@ Page({
             "平台承诺免出行费，该订单未通过金额复核，不会调起支付。请在订单页联系客服处理。",
           showCancel: false,
         });
-        wx.switchTab({ url: "/pages/orders/index" });
+        wx.redirectTo({ url: "/pages/orders/index" });
         return;
       }
       this.setData({
@@ -479,7 +563,7 @@ Page({
         orderSubmissionAttempted: false,
       });
       await this.payCreatedOrder(order);
-      wx.switchTab({ url: "/pages/orders/index" });
+      wx.redirectTo({ url: "/pages/orders/index" });
     } catch (error) {
       this.fail(error);
     } finally {
@@ -604,6 +688,10 @@ Page({
       latitude: null,
       longitude: null,
       suggestions: [],
+      savedAddresses: [],
+      selectedAddressId: "",
+      addressBookLoaded: false,
+      addressBookError: "",
       addressVerificationId: "",
       quoteDetails: null,
       orderSubmissionAttempted: false,

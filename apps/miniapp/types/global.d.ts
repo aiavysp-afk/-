@@ -44,6 +44,7 @@ declare const wx: {
     fail(error: { errMsg: string }): void;
   }): void;
   navigateTo(options: { url: string }): void;
+  redirectTo(options: { url: string }): void;
   navigateBack(options?: { delta?: number }): void;
   reLaunch(options: { url: string; complete?(): void }): void;
   switchTab(options: { url: string }): void;
@@ -71,7 +72,7 @@ declare const wx: {
   }): void;
   request<T>(options: {
     url: string;
-    method: "GET" | "POST" | "DELETE";
+    method: "GET" | "POST" | "PATCH" | "DELETE";
     data?: unknown;
     header?: Record<string, string>;
     timeout?: number;
@@ -81,4 +82,9 @@ declare const wx: {
   getStorageSync(key: string): unknown;
   setStorageSync(key: string, value: unknown): void;
   removeStorageSync(key: string): void;
+  setClipboardData(options: {
+    data: string;
+    success?(): void;
+    fail?(error: { errMsg: string }): void;
+  }): void;
 };

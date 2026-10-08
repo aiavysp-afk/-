@@ -231,13 +231,16 @@ test("all miniapp buttons resolve to handlers and all navigator targets are regi
   const registered = new Set(app.pages.map((page) => `/${page}`));
   const tabPages = new Set(app.tabBar.list.map((item) => `/${item.pagePath}`));
   assert.equal(app.tabBar.custom, true);
-  assert.deepEqual([...tabPages], [
-    "/pages/home/index",
-    "/pages/services/index",
-    "/pages/therapists/index",
-    "/pages/orders/index",
-    "/pages/profile/index",
-  ]);
+  assert.deepEqual(
+    [...tabPages],
+    [
+      "/pages/home/index",
+      "/pages/discover/index",
+      "/pages/services/index",
+      "/pages/messages/index",
+      "/pages/profile/index",
+    ],
+  );
 
   for (const pagePath of app.pages) {
     const directory = pagePath.replace(/^pages\//, "").replace(/\/index$/, "");
@@ -255,7 +258,9 @@ test("all miniapp buttons resolve to handlers and all navigator targets are regi
         `${pagePath} is missing handler ${match[1]}`,
       );
     }
-    for (const match of source.matchAll(/<navigator\b[^>]*\burl="([^"?]+)[^"]*"/g)) {
+    for (const match of source.matchAll(
+      /<navigator\b[^>]*\burl="([^"?]+)[^"]*"/g,
+    )) {
       assert.ok(
         registered.has(match[1]),
         `${pagePath} navigates to unregistered page ${match[1]}`,
