@@ -53,8 +53,10 @@ test("root-domain maintenance config publishes only the technician client subtre
     new URL("../infra/maintenance/mtsc.top.conf", import.meta.url),
     "utf8",
   );
-  assert.ok(maintenance.includes("location ^~ /technician/"));
-  assert.ok(maintenance.includes("apps/workbench-h5/dist/"));
+  assert.ok(maintenance.includes("location = /technician/"));
+  assert.ok(maintenance.includes("apps/workbench-h5/dist/index.html"));
+  assert.ok(maintenance.includes("location ^~ /technician/assets/"));
+  assert.ok(maintenance.includes("apps/workbench-h5/dist/assets/"));
   assert.ok(maintenance.includes("connect-src https://api.mtsc.top"));
   assert.match(maintenance, /location \/ \{ error_page 503/);
 });
