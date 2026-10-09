@@ -197,8 +197,42 @@ export class StoredValueRechargesService {
       throw new ForbiddenException("不能查询其他用户的充值");
     if (recharge.status === StoredValueRechargeStatus.SUCCEEDED)
       return this.toIntent(recharge);
-    const transaction = await this.client.queryTransaction(
-      recharge.merchantPaymentNo,
+    await this.queryExisting(recharge);
+    return this.toIntent(
+      await this.prisma.storedValueRecharge.findUniqueOrThrow({
+        where: { id: rechargeId },
+      }),
+    );
+  }
+
+  recoveryEnabled() {
+    return (
+      this.config.get("PAYMENT_PROVIDER", { infer: true }) === "wechat" &&
+      this.config.get("WECHAT_PAY_RECOVERY_ENABLED", { infer: true }) === "true"
+    );
+  }
+
+  // Server-only original-order lookup: no prepay, close, refund or reward claim.
+  async recoverExisting(rechargeId: string) {
+    if (!this.recoveryEnabled()) return false;
+    this.client.assertRecoveryEnabled();
+    const recharge = await this.prisma.storedValueRecharge.findUnique({
+      where: { id: rechargeId },
+    });
+    if (
+      !recharge ||
+      !UNRESOLVED_STATUSES.includes(
+        recharge.status as (typeof UNRESOLVED_STATUSES)[number],
+      )
+    )
+      return false;
+    return this.queryExisting(recharge);
+  }
+
+  private async queryExisting(recharge: StoredValueRecharge) {
+    const transaction = parseWechatQueryTransaction(
+      await this.client.queryTransaction(recharge.merchantPaymentNo),
+      this.client.verifierConfig(),
     );
     if (
       transaction.out_trade_no !== recharge.merchantPaymentNo ||
@@ -207,16 +241,12 @@ export class StoredValueRechargesService {
     )
       throw new ConflictException("微信查单结果与充值记录不一致");
     if (transaction.trade_state === "SUCCESS") {
-      await this.applyIfPresent(
+      return this.applyIfPresent(
         parseWechatTransaction(transaction, this.client.verifierConfig()),
         "QUERY",
       );
     }
-    return this.toIntent(
-      await this.prisma.storedValueRecharge.findUniqueOrThrow({
-        where: { id: rechargeId },
-      }),
-    );
+    return false;
   }
 
   async claimFirstRechargeReward(

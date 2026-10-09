@@ -675,6 +675,8 @@ export class RefundsService {
         kind: true,
         payer: { select: { id: true, displayName: true } },
         succeededAt: true,
+        failureCode: true,
+        recoveryReviewAt: true,
         amountFen: true,
         refundReservedFen: true,
         refundedFen: true,
@@ -694,6 +696,14 @@ export class RefundsService {
         ? { userId: row.payer.id, displayName: row.payer.displayName }
         : null,
       succeededAt: row.succeededAt?.toISOString() ?? null,
+      failureCode: row.failureCode ?? null,
+      recoveryReviewAt: row.recoveryReviewAt?.toISOString() ?? null,
+      reviewRequired:
+        (row.failureCode === "FULFILLMENT_REVIEW_REQUIRED" &&
+          (row.status === PaymentStatus.SUCCEEDED ||
+            row.status === PaymentStatus.REFUNDING) &&
+          row.refundedFen < row.amountFen) ||
+        (row.status === PaymentStatus.PENDING && !!row.recoveryReviewAt),
       amountFen: this.money(row.amountFen),
       reservedFen: this.money(row.refundReservedFen),
       refundedFen: this.money(row.refundedFen),

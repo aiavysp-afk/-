@@ -4,6 +4,7 @@ import {
   paymentHasSucceeded,
   paymentOriginLabel,
   paymentPayerLabel,
+  paymentReviewLabel,
 } from "./payment-origin";
 
 const payment: AdminPaymentView = {
@@ -20,9 +21,28 @@ const payment: AdminPaymentView = {
   reservedFen: 0,
   refundedFen: 0,
   availableFen: 19800,
+  failureCode: null,
+  recoveryReviewAt: null,
+  reviewRequired: false,
 };
 
 describe("organization finance payment origin display", () => {
+  it("marks payments requiring fulfillment review even when money succeeded", () => {
+    expect(
+      paymentReviewLabel({
+        ...payment,
+        reviewRequired: true,
+        failureCode: "LATE_PAYMENT",
+      }),
+    ).toContain("待履约复核");
+    expect(
+      paymentReviewLabel({
+        ...payment,
+        recoveryReviewAt: "2026-10-10T09:00:00Z",
+      }),
+    ).toBe("履约复核已有记录");
+    expect(paymentReviewLabel(payment)).toBeNull();
+  });
   it("shows a verified friend payment and its actual payer", () => {
     expect(paymentHasSucceeded(payment)).toBe(true);
     expect(paymentOriginLabel(payment)).toBe("好友代付");

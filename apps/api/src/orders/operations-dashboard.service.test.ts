@@ -35,6 +35,8 @@ describe("OperationsDashboardService", () => {
       },
       payment: {
         aggregate: vi.fn().mockResolvedValue({ _sum: { amountFen: 19_800n } }),
+        count: vi.fn().mockResolvedValue(2),
+        fields: { amountFen: "Payment.amountFen" },
       },
       refund: { count: vi.fn().mockResolvedValue(1) },
       safetyIncident: { count: vi.fn().mockResolvedValue(2) },
@@ -63,7 +65,7 @@ describe("OperationsDashboardService", () => {
         todayOrders: 3,
         activeOrders: 2,
         paidTodayFen: 19_800,
-        attentionRequired: 4,
+        attentionRequired: 6,
       },
       recentOrders: [
         {
@@ -88,6 +90,31 @@ describe("OperationsDashboardService", () => {
         }),
       }),
     );
+    expect(prisma.payment.count).toHaveBeenCalledWith({
+      where: {
+        order: { organizationId: "org-1" },
+        OR: [
+          {
+            status: { in: [PaymentStatus.SUCCEEDED, PaymentStatus.REFUNDING] },
+            failureCode: "FULFILLMENT_REVIEW_REQUIRED",
+            refundedFen: { lt: "Payment.amountFen" },
+          },
+          { status: PaymentStatus.PENDING, recoveryReviewAt: { not: null } },
+        ],
+      },
+    });
+    // A stopped recovery is counted through paymentAttention once, even when its order is overdue.
+    expect(prisma.order.count).toHaveBeenLastCalledWith({
+      where: {
+        organizationId: "org-1",
+        status: OrderStatus.PENDING_PAYMENT,
+        paymentExpiresAt: { lt: new Date("2026-10-07T08:00:00.000Z") },
+        OR: [
+          { payment: { is: null } },
+          { payment: { is: { recoveryReviewAt: null } } },
+        ],
+      },
+    });
   });
 
   it("does not query when the principal lacks organization access", async () => {

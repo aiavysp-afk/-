@@ -117,7 +117,10 @@ function setup(current: StoredValueRecharge = recharge) {
       .fn()
       .mockReturnValue({ appId: "app-1", merchantId: "merchant-1" }),
     assertPrepayEnabled: vi.fn(),
+    assertRecoveryEnabled: vi.fn(),
     queryTransaction: vi.fn(),
+    closeTransaction: vi.fn(),
+    submitRefund: vi.fn(),
     prepay: vi.fn().mockResolvedValue("new-prepay"),
     paymentParameters: vi.fn().mockReturnValue({}),
   };
@@ -134,6 +137,38 @@ function setup(current: StoredValueRecharge = recharge) {
     config,
     client,
   };
+}
+
+function recoverySetup(current: StoredValueRecharge = { ...recharge }) {
+  const fixture = setup(current);
+  fixture.config.get.mockImplementation((key) => {
+    if (key === "PAYMENT_PROVIDER") return "wechat";
+    if (
+      key === "WECHAT_PAY_RECOVERY_ENABLED" ||
+      key === "STORED_VALUE_RECHARGE_ENABLED"
+    )
+      return "true";
+    return "中原到家";
+  });
+  fixture.client.queryTransaction.mockResolvedValue(transaction);
+  return fixture;
+}
+
+function expectNoRecoveryWrites(fixture: ReturnType<typeof setup>) {
+  expect(fixture.tx.storedValueRecharge.update).not.toHaveBeenCalled();
+  expect(fixture.tx.storedValueAccount.update).not.toHaveBeenCalled();
+  expect(fixture.tx.storedValueTransaction.create).not.toHaveBeenCalled();
+  expect(
+    fixture.tx.storedValueFirstRechargeReward.create,
+  ).not.toHaveBeenCalled();
+  expect(
+    fixture.tx.storedValueFirstRechargeReward.update,
+  ).not.toHaveBeenCalled();
+  expect(fixture.tx.auditLog.create).not.toHaveBeenCalled();
+  expect(fixture.tx.outboxEvent.create).not.toHaveBeenCalled();
+  expect(fixture.client.prepay).not.toHaveBeenCalled();
+  expect(fixture.client.closeTransaction).not.toHaveBeenCalled();
+  expect(fixture.client.submitRefund).not.toHaveBeenCalled();
 }
 
 describe("StoredValueRechargesService", () => {
@@ -549,5 +584,163 @@ describe("StoredValueRechargesService", () => {
       data: { rechargeId: "earlier-288" },
     });
     expect(tx.storedValueFirstRechargeReward.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["mock", "true"],
+    ["wechat", "false"],
+  ])(
+    "does not read or query originals when provider=%s and recovery gate=%s",
+    async (provider, gate) => {
+      const f = recoverySetup();
+      f.config.get.mockImplementation((key) =>
+        key === "PAYMENT_PROVIDER" ? provider : gate,
+      );
+      expect(await f.service.recoverExisting(recharge.id)).toBe(false);
+      expect(f.prisma.storedValueRecharge.findUnique).not.toHaveBeenCalled();
+      expect(f.client.assertRecoveryEnabled).not.toHaveBeenCalled();
+      expect(f.client.queryTransaction).not.toHaveBeenCalled();
+      expectNoRecoveryWrites(f);
+    },
+  );
+
+  it("settles only the stored original after a verified successful recovery query", async () => {
+    const f = recoverySetup();
+    await expect(f.service.recoverExisting(recharge.id)).resolves.toBe(true);
+    expect(f.client.assertRecoveryEnabled).toHaveBeenCalledOnce();
+    expect(f.client.queryTransaction).toHaveBeenCalledExactlyOnceWith("SVR123");
+    expect(f.tx.storedValueAccount.update).toHaveBeenCalledWith({
+      where: { id: "account-1" },
+      data: { balanceFen: 69_900n },
+    });
+    expect(f.tx.storedValueTransaction.create).toHaveBeenCalledExactlyOnceWith({
+      data: expect.objectContaining({
+        rechargeId: recharge.id,
+        changeFen: 59_900n,
+        balanceAfterFen: 69_900n,
+      }),
+    });
+    expect(f.tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadata: { source: "QUERY", amountFen: 59_900 },
+      }),
+    });
+    expect(f.client.prepay).not.toHaveBeenCalled();
+    expect(f.client.closeTransaction).not.toHaveBeenCalled();
+    expect(f.client.submitRefund).not.toHaveBeenCalled();
+    expect(f.tx.storedValueFirstRechargeReward.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    StoredValueRechargeStatus.SUCCEEDED,
+    StoredValueRechargeStatus.CLOSED,
+  ])("does not query an original already locally %s", async (status) => {
+    const f = recoverySetup({
+      ...recharge,
+      status,
+      providerTransactionId:
+        status === "SUCCEEDED" ? transaction.transaction_id! : null,
+    });
+    expect(await f.service.recoverExisting(recharge.id)).toBe(false);
+    expect(f.client.queryTransaction).not.toHaveBeenCalled();
+    expectNoRecoveryWrites(f);
+  });
+
+  it("does not query a missing original", async () => {
+    const f = recoverySetup();
+    f.prisma.storedValueRecharge.findUnique.mockResolvedValue(null as never);
+    expect(await f.service.recoverExisting("missing-original")).toBe(false);
+    expect(f.client.queryTransaction).not.toHaveBeenCalled();
+    expectNoRecoveryWrites(f);
+  });
+
+  it.each(["NOTPAY", "CLOSED"])(
+    "leaves all funds and original status unchanged for a verified %s query",
+    async (trade_state) => {
+      const f = recoverySetup();
+      f.client.queryTransaction.mockResolvedValue({
+        appid: "app-1",
+        mchid: "merchant-1",
+        out_trade_no: "SVR123",
+        trade_state,
+      });
+      expect(await f.service.recoverExisting(recharge.id)).toBe(false);
+      expect(f.prisma.$transaction).not.toHaveBeenCalled();
+      expectNoRecoveryWrites(f);
+    },
+  );
+
+  it.each([
+    ["wrong app", { ...transaction, appid: "other-app" }],
+    ["wrong merchant", { ...transaction, mchid: "other-merchant" }],
+    ["wrong original number", { ...transaction, out_trade_no: "SVR_OTHER" }],
+    ["wrong amount", { ...transaction, amount: { total: 1, currency: "CNY" } }],
+    [
+      "missing provider transaction",
+      { ...transaction, transaction_id: undefined },
+    ],
+  ])(
+    "rejects %s recovery evidence without writing any funds",
+    async (_reason, response) => {
+      const f = recoverySetup();
+      f.client.queryTransaction.mockResolvedValue(response);
+      await expect(f.service.recoverExisting(recharge.id)).rejects.toThrow();
+      expect(f.prisma.$transaction).not.toHaveBeenCalled();
+      expectNoRecoveryWrites(f);
+    },
+  );
+
+  it("does not write funds after a network or response-signature failure", async () => {
+    const f = recoverySetup();
+    f.client.queryTransaction.mockRejectedValue(
+      new Error("query evidence unavailable"),
+    );
+    await expect(f.service.recoverExisting(recharge.id)).rejects.toThrow(
+      "query evidence unavailable",
+    );
+    expect(f.prisma.$transaction).not.toHaveBeenCalled();
+    expectNoRecoveryWrites(f);
+  });
+
+  it("rechecks success under the transaction lock when recovery and callback race, then skips further scans", async () => {
+    const current = { ...recharge };
+    const f = recoverySetup(current);
+    f.prisma.storedValueRecharge.findUnique.mockImplementation(async () => ({
+      ...current,
+    }));
+    f.tx.storedValueRecharge.findUniqueOrThrow.mockImplementation(async () => ({
+      ...current,
+    }));
+    f.tx.storedValueRecharge.update.mockImplementation(
+      async ({ data }: any) => {
+        Object.assign(current, data);
+        return { ...current };
+      },
+    );
+    let transactionQueue: Promise<unknown> = Promise.resolve();
+    f.prisma.$transaction.mockImplementation((operation) => {
+      const result = transactionQueue.then(() => operation(f.tx));
+      transactionQueue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    });
+    await Promise.all([
+      f.service.recoverExisting(current.id),
+      f.service.applyIfPresent(transaction, "NOTIFICATION"),
+    ]);
+    expect(current.status).toBe(StoredValueRechargeStatus.SUCCEEDED);
+    expect(f.tx.storedValueRecharge.update).toHaveBeenCalledOnce();
+    expect(f.tx.storedValueAccount.update).toHaveBeenCalledOnce();
+    expect(f.tx.storedValueTransaction.create).toHaveBeenCalledOnce();
+    expect(f.tx.auditLog.create).toHaveBeenCalledOnce();
+    expect(f.tx.outboxEvent.create).toHaveBeenCalledOnce();
+    expect(f.prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(await f.service.recoverExisting(current.id)).toBe(false);
+    expect(f.client.queryTransaction).toHaveBeenCalledOnce();
+    await f.service.applyIfPresent(transaction, "NOTIFICATION");
+    expect(f.tx.storedValueTransaction.create).toHaveBeenCalledOnce();
+    expect(f.tx.storedValueAccount.update).toHaveBeenCalledOnce();
   });
 });

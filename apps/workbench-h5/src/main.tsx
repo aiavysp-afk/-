@@ -43,7 +43,12 @@ import {
   type TechnicianProfile,
   type TechnicianProfileDraft,
 } from "./technician-profile";
-import { loadTechnicianPhotoPreview, prepareTechnicianPhoto } from "./technician-photo";
+import {
+  loadTechnicianPhotoPreview,
+  prepareTechnicianPhoto,
+} from "./technician-photo";
+import { workbenchPaymentSummary } from "./order-payment";
+import { technicianShiftSummary } from "./shift-summary";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -709,7 +714,7 @@ function TodayView({
         <div className="status-top">
           <div>
             <span className="dot" />
-            工作台已连接
+            {technicianShiftSummary(workbench.shifts, workbench.generatedAt)}
           </div>
           <span className="safe-label">隐私保护中</span>
         </div>
@@ -727,7 +732,7 @@ function TodayView({
             <span>已完成</span>
           </div>
         </div>
-        <small>订单、排班与技师资料均实时读取管理后台同一数据库</small>
+        <small>已付款的本人预约可确认接单 · 排班与管理后台同步</small>
       </section>
 
       {earnings && <EarningsCard earnings={earnings} compact />}
@@ -959,7 +964,9 @@ function ProfileView({
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
-  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
+  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>(
+    {},
+  );
 
   const loadProfile = useCallback(async () => {
     setProfileLoading(true);
@@ -988,30 +995,76 @@ function ProfileView({
   useEffect(() => {
     let active = true;
     const blobUrls: string[] = [];
-    const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter((url): url is string => Boolean(url));
-    void Promise.all(urls.map(async (url) => {
-      const preview = await loadTechnicianPhotoPreview(url, API_BASE_URL, TECHNICIAN_PROFILE_PATHS.profile, token);
-      if (preview.startsWith("blob:")) blobUrls.push(preview);
-      return [url, preview] as const;
-    })).then((entries) => {
-      if (active) setPhotoPreviews(Object.fromEntries(entries));
-      else blobUrls.forEach((url) => URL.revokeObjectURL(url));
-    }).catch(() => { blobUrls.forEach((url) => URL.revokeObjectURL(url)); if (active) setProfileError("照片预览读取失败，请刷新后重试"); });
-    return () => { active = false; blobUrls.forEach((url) => URL.revokeObjectURL(url)); };
+    const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter(
+      (url): url is string => Boolean(url),
+    );
+    void Promise.all(
+      urls.map(async (url) => {
+        const preview = await loadTechnicianPhotoPreview(
+          url,
+          API_BASE_URL,
+          TECHNICIAN_PROFILE_PATHS.profile,
+          token,
+        );
+        if (preview.startsWith("blob:")) blobUrls.push(preview);
+        return [url, preview] as const;
+      }),
+    )
+      .then((entries) => {
+        if (active) setPhotoPreviews(Object.fromEntries(entries));
+        else blobUrls.forEach((url) => URL.revokeObjectURL(url));
+      })
+      .catch(() => {
+        blobUrls.forEach((url) => URL.revokeObjectURL(url));
+        if (active) setProfileError("照片预览读取失败，请刷新后重试");
+      });
+    return () => {
+      active = false;
+      blobUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
   }, [profile, token]);
 
-  async function uploadProfilePhoto(file: File | undefined, kind: "AVATAR" | "GALLERY") {
+  async function uploadProfilePhoto(
+    file: File | undefined,
+    kind: "AVATAR" | "GALLERY",
+  ) {
     if (!file || profileSaving) return;
-    if (!window.confirm("确认上传本人已授权照片，审核后公开给客户？请勿上传身份证、证件号码、他人肖像或未经授权的照片。")) return;
-    setProfileSaving(true); setProfileError(""); setProfileMessage("");
+    if (
+      !window.confirm(
+        "确认上传本人已授权照片，审核后公开给客户？请勿上传身份证、证件号码、他人肖像或未经授权的照片。",
+      )
+    )
+      return;
+    setProfileSaving(true);
+    setProfileError("");
+    setProfileMessage("");
     try {
       const base64 = await prepareTechnicianPhoto(file);
-      const response = await apiRequest<{ data: TechnicianPhotoUploadResult }>(`${TECHNICIAN_PROFILE_PATHS.profile}/photos`, { method: "POST", body: JSON.stringify({ kind, base64, authorized: true }) }, token);
+      const response = await apiRequest<{ data: TechnicianPhotoUploadResult }>(
+        `${TECHNICIAN_PROFILE_PATHS.profile}/photos`,
+        {
+          method: "POST",
+          body: JSON.stringify({ kind, base64, authorized: true }),
+        },
+        token,
+      );
       setProfile(response.data.profile);
-      setDraft((current) => ({ ...current, ...(kind === "AVATAR" ? { avatarUrl: response.data.publicUrl } : { galleryUrls: response.data.profile.galleryUrls }) }));
-      setProfileMessage("照片已保存并同步后台，审核发布后展示给客户；姓名、年龄段可后续补录。");
-    } catch (caught) { setProfileError(caught instanceof Error ? caught.message : "照片上传失败"); }
-    finally { setProfileSaving(false); }
+      setDraft((current) => ({
+        ...current,
+        ...(kind === "AVATAR"
+          ? { avatarUrl: response.data.publicUrl }
+          : { galleryUrls: response.data.profile.galleryUrls }),
+      }));
+      setProfileMessage(
+        "照片已保存并同步后台，审核发布后展示给客户；姓名、年龄段可后续补录。",
+      );
+    } catch (caught) {
+      setProfileError(
+        caught instanceof Error ? caught.message : "照片上传失败",
+      );
+    } finally {
+      setProfileSaving(false);
+    }
   }
 
   async function saveProfile(showConfirmation = true) {
@@ -1030,7 +1083,9 @@ function ProfileView({
       if (showConfirmation) setProfileMessage("资料草稿已同步到管理后台。");
       return response.data;
     } catch (caught) {
-      setProfileError(caught instanceof Error ? caught.message : "资料保存失败");
+      setProfileError(
+        caught instanceof Error ? caught.message : "资料保存失败",
+      );
       return null;
     } finally {
       setProfileSaving(false);
@@ -1052,7 +1107,9 @@ function ProfileView({
       setDraft(profileDraftFrom(response.data));
       setProfileMessage("资料已提交后台审核，审核完成后才会对客户公开。");
     } catch (caught) {
-      setProfileError(caught instanceof Error ? caught.message : "提交审核失败");
+      setProfileError(
+        caught instanceof Error ? caught.message : "提交审核失败",
+      );
     } finally {
       setProfileSaving(false);
     }
@@ -1088,13 +1145,17 @@ function ProfileView({
             <p>保存到统一后台；只有管理员审核并发布后客户才可查看。</p>
           </div>
           {profile && (
-            <em className={`profile-status status-${profile.status.toLowerCase()}`}>
+            <em
+              className={`profile-status status-${profile.status.toLowerCase()}`}
+            >
               {profileStatusLabels[profile.status]}
             </em>
           )}
         </div>
         {profileLoading && <div className="profile-empty">正在读取资料…</div>}
-        {profileError && <div className="profile-form-error">{profileError}</div>}
+        {profileError && (
+          <div className="profile-form-error">{profileError}</div>
+        )}
         {profileMessage && (
           <div className="profile-form-success">{profileMessage}</div>
         )}
@@ -1123,19 +1184,76 @@ function ProfileView({
             </label>
             <label>
               年龄段（可留空）
-              <select disabled={profileLocked} value={draft.ageRange ?? ""} onChange={(event) => setDraft((current) => current ? { ...current, ageRange: (event.target.value || null) as TechnicianProfileDraft["ageRange"] } : current)}>
-                <option value="">暂不填写/不展示</option><option value="18-23岁">18-23岁</option><option value="24-29岁">24-29岁</option><option value="30-39岁">30-39岁</option><option value="40岁及以上">40岁及以上</option>
+              <select
+                disabled={profileLocked}
+                value={draft.ageRange ?? ""}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          ageRange: (event.target.value ||
+                            null) as TechnicianProfileDraft["ageRange"],
+                        }
+                      : current,
+                  )
+                }
+              >
+                <option value="">暂不填写/不展示</option>
+                <option value="18-23岁">18-23岁</option>
+                <option value="24-29岁">24-29岁</option>
+                <option value="30-39岁">30-39岁</option>
+                <option value="40岁及以上">40岁及以上</option>
               </select>
             </label>
             <label>
               上传本人头像照片
-              <input type="file" accept="image/jpeg,image/png" disabled={profileSaving || profileLocked} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadProfilePhoto(file, "AVATAR"); }} />
-              <small>自动压缩并去除照片定位等隐藏信息，不能上传证件文件。</small>
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                disabled={profileSaving || profileLocked}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void uploadProfilePhoto(file, "AVATAR");
+                }}
+              />
+              <small>
+                自动压缩并去除照片定位等隐藏信息，不能上传证件文件。
+              </small>
             </label>
             <label>
               添加详情页相册照片（最多12张）
-              <input type="file" accept="image/jpeg,image/png" disabled={profileSaving || profileLocked || (draft.galleryUrls?.length ?? 0) >= 12} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadProfilePhoto(file, "GALLERY"); }} />
-              <div>{(profile?.galleryUrls ?? []).map((url) => <img key={url} src={photoPreviews[url] || url} alt="本人授权的相册照片" style={{ width: 75, height: 100, objectFit: "cover", borderRadius: 10, margin: 4 }} />)}</div>
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                disabled={
+                  profileSaving ||
+                  profileLocked ||
+                  (draft.galleryUrls?.length ?? 0) >= 12
+                }
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void uploadProfilePhoto(file, "GALLERY");
+                }}
+              />
+              <div>
+                {(profile?.galleryUrls ?? []).map((url) => (
+                  <img
+                    key={url}
+                    src={photoPreviews[url] || url}
+                    alt="本人授权的相册照片"
+                    style={{
+                      width: 75,
+                      height: 100,
+                      objectFit: "cover",
+                      borderRadius: 10,
+                      margin: 4,
+                    }}
+                  />
+                ))}
+              </div>
             </label>
             <label>
               头像 HTTPS 地址
@@ -1291,7 +1409,9 @@ function ProfileView({
                 <span>{"★".repeat(review.rating)}</span>
               </div>
               <p>{review.content}</p>
-              <time>{new Date(review.createdAt).toLocaleDateString("zh-CN")}</time>
+              <time>
+                {new Date(review.createdAt).toLocaleDateString("zh-CN")}
+              </time>
             </article>
           ))}
           {profile.recentReviews.length === 0 && (
@@ -1332,6 +1452,7 @@ function NextOrder({
   onOpenNavigation: (order: TechnicianWorkbenchOrder) => void;
 }) {
   const operation = actionByStatus[order.status];
+  const payment = workbenchPaymentSummary(order.payment);
   return (
     <article className="next-order">
       <div className="accent" />
@@ -1342,6 +1463,18 @@ function NextOrder({
       <h3>
         {order.serviceName} <em>{order.durationMinutes} 分钟</em>
       </h3>
+      <div className="order-payment-summary">
+        <span>
+          {payment.origin ? `${payment.origin} · ` : ""}
+          {payment.status}
+        </span>
+        {payment.succeededAt && (
+          <small>
+            收款时间 {formatDay(payment.succeededAt)}{" "}
+            {formatTime(payment.succeededAt)}
+          </small>
+        )}
+      </div>
       <div className="privacy-notice">
         <MapPin size={16} />
         <div>

@@ -94,6 +94,7 @@ describe("OrderDispatchService", () => {
           },
         ]),
       },
+      appointmentReservation: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const access = { assertPermission: vi.fn() };
     const service = new OrderDispatchService(
@@ -153,6 +154,93 @@ describe("OrderDispatchService", () => {
       orderId: "order-1",
       status: "ASSIGNED",
       therapist: { id: "therapist-1", displayName: "安然" },
+    });
+  });
+
+  it("excludes real overlapping reservations while allowing the order's own hold and adjacent appointments", async () => {
+    const start = new Date("2026-10-08T02:00:00Z"),
+      end = new Date("2026-10-08T03:00:00Z");
+    const memberships = ["own", "busy", "adjacent", "unavailable"].map(
+      (id) => ({ userId: id, user: { id, displayName: id } }),
+    );
+    const prisma = {
+      order: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "order",
+            orderNo: "ZY001",
+            reservationId: "own-hold",
+            status: "PAID",
+            payableFen: 19800n,
+            appointmentStart: start,
+            appointmentEnd: end,
+            customer: { displayName: "customer" },
+            therapist: memberships[0]!.user,
+            items: [{ serviceName: "service", durationMinutes: 60 }],
+          },
+        ]),
+      },
+      staffMembership: { findMany: vi.fn().mockResolvedValue(memberships) },
+      therapistShift: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue(
+            memberships
+              .slice(0, 3)
+              .map(({ userId }) => ({
+                therapistId: userId,
+                startsAt: start,
+                endsAt: end,
+              })),
+          ),
+      },
+      appointmentReservation: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "own-hold", therapistId: "own", startsAt: start, endsAt: end },
+          {
+            id: "other-confirmed",
+            therapistId: "busy",
+            startsAt: start,
+            endsAt: end,
+          },
+          {
+            id: "adjacent-previous",
+            therapistId: "adjacent",
+            startsAt: new Date("2026-10-08T01:00:00Z"),
+            endsAt: start,
+          },
+          {
+            id: "adjacent-next",
+            therapistId: "adjacent",
+            startsAt: end,
+            endsAt: new Date("2026-10-08T04:00:00Z"),
+          },
+        ]),
+      },
+    };
+    const now = new Date("2026-10-07T08:00:00Z");
+    const service = new OrderDispatchService(
+      prisma as never,
+      { assertPermission: vi.fn() } as never,
+      new OrderStateMachine(),
+    );
+    const result = await service.getBoard(dispatcher, "org-1", now);
+    expect(result.orders[0]?.eligibleTherapists.map(({ id }) => id)).toEqual([
+      "own",
+      "adjacent",
+    ]);
+    expect(prisma.appointmentReservation.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: "org-1",
+        therapistId: { in: memberships.map(({ userId }) => userId) },
+        startsAt: { lt: end },
+        endsAt: { gt: start },
+        OR: [
+          { status: "CONFIRMED" },
+          { status: "HOLD", expiresAt: { gt: now } },
+        ],
+      },
+      select: { id: true, therapistId: true, startsAt: true, endsAt: true },
     });
   });
 

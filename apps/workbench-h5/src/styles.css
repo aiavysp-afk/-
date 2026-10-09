@@ -832,6 +832,18 @@ main {
   font-size: 9px;
   color: #a1aaa6;
 }
+.order-payment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin-bottom: 14px;
+  color: #36715f;
+  font-size: 12px;
+}
+.order-payment-summary small {
+  color: #6e7c75;
+  font-size: 11px;
+}
 .next-order h3 {
   font-size: 16px;
   margin: 14px 0;

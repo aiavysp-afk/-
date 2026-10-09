@@ -40,6 +40,7 @@ export class OperationsDashboardService {
       activeOrders,
       paidToday,
       expiredPayments,
+      paymentAttention,
       refundAttention,
       safetyAttention,
       recentOrders,
@@ -69,6 +70,25 @@ export class OperationsDashboardService {
           organizationId,
           status: OrderStatus.PENDING_PAYMENT,
           paymentExpiresAt: { lt: now },
+          OR: [
+            { payment: { is: null } },
+            { payment: { is: { recoveryReviewAt: null } } },
+          ],
+        },
+      }),
+      this.prisma.payment.count({
+        where: {
+          order: { organizationId },
+          OR: [
+            {
+              status: {
+                in: [PaymentStatus.SUCCEEDED, PaymentStatus.REFUNDING],
+              },
+              failureCode: "FULFILLMENT_REVIEW_REQUIRED",
+              refundedFen: { lt: this.prisma.payment.fields.amountFen },
+            },
+            { status: PaymentStatus.PENDING, recoveryReviewAt: { not: null } },
+          ],
         },
       }),
       this.prisma.refund.count({
@@ -105,7 +125,11 @@ export class OperationsDashboardService {
         todayOrders,
         activeOrders,
         paidTodayFen: this.safeMoney(paidToday._sum.amountFen ?? 0n),
-        attentionRequired: expiredPayments + refundAttention + safetyAttention,
+        attentionRequired:
+          expiredPayments +
+          paymentAttention +
+          refundAttention +
+          safetyAttention,
       },
       recentOrders: recentOrders.map((order) => ({
         id: order.id,

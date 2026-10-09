@@ -103,7 +103,7 @@ createServer(async (req, res) => {
     }
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+      "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
     );
     res.writeHead(200, { "Content-Type": types[extname(file)] });
     res.end(req.method === "HEAD" ? undefined : await readFile(file));

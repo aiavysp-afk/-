@@ -96,20 +96,34 @@ test("production nginx evaluates the private-network gate against the URI path",
 test("admin TLS vhost exposes the UI only behind unchanged private-network protection", () => {
   const admin = config.slice(config.lastIndexOf("\nserver {"));
   assert.ok(admin.includes("server_name admin.mtsc.top;"));
-  assert.ok(admin.includes("if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }"));
+  assert.ok(
+    admin.includes(
+      "if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }",
+    ),
+  );
   assert.ok(admin.includes("proxy_pass http://127.0.0.1:3222;"));
   assert.ok(admin.includes("proxy_set_header Host admin.mtsc.top;"));
   assert.doesNotMatch(admin, /proxy_pass http:\/\/127\.0\.0\.1:321[023]/);
-  assert.doesNotMatch(admin, /proxy_set_header Origin|real_ip_header|set_real_ip_from|default-src 'none'/);
-  const geo = config.slice(config.indexOf("geo $zydj_admin_network_allowed {"), config.indexOf("\n}", config.indexOf("geo $zydj_admin_network_allowed {")) + 2);
-  assert.equal(geo.trim(), `geo $zydj_admin_network_allowed {
+  assert.doesNotMatch(
+    admin,
+    /proxy_set_header Origin|real_ip_header|set_real_ip_from|default-src 'none'/,
+  );
+  const geo = config.slice(
+    config.indexOf("geo $zydj_admin_network_allowed {"),
+    config.indexOf("\n}", config.indexOf("geo $zydj_admin_network_allowed {")) +
+      2,
+  );
+  assert.equal(
+    geo.trim(),
+    `geo $zydj_admin_network_allowed {
     default 0;
     127.0.0.1/32 1;
     ::1/128 1;
     10.0.0.0/8 1;
     172.16.0.0/12 1;
     192.168.0.0/16 1;
-}`);
+}`,
+  );
 });
 
 test("production nginx keeps unknown API paths closed", () => {
@@ -193,7 +207,10 @@ test("production nginx exposes only the three authenticated customer address rou
 });
 
 test("production nginx exposes exact payment creation and callback routes", () => {
-  assertAllowedMethods("~ ^/v1/orders/[^/]+/(?:payment-intent|friend-payment)$", ["POST"]);
+  assertAllowedMethods(
+    "~ ^/v1/orders/[^/]+/(?:payment-intent|friend-payment)$",
+    ["POST"],
+  );
   assert.ok(config.includes("/v1/payments/wechat/(?:notify|refund-notify)"));
   assert.ok(config.includes("orders/[^/]+/close"));
   assert.ok(config.includes("[^/]+/reconcile"));
@@ -203,30 +220,49 @@ test("production nginx exposes exact payment creation and callback routes", () =
 test("friend invitations use exact authenticated routes, restricted methods and no capability access log", () => {
   for (const [route, methods] of [
     ['~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}$"', ["GET"]],
-    ['~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/payment-intent$"', ["GET", "POST"]],
+    [
+      '~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/payment-intent$"',
+      ["GET", "POST"],
+    ],
     ['~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/reconcile$"', ["POST"]],
   ]) {
     const block = assertAllowedMethods(route, methods);
     assert.ok(block.includes("access_log off;"));
     assert.ok(block.includes("error_log /dev/null;"));
     assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
-    assert.doesNotMatch(block, /Origin|Authorization|satisfy any|auth_request off/);
+    assert.doesNotMatch(
+      block,
+      /Origin|Authorization|satisfy any|auth_request off/,
+    );
   }
   assertAllowedMethods("= /v1/payments/notifications", ["GET"]);
   assert.doesNotMatch(config, /location (?:\^~ )?\/v1\/friend-payments\/? \{/);
 });
 
 test("gateway deployment checks every friend-payment boundary without creating a payment", () => {
-  const deploy = readFileSync(new URL("./deploy-production-nginx.sh", import.meta.url), "utf8");
-  for (const marker of ["payment-intent|friend-payment", "/v1/friend-payments/", "location = /v1/payments/notifications", "orders/probe/friend-payment", "friend-payments/$friend_probe_token/payment-intent", "friend-payments/$friend_probe_token/reconcile"]) {
+  const deploy = readFileSync(
+    new URL("./deploy-production-nginx.sh", import.meta.url),
+    "utf8",
+  );
+  for (const marker of [
+    "payment-intent|friend-payment",
+    "/v1/friend-payments/",
+    "location = /v1/payments/notifications",
+    "orders/probe/friend-payment",
+    "friend-payments/$friend_probe_token/payment-intent",
+    "friend-payments/$friend_probe_token/reconcile",
+  ]) {
     assert.ok(deploy.includes(marker));
   }
-  assert.ok(deploy.includes('[[ $friend_status == 401 ]]'));
+  assert.ok(deploy.includes("[[ $friend_status == 401 ]]"));
 });
 
 test("malformed capability paths are unlogged deny-only fallbacks, never broad API exposure", () => {
   const declaration = "location ~* ^/v1/friend-payments(?:/|$)";
-  const blocks = config.split(declaration).slice(1).map((rest) => rest.slice(0, rest.indexOf("}") + 1));
+  const blocks = config
+    .split(declaration)
+    .slice(1)
+    .map((rest) => rest.slice(0, rest.indexOf("}") + 1));
   assert.equal(blocks.length, 2, "HTTP and TLS each need a deny-only fallback");
   for (const block of blocks) {
     assert.ok(block.includes("access_log off;"));
@@ -235,8 +271,16 @@ test("malformed capability paths are unlogged deny-only fallbacks, never broad A
     assert.doesNotMatch(block, /proxy_pass|rewrite|301/);
   }
   const tls = config.slice(config.indexOf("server_name api.mtsc.top;"));
-  assert.ok(tls.indexOf('location ~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/reconcile$"') < tls.indexOf(declaration));
-  assert.equal((config.match(/error_log \/dev\/null;/g) ?? []).length, 5, "log suppression is limited to capability routes");
+  assert.ok(
+    tls.indexOf(
+      'location ~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/reconcile$"',
+    ) < tls.indexOf(declaration),
+  );
+  assert.equal(
+    (config.match(/error_log \/dev\/null;/g) ?? []).length,
+    5,
+    "log suppression is limited to capability routes",
+  );
 });
 
 test("production nginx exposes the exact customer refund and safety incident methods", () => {
@@ -271,10 +315,22 @@ test("production nginx keeps public technician reads separate from authenticated
 });
 
 test("production photo upload and preview routes keep owner/admin authorization fences", () => {
-  assertAllowedMethods("= /v1/technician/workbench/profile/photos", ["POST", "OPTIONS"]);
-  assertAllowedMethods("~ ^/v1/technician/workbench/profile/photos/[A-Za-z0-9-]+$", ["GET", "OPTIONS"]);
-  assertAllowedMethods("~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/photos$", ["POST", "OPTIONS"]);
-  assertAllowedMethods("~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/photos/[A-Za-z0-9-]+$", ["GET", "OPTIONS"]);
+  assertAllowedMethods("= /v1/technician/workbench/profile/photos", [
+    "POST",
+    "OPTIONS",
+  ]);
+  assertAllowedMethods(
+    "~ ^/v1/technician/workbench/profile/photos/[A-Za-z0-9-]+$",
+    ["GET", "OPTIONS"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/photos$",
+    ["POST", "OPTIONS"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/photos/[A-Za-z0-9-]+$",
+    ["GET", "OPTIONS"],
+  );
   assert.ok(config.includes("if ($zydj_admin_request_denied) { return 403; }"));
   assert.match(config, /client_max_body_size 1m;/);
 });
@@ -366,6 +422,65 @@ test("production nginx exposes exact customer-center admin resources without a b
   );
 });
 
+test("financial wallet ledger uses the private gate and only an exact GET path", () => {
+  const declaration =
+    "~ ^/v1/admin/organizations/[^/]+/customer-center/wallet-ledger$";
+  const block = assertAllowedMethods(declaration, ["GET"]);
+  // Nginx normally grants HEAD together with GET; explicitly reject every other method.
+  assert.ok(block.includes("if ($request_method != GET) { return 405; }"));
+  assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
+  assert.ok(config.includes("~^0:/v1/(?:admin/|auth/mfa(?:/|$)) 1;"));
+  assert.ok(config.includes("if ($zydj_admin_request_denied) { return 403; }"));
+  const pattern = new RegExp(
+    block
+      .split("\n")[0]
+      .trim()
+      .replace(/^location ~ /, "")
+      .replace(/ \{$/, ""),
+  );
+  assert.ok(
+    pattern.test("/v1/admin/organizations/org-1/customer-center/wallet-ledger"),
+  );
+  for (const path of [
+    "/v1/admin/organizations/org-1/customer-center/wallet-ledger/",
+    "/v1/admin/organizations/org-1/customer-center/wallet-ledger/extra",
+    "/v1/admin/organizations/org-1/customer-center/wallet-ledger-export",
+  ]) {
+    assert.equal(pattern.test(path), false);
+  }
+  assert.doesNotMatch(
+    block,
+    /satisfy any|auth_request off|proxy_set_header Origin|proxy_set_header Authorization/,
+  );
+});
+
+test("gateway publication requires the exact wallet ledger marker and unauthenticated GET probes", () => {
+  const deploy = readFileSync(
+    new URL("./deploy-production-nginx.sh", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    deploy.includes(
+      "'location ~ ^/v1/admin/organizations/[^/]+/customer-center/wallet-ledger$ {'",
+    ),
+  );
+  assert.ok(
+    deploy.includes(
+      "wallet_ledger_route=/v1/admin/organizations/probe/customer-center/wallet-ledger",
+    ),
+  );
+  assert.ok(
+    deploy.includes("for wallet_ledger_host in api.mtsc.top admin.mtsc.top"),
+  );
+  const probe = deploy.slice(
+    deploy.indexOf("wallet_ledger_status=$(curl"),
+    deploy.indexOf("# Invitations never bypass login"),
+  );
+  assert.ok(probe.includes("--request GET"));
+  assert.ok(probe.includes("[[ $wallet_ledger_status == 401 ]]"));
+  assert.doesNotMatch(probe, /Authorization|Cookie|Bearer|--data|--insecure/);
+});
+
 test("root-domain maintenance config publishes only the technician client subtree", () => {
   const maintenance = readFileSync(
     new URL("../infra/maintenance/mtsc.top.conf", import.meta.url),
@@ -386,7 +501,19 @@ test("root-domain maintenance config publishes only the technician client subtre
     ),
   );
   assert.ok(maintenance.includes("connect-src https://api.mtsc.top"));
-  assert.ok(maintenance.includes("img-src 'self' data: https:"));
+  assert.equal(
+    (maintenance.match(/img-src 'self' data: blob: https:/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (maintenance.match(/script-src 'self'; frame-ancestors 'none'/g) ?? [])
+      .length,
+    2,
+  );
+  assert.doesNotMatch(
+    maintenance,
+    /script-src[^;]*blob:|connect-src[^;]*blob:/,
+  );
   assert.match(maintenance, /location \/ \{ error_page 503/);
 });
 

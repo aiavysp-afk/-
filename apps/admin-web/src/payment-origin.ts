@@ -25,3 +25,9 @@ export function paymentPayerLabel(payment: AdminPaymentView) {
     return `代付发起用户：${identity}；尚无成功付款`;
   return `付款用户：${identity}`;
 }
+
+export function paymentReviewLabel(payment: AdminPaymentView) {
+  if (payment.reviewRequired) return "待履约复核，勿按余额自动退款";
+  if (payment.recoveryReviewAt) return "履约复核已有记录";
+  return null;
+}

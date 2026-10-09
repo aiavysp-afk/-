@@ -59,15 +59,28 @@ export class PaymentReconciliationService {
         ],
       },
     });
-    const ownIds = new Set(local.map((payment) => payment.merchantPaymentNo));
+    const recharges = await this.prisma.storedValueRecharge.findMany({
+      where: {
+        organizationId,
+        OR: [
+          {
+            merchantPaymentNo: { in: rows.map((row) => row.merchantPaymentNo) },
+          },
+          {
+            succeededAt: {
+              gte: from,
+              lt: new Date(from.getTime() + 86400_000),
+            },
+          },
+        ],
+      },
+    });
+    const allPayments = [...local, ...recharges];
+    const ownIds = new Set(
+      allPayments.map((payment) => payment.merchantPaymentNo),
+    );
     // Merchant-wide bills can contain other businesses/organizations. Their IDs never escape this scope.
     const scoped = rows.filter((row) => ownIds.has(row.merchantPaymentNo));
-    const sameDay = local.filter(
-      (payment) =>
-        payment.succeededAt &&
-        payment.succeededAt >= from &&
-        payment.succeededAt < new Date(from.getTime() + 86400_000),
-    );
     const localRefunds = await this.prisma.refund.findMany({
       where: {
         payment: {
@@ -93,9 +106,12 @@ export class PaymentReconciliationService {
     });
     const report = compareTradeBill(
       scoped,
-      local.map((payment) => ({
+      allPayments.map((payment) => ({
         ...payment,
-        expectedOnDate: sameDay.some((item) => item.id === payment.id),
+        expectedOnDate:
+          !!payment.succeededAt &&
+          payment.succeededAt >= from &&
+          payment.succeededAt < new Date(from.getTime() + 86400_000),
       })),
       localRefunds.map((refund) => ({
         ...refund,

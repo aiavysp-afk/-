@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AdminPaymentViewSchema,
   type AdminPaymentView,
@@ -10,7 +10,9 @@ import {
   paymentHasSucceeded,
   paymentOriginLabel,
   paymentPayerLabel,
+  paymentReviewLabel,
 } from "./payment-origin";
+import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
 
 const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 type RecordView = RefundView & {
@@ -46,6 +48,15 @@ export function RefundWorkspace({
     useState<RefundRequest["reason"]>("CUSTOMER_CANCELLED");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const paymentRequests = useMemo(createLatestRequest, []);
+  const refundRequests = useMemo(createLatestRequest, []);
+  useEffect(
+    () => () => {
+      paymentRequests.invalidate();
+      refundRequests.invalidate();
+    },
+    [paymentRequests, refundRequests],
+  );
   const context = `${token}:${organizationId}:${paymentId}`;
   const currentContext = useRef(context);
   currentContext.current = context;
@@ -96,27 +107,43 @@ export function RefundWorkspace({
   }, [token, request]);
   const loadPayments = useCallback(async () => {
     if (!organizationId || !token) return;
+    const isCurrent = paymentRequests.begin();
     const result = await request<unknown>(
       `/admin/organizations/${encodeURIComponent(organizationId)}/payments`,
     );
-    if (currentContext.current.startsWith(`${token}:${organizationId}:`))
+    if (
+      isCurrent() &&
+      currentContext.current.startsWith(`${token}:${organizationId}:`)
+    )
       setPayments(AdminPaymentViewSchema.array().parse(result));
-  }, [organizationId, request, token]);
+  }, [organizationId, request, token, paymentRequests]);
   const loadRefunds = useCallback(async () => {
     if (!paymentId || !organizationId) return;
+    const isCurrent = refundRequests.begin();
     const expected = `${token}:${organizationId}:${paymentId}`;
     const result = await request<RecordView[]>(
       `/admin/organizations/${organizationId}/payments/${paymentId}/refunds`,
     );
-    if (currentContext.current === expected) setRefunds(result);
-  }, [paymentId, organizationId, request, token]);
+    if (isCurrent() && currentContext.current === expected) setRefunds(result);
+  }, [paymentId, organizationId, request, token, refundRequests]);
   useEffect(() => {
+    setPayments([]);
+    paymentRequests.invalidate();
     void loadPayments().catch((caught) => setError(caught.message));
-  }, [loadPayments]);
+  }, [loadPayments, paymentRequests]);
   useEffect(() => {
     setRefunds([]);
+    refundRequests.invalidate();
     void loadRefunds().catch((caught) => setError(caught.message));
-  }, [loadRefunds]);
+  }, [loadRefunds, refundRequests]);
+  useBackgroundRefresh(
+    () => {
+      void Promise.all([loadPayments(), loadRefunds()]).catch((caught) =>
+        setError(caught.message),
+      );
+    },
+    Boolean(token && organizationId && !busy),
+  );
   async function perform(action: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
@@ -189,8 +216,8 @@ export function RefundWorkspace({
         {roles.join(" / ") || "无财务权限"}
       </p>
       <p className="notice">
-        真实渠道提交默认关闭。Mock
-        成功按钮只在开发页面显示，生产后端禁止模拟操作。当前列表最多显示最近50笔支付。
+        真实退款提交由服务端权限与渠道状态校验。模拟成功操作仅供开发使用。当前列表最多显示最近
+        50 笔支付。
       </p>
       {error && (
         <div role="alert" className="catalog-error">
@@ -234,7 +261,8 @@ export function RefundWorkspace({
               <option value="">选择支付记录</option>
               {payments.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.orderNo} · {paymentOriginLabel(item)} · {item.status} ·{" "}
+                  {item.orderNo} · {paymentOriginLabel(item)} · {item.status}
+                  {item.reviewRequired ? " · 待履约复核" : ""} ·{" "}
                   {money(item.amountFen)}
                 </option>
               ))}
@@ -253,6 +281,15 @@ export function RefundWorkspace({
           </p>
           <p>{paymentPayerLabel(payment)}</p>
           <p>支付成功时间：{payment.succeededAt ?? "尚无成功付款记录"}</p>
+          {paymentReviewLabel(payment) && (
+            <p
+              className={payment.reviewRequired ? "wallet-review-required" : ""}
+            >
+              {paymentReviewLabel(payment)}
+              {payment.recoveryReviewAt ? ` · ${payment.recoveryReviewAt}` : ""}
+            </p>
+          )}
+          {payment.failureCode && <p>支付异常提示：{payment.failureCode}</p>}
           {payment.kind === "FRIEND" && (
             <p className="notice">
               代付成功后资金进入平台，订单权益归下单用户。代付人不能发起退款，
@@ -282,6 +319,7 @@ export function RefundWorkspace({
               busy ||
               !canRequest ||
               payment.status !== "SUCCEEDED" ||
+              payment.reviewRequired ||
               payment.reservedFen > 0
             }
             onClick={() =>

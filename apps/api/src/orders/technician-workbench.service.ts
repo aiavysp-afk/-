@@ -108,6 +108,7 @@ export class TechnicianWorkbenchService {
           ],
         },
         include: {
+          payment: { select: { kind: true, status: true, succeededAt: true } },
           items: {
             select: { serviceName: true, durationMinutes: true },
             take: 1,
@@ -165,6 +166,13 @@ export class TechnicianWorkbenchService {
           appointmentStart: order.appointmentStart.toISOString(),
           appointmentEnd: order.appointmentEnd.toISOString(),
           status: order.status,
+          payment: order.payment
+            ? {
+                kind: order.payment.kind,
+                status: order.payment.status,
+                succeededAt: order.payment.succeededAt?.toISOString() ?? null,
+              }
+            : null,
           destination: this.destination(order),
         };
       }),

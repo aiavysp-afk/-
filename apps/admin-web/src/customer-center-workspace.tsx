@@ -20,6 +20,9 @@ import {
   type CustomerCenterConfigDraft,
   type CustomerCenterSummary,
 } from "./customer-center";
+import type { AuthUser } from "@zydj/contracts";
+import { canViewOrganizationWallet } from "./stored-value-ledger";
+import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -114,10 +117,12 @@ export function CustomerCenterWorkspace({
   token,
   organizationId,
   login,
+  user,
 }: {
   token: string;
   organizationId: string;
   login: () => Promise<void>;
+  user: AuthUser | null;
 }) {
   const [config, setConfig] = useState<CustomerCenterConfig | null>(null);
   const [draft, setDraft] = useState<CustomerCenterConfigDraft | null>(null);
@@ -126,6 +131,8 @@ export function CustomerCenterWorkspace({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const requests = useMemo(createLatestRequest, []);
+  const summaryRequests = useMemo(createLatestRequest, []);
   const paths = useMemo(
     () => customerCenterPaths(organizationId),
     [organizationId],
@@ -133,6 +140,8 @@ export function CustomerCenterWorkspace({
 
   const load = useCallback(async () => {
     if (!token || !organizationId) return;
+    const isCurrent = requests.begin();
+    const summaryIsCurrent = summaryRequests.begin();
     setLoading(true);
     setError("");
     setMessage("");
@@ -141,10 +150,12 @@ export function CustomerCenterWorkspace({
         request<CustomerCenterConfig>(paths.config, token),
         request<CustomerCenterSummary>(paths.summary, token),
       ]);
+      if (!isCurrent()) return;
       setConfig(nextConfig);
       setDraft(draftFrom(nextConfig));
-      setSummary(nextSummary);
+      if (summaryIsCurrent()) setSummary(nextSummary);
     } catch (caught) {
+      if (!isCurrent()) return;
       setConfig(null);
       setDraft(null);
       setSummary(null);
@@ -152,11 +163,43 @@ export function CustomerCenterWorkspace({
         caught instanceof Error ? caught.message : "客户中心数据读取失败",
       );
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [organizationId, paths.config, paths.summary, token]);
+  }, [
+    organizationId,
+    paths.config,
+    paths.summary,
+    token,
+    requests,
+    summaryRequests,
+  ]);
 
   useEffect(() => void load(), [load]);
+  useEffect(
+    () => () => {
+      requests.invalidate();
+      summaryRequests.invalidate();
+    },
+    [requests, summaryRequests],
+  );
+  const refreshSummary = useCallback(async () => {
+    if (!token || !organizationId) return;
+    const isCurrent = summaryRequests.begin();
+    try {
+      const value = await request<CustomerCenterSummary>(paths.summary, token);
+      if (isCurrent()) setSummary(value);
+    } catch (caught) {
+      if (!isCurrent()) return;
+      setSummary(null);
+      setError(
+        caught instanceof Error ? caught.message : "客户中心统计读取失败",
+      );
+    }
+  }, [organizationId, paths.summary, token, summaryRequests]);
+  useBackgroundRefresh(
+    () => void refreshSummary(),
+    Boolean(token && organizationId && !loading),
+  );
 
   if (!token || !organizationId) return <CustomerCenterGate login={login} />;
 
@@ -275,17 +318,19 @@ export function CustomerCenterWorkspace({
                 · 已过期 {summary.coupons.expired}
               </p>
             </article>
-            <article>
-              <WalletCards size={20} />
-              <div>
-                <span>储值账户</span>
-                <strong>{summary.wallet.customerCount}</strong>
-              </div>
-              <p>
-                余额合计 {formatMoney(summary.wallet.totalBalanceFen)} · 流水{" "}
-                {summary.wallet.transactionCount}
-              </p>
-            </article>
+            {canViewOrganizationWallet(user, organizationId) && (
+              <article>
+                <WalletCards size={20} />
+                <div>
+                  <span>储值账户</span>
+                  <strong>{summary.wallet.customerCount}</strong>
+                </div>
+                <p>
+                  余额合计 {formatMoney(summary.wallet.totalBalanceFen)} · 流水{" "}
+                  {summary.wallet.transactionCount}
+                </p>
+              </article>
+            )}
             <article className={summary.feedback.open ? "attention" : ""}>
               <MessageSquareWarning size={20} />
               <div>

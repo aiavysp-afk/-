@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   CircleAlert,
@@ -25,12 +25,19 @@ import type {
 } from "@zydj/contracts";
 import {
   adminTechnicianProfilePaths,
+  draftWithUploadedPhoto,
   profileStatusLabels,
+  profileHasUnsavedChanges,
   profileUpdateFrom,
   reviewStatusLabels,
   splitProfileList,
+  submitLatestProfile,
 } from "./technician-profile";
-import { loadTechnicianPhotoPreview, prepareTechnicianPhoto } from "./technician-photo";
+import {
+  loadTechnicianPhotoPreview,
+  prepareTechnicianPhoto,
+} from "./technician-photo";
+import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -81,7 +88,7 @@ function Gate({ title, login }: { title: string; login: () => Promise<void> }) {
         <div>
           <span className="eyebrow">AUTHORIZED WORKSPACE</span>
           <h2>{title}</h2>
-          <p>登录后读取本地数据库中的真实组织数据。</p>
+          <p>登录后读取当前组织的实际数据。</p>
         </div>
         {import.meta.env.DEV && (
           <button
@@ -135,8 +142,10 @@ export function TechniciansWorkspace({
   const [inviteBusy, setInviteBusy] = useState(false);
   const [createdInvite, setCreatedInvite] =
     useState<TechnicianInvitationCreated | null>(null);
+  const requests = useMemo(createLatestRequest, []);
   const load = useCallback(async () => {
     if (!token || !organizationId) return;
+    const isCurrent = requests.begin();
     setLoading(true);
     setError("");
     try {
@@ -150,16 +159,23 @@ export function TechniciansWorkspace({
           token,
         ),
       ]);
+      if (!isCurrent()) return;
       setBoard(boardValue);
       setInvitations(invitationRows);
     } catch (caught) {
+      if (!isCurrent()) return;
       setBoard(null);
       setError(caught instanceof Error ? caught.message : "技师列表加载失败");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [organizationId, token]);
+  }, [organizationId, token, requests]);
   useEffect(() => void load(), [load]);
+  useEffect(() => () => requests.invalidate(), [requests]);
+  useBackgroundRefresh(
+    () => void load(),
+    Boolean(token && organizationId && !loading && !inviteBusy),
+  );
 
   if (!token || !organizationId) {
     return <Gate title="技师管理" login={login} />;
@@ -305,7 +321,9 @@ export function TechniciansWorkspace({
           {invitations.slice(0, 12).map((invitation) => (
             <div key={invitation.id}>
               <span>
-                <strong>{invitation.publicName || "姓名待补录的技师邀请"}</strong>
+                <strong>
+                  {invitation.publicName || "姓名待补录的技师邀请"}
+                </strong>
                 <small>
                   {invitation.status === "CLAIMED"
                     ? `已由 ${invitation.claimedDisplayName ?? "已验证账号"} 认领`
@@ -313,12 +331,14 @@ export function TechniciansWorkspace({
                 </small>
               </span>
               <em data-status={invitation.status}>
-                {{
-                  PENDING: "待认领",
-                  CLAIMED: "已认领",
-                  REVOKED: "已撤销",
-                  EXPIRED: "已过期",
-                }[invitation.status]}
+                {
+                  {
+                    PENDING: "待认领",
+                    CLAIMED: "已认领",
+                    REVOKED: "已撤销",
+                    EXPIRED: "已过期",
+                  }[invitation.status]
+                }
               </em>
               {invitation.status === "PENDING" && (
                 <button
@@ -394,6 +414,7 @@ export function TechniciansWorkspace({
       )}
       {selectedTechnicianId && (
         <AdminTechnicianProfilePanel
+          key={`${organizationId}:${selectedTechnicianId}:${token}`}
           token={token}
           organizationId={organizationId}
           technicianId={selectedTechnicianId}
@@ -416,7 +437,9 @@ function AdminTechnicianProfilePanel({
   onClose: () => void;
 }) {
   const [profile, setProfile] = useState<TechnicianProfile | null>(null);
-  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
+  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>(
+    {},
+  );
   const [draft, setDraft] = useState<TechnicianProfileUpdate | null>(null);
   const [reviews, setReviews] = useState<AdminTechnicianReview[]>([]);
   const [loading, setLoading] = useState(false);
@@ -424,6 +447,8 @@ function AdminTechnicianProfilePanel({
   const [reviewSavingId, setReviewSavingId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const requests = useMemo(createLatestRequest, []);
+  const operationBusy = useRef(false);
   const profilePaths = adminTechnicianProfilePaths(
     organizationId,
     technicianId,
@@ -431,6 +456,8 @@ function AdminTechnicianProfilePanel({
   const { profile: profilePath, reviews: reviewsPath } = profilePaths;
 
   const load = useCallback(async () => {
+    if (operationBusy.current) return;
+    const isCurrent = requests.begin();
     setLoading(true);
     setError("");
     setMessage("");
@@ -439,52 +466,111 @@ function AdminTechnicianProfilePanel({
         request<TechnicianProfile>(profilePath, token),
         request<AdminTechnicianReview[]>(reviewsPath, token),
       ]);
+      if (!isCurrent()) return;
       setProfile(value);
       setDraft(profileUpdateFrom(value));
       setReviews(reviewRows);
     } catch (caught) {
+      if (!isCurrent()) return;
       setProfile(null);
       setDraft(null);
       setReviews([]);
       setError(caught instanceof Error ? caught.message : "技师资料读取失败");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [profilePath, reviewsPath, token]);
+  }, [profilePath, reviewsPath, token, requests]);
 
   useEffect(() => void load(), [load]);
+  useEffect(() => () => requests.invalidate(), [requests]);
+  const dirty = Boolean(
+    profile && draft && profileHasUnsavedChanges(profile, draft),
+  );
+  useBackgroundRefresh(
+    () => void load(),
+    !dirty && !saving && !reviewSavingId && !loading,
+  );
 
   useEffect(() => {
     let active = true;
     const blobUrls: string[] = [];
-    const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter((url): url is string => Boolean(url));
-    void Promise.all(urls.map(async (url) => {
-      const preview = await loadTechnicianPhotoPreview(url, API_BASE_URL, profilePath, token);
-      if (preview.startsWith("blob:")) blobUrls.push(preview);
-      return [url, preview] as const;
-    })).then((entries) => {
-      if (active) setPhotoPreviews(Object.fromEntries(entries));
-      else blobUrls.forEach((url) => URL.revokeObjectURL(url));
-    }).catch(() => { blobUrls.forEach((url) => URL.revokeObjectURL(url)); if (active) setError("照片预览读取失败，请刷新后重试"); });
-    return () => { active = false; blobUrls.forEach((url) => URL.revokeObjectURL(url)); };
+    const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter(
+      (url): url is string => Boolean(url),
+    );
+    void Promise.all(
+      urls.map(async (url) => {
+        const preview = await loadTechnicianPhotoPreview(
+          url,
+          API_BASE_URL,
+          profilePath,
+          token,
+        );
+        if (preview.startsWith("blob:")) blobUrls.push(preview);
+        return [url, preview] as const;
+      }),
+    )
+      .then((entries) => {
+        if (active) setPhotoPreviews(Object.fromEntries(entries));
+        else blobUrls.forEach((url) => URL.revokeObjectURL(url));
+      })
+      .catch(() => {
+        blobUrls.forEach((url) => URL.revokeObjectURL(url));
+        if (active) setError("照片预览读取失败，请刷新后重试");
+      });
+    return () => {
+      active = false;
+      blobUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
   }, [profile, profilePath, token]);
 
-  async function uploadPhoto(file: File | undefined, kind: "AVATAR" | "GALLERY") {
-    if (!file || saving) return;
-    if (!window.confirm("确认已取得该技师本人照片授权？照片会同步统一后台，需单独审核/发布后才向客户展示。不要上传身份证或证件号码。")) return;
-    setSaving(true); setError(""); setMessage("");
+  async function uploadPhoto(
+    file: File | undefined,
+    kind: "AVATAR" | "GALLERY",
+  ) {
+    if (!file || loading || operationBusy.current) return;
+    if (
+      !window.confirm(
+        "确认已取得该技师本人照片授权？照片会同步统一后台，需单独审核/发布后才向客户展示。不要上传身份证或证件号码。",
+      )
+    )
+      return;
+    operationBusy.current = true;
+    const isCurrent = requests.begin();
+    setSaving(true);
+    setError("");
+    setMessage("");
     try {
       const base64 = await prepareTechnicianPhoto(file);
-      const result = await request<TechnicianPhotoUploadResult>(`${profilePath}/photos`, token, { kind, base64, authorized: true });
+      const result = await request<TechnicianPhotoUploadResult>(
+        `${profilePath}/photos`,
+        token,
+        { kind, base64, authorized: true },
+      );
+      if (!isCurrent()) return;
       setProfile(result.profile);
-      setDraft((current) => ({ ...current, ...(kind === "AVATAR" ? { avatarUrl: result.publicUrl } : { galleryUrls: result.profile.galleryUrls }) }));
-      setMessage("照片已保存并同步技师端；公开状态待审核/发布，姓名和年龄段可留空。");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "照片上传失败"); }
-    finally { setSaving(false); }
+      setDraft((current) =>
+        draftWithUploadedPhoto(
+          current ?? profileUpdateFrom(result.profile),
+          kind,
+          result.publicUrl,
+        ),
+      );
+      setMessage(
+        "照片已保存并同步技师端；公开状态待审核/发布，姓名和年龄段可留空。",
+      );
+    } catch (caught) {
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "照片上传失败");
+    } finally {
+      operationBusy.current = false;
+      if (isCurrent()) setSaving(false);
+    }
   }
 
   async function saveProfile(showConfirmation = true) {
-    if (!draft || saving) return null;
+    if (!draft || loading || operationBusy.current) return null;
+    operationBusy.current = true;
+    const isCurrent = requests.begin();
     setSaving(true);
     setError("");
     setMessage("");
@@ -495,52 +581,88 @@ function AdminTechnicianProfilePanel({
         draft,
         "PATCH",
       );
+      if (!isCurrent()) return null;
       setProfile(value);
       setDraft(profileUpdateFrom(value));
       if (showConfirmation) setMessage("资料修改已保存并同步到三端数据源。");
       return value;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "技师资料保存失败");
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "技师资料保存失败");
       return null;
     } finally {
-      setSaving(false);
+      operationBusy.current = false;
+      if (isCurrent()) setSaving(false);
     }
   }
 
   async function runWorkflowAction(
     action: "submit-review" | "approve" | "publish" | "unpublish",
   ) {
+    if (!profile || !draft || loading || operationBusy.current) return;
+    if ((action === "approve" || action === "publish") && dirty) return;
     const labels = {
-      "submit-review": "确认已保存并查看最新照片和真实资料，提交后台审核？姓名、年龄段可后补。",
+      "submit-review":
+        "确认保存当前最新照片和真实资料，并提交后台审核？姓名、年龄段可后补。",
       approve: "确认资料内容与真人授权、资质核验结果一致并通过审核？",
       publish: "确认将这份资料公开给客户端客户查看？",
       unpublish: "确认暂停公开这份技师资料？",
     } as const;
     if (!window.confirm(labels[action])) return;
+    operationBusy.current = true;
+    const isCurrent = requests.begin();
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const value = await request<TechnicianProfile>(
-        profilePaths.profileAction(action),
-        token,
-        {},
-      );
+      const value =
+        action === "submit-review"
+          ? await submitLatestProfile(
+              draft,
+              async (latestDraft) => {
+                const saved = await request<TechnicianProfile>(
+                  profilePath,
+                  token,
+                  latestDraft,
+                  "PATCH",
+                );
+                if (isCurrent()) {
+                  setProfile(saved);
+                  setDraft(profileUpdateFrom(saved));
+                }
+                return saved;
+              },
+              () =>
+                request<TechnicianProfile>(
+                  profilePaths.profileAction(action),
+                  token,
+                  {},
+                ),
+              isCurrent,
+            )
+          : await request<TechnicianProfile>(
+              profilePaths.profileAction(action),
+              token,
+              {},
+            );
+      if (!value || !isCurrent()) return;
       setProfile(value);
       setDraft(profileUpdateFrom(value));
       setMessage(
         action === "submit-review"
           ? "最新资料已提交审核，审核通过并单独发布后才会对客户公开。"
           : action === "approve"
-          ? "审核已通过，仍需单独发布才会对客户公开。"
-          : action === "publish"
-            ? "资料已公开，客户端将读取同一份资料。"
-            : "资料已停止公开，历史订单和评价未删除。",
+            ? "审核已通过，仍需单独发布才会对客户公开。"
+            : action === "publish"
+              ? "资料已公开，客户端将读取同一份资料。"
+              : "资料已停止公开，历史订单和评价未删除。",
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "资料状态更新失败");
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "资料状态更新失败");
     } finally {
-      setSaving(false);
+      operationBusy.current = false;
+      if (isCurrent()) setSaving(false);
     }
   }
 
@@ -548,11 +670,14 @@ function AdminTechnicianProfilePanel({
     review: AdminTechnicianReview,
     action: "publish" | "hide",
   ) {
+    if (loading || operationBusy.current) return;
     const confirmation =
       action === "publish"
         ? "确认该客户评价符合平台用户内容规范并公开展示？"
         : "确认隐藏该客户评价？订单和原始评价记录仍会保留。";
     if (!window.confirm(confirmation)) return;
+    operationBusy.current = true;
+    const isCurrent = requests.begin();
     setReviewSavingId(review.id);
     setError("");
     setMessage("");
@@ -562,18 +687,27 @@ function AdminTechnicianProfilePanel({
         token,
         {},
       );
+      if (!isCurrent()) return;
       setReviews((current) =>
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
+      const latestProfile = await request<TechnicianProfile>(
+        profilePath,
+        token,
+      );
+      if (!isCurrent()) return;
+      setProfile(latestProfile);
       setMessage(
         action === "publish"
           ? "评价已通过 UGC 审核并公开展示。"
           : "评价已隐藏，原始内容和关联订单仍保留。",
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "评价审核失败");
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "评价审核失败");
     } finally {
-      setReviewSavingId("");
+      operationBusy.current = false;
+      if (isCurrent()) setReviewSavingId("");
     }
   }
 
@@ -588,59 +722,110 @@ function AdminTechnicianProfilePanel({
           </p>
         </div>
         <div className="technician-profile-head-actions">
-          <button className="ghost-action" disabled={loading} onClick={() => void load()}>
+          <button
+            className="ghost-action"
+            disabled={loading || saving || Boolean(reviewSavingId) || dirty}
+            onClick={() => void load()}
+          >
             <RefreshCw size={15} className={loading ? "spinning" : ""} />
             刷新
           </button>
-          <button className="ghost-action" onClick={onClose}>关闭</button>
+          <button className="ghost-action" onClick={onClose}>
+            关闭
+          </button>
         </div>
       </div>
       {loading && <div className="catalog-empty">正在读取技师资料…</div>}
       {error && <div className="catalog-error">{error}</div>}
       {message && <div className="profile-admin-success">{message}</div>}
-      {profile && draft && (
+      {profile && draft && !loading && (
         <>
           <div className="profile-admin-summary">
             {profile.avatarUrl ? (
-              <img src={photoPreviews[profile.avatarUrl] || profile.avatarUrl} alt="本人授权的技师照片" />
+              <img
+                src={photoPreviews[profile.avatarUrl] || profile.avatarUrl}
+                alt="本人授权的技师照片"
+              />
             ) : (
-              <div className="resource-icon"><UserRound size={22} /></div>
+              <div className="resource-icon">
+                <UserRound size={22} />
+              </div>
             )}
             <div>
               <strong>{profile.publicName || profile.displayName}</strong>
               <small>账号名称：{profile.displayName}</small>
-              <span>所有技师免出行费 · ¥{(profile.travelFeeFen / 100).toFixed(2)}</span>
+              <span>
+                所有技师免出行费 · ¥{(profile.travelFeeFen / 100).toFixed(2)}
+              </span>
             </div>
-            <em className={`profile-admin-status status-${profile.status.toLowerCase()}`}>
+            <em
+              className={`profile-admin-status status-${profile.status.toLowerCase()}`}
+            >
               {profileStatusLabels[profile.status]}
             </em>
           </div>
           {profile.rejectionReason && (
-            <div className="catalog-error">最近退回原因：{profile.rejectionReason}</div>
+            <div className="catalog-error">
+              最近退回原因：{profile.rejectionReason}
+            </div>
           )}
           <div className="profile-admin-layout">
-            <div className="profile-admin-form">
+            <fieldset
+              className="profile-admin-form"
+              disabled={saving || Boolean(reviewSavingId)}
+            >
               <label>
                 客户端公开称呼（可留空）
                 <input
                   maxLength={40}
                   value={draft.publicName ?? ""}
                   onChange={(event) =>
-                    setDraft((current) => current ? { ...current, publicName: event.target.value } : current)
+                    setDraft((current) =>
+                      current
+                        ? { ...current, publicName: event.target.value }
+                        : current,
+                    )
                   }
                 />
               </label>
               <label>
                 年龄段（可留空，后续补录）
-                <select value={draft.ageRange ?? ""} onChange={(event) => setDraft((current) => current ? { ...current, ageRange: (event.target.value || null) as TechnicianProfileUpdate["ageRange"] } : current)}>
+                <select
+                  value={draft.ageRange ?? ""}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            ageRange: (event.target.value ||
+                              null) as TechnicianProfileUpdate["ageRange"],
+                          }
+                        : current,
+                    )
+                  }
+                >
                   <option value="">暂不填写/不展示</option>
-                  <option value="18-23岁">18-23岁</option><option value="24-29岁">24-29岁</option><option value="30-39岁">30-39岁</option><option value="40岁及以上">40岁及以上</option>
+                  <option value="18-23岁">18-23岁</option>
+                  <option value="24-29岁">24-29岁</option>
+                  <option value="30-39岁">30-39岁</option>
+                  <option value="40岁及以上">40岁及以上</option>
                 </select>
               </label>
               <label>
                 上传头像照片
-                <input type="file" accept="image/jpeg,image/png" disabled={saving} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadPhoto(file, "AVATAR"); }} />
-                <small>自动压缩去定位信息；不上传证件。旧地址录入功能继续保留。</small>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  disabled={saving}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    void uploadPhoto(file, "AVATAR");
+                  }}
+                />
+                <small>
+                  自动压缩去定位信息；不上传证件。旧地址录入功能继续保留。
+                </small>
               </label>
               <label>
                 头像 HTTPS 地址
@@ -649,7 +834,11 @@ function AdminTechnicianProfilePanel({
                   value={draft.avatarUrl ?? ""}
                   placeholder="只能使用已取得本人授权的照片"
                   onChange={(event) =>
-                    setDraft((current) => current ? { ...current, avatarUrl: event.target.value || null } : current)
+                    setDraft((current) =>
+                      current
+                        ? { ...current, avatarUrl: event.target.value || null }
+                        : current,
+                    )
                   }
                 />
               </label>
@@ -660,7 +849,11 @@ function AdminTechnicianProfilePanel({
                   maxLength={2000}
                   value={draft.introduction ?? ""}
                   onChange={(event) =>
-                    setDraft((current) => current ? { ...current, introduction: event.target.value } : current)
+                    setDraft((current) =>
+                      current
+                        ? { ...current, introduction: event.target.value }
+                        : current,
+                    )
                   }
                 />
               </label>
@@ -670,7 +863,14 @@ function AdminTechnicianProfilePanel({
                   rows={4}
                   value={(draft.specialties ?? []).join("\n")}
                   onChange={(event) =>
-                    setDraft((current) => current ? { ...current, specialties: splitProfileList(event.target.value) } : current)
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            specialties: splitProfileList(event.target.value),
+                          }
+                        : current,
+                    )
                   }
                 />
               </label>
@@ -682,10 +882,16 @@ function AdminTechnicianProfilePanel({
                   max={60}
                   value={draft.serviceYears ?? ""}
                   onChange={(event) =>
-                    setDraft((current) => current ? {
-                      ...current,
-                      serviceYears: event.target.value ? Number(event.target.value) : null,
-                    } : current)
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            serviceYears: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          }
+                        : current,
+                    )
                   }
                 />
               </label>
@@ -695,14 +901,45 @@ function AdminTechnicianProfilePanel({
                   rows={4}
                   value={(draft.galleryUrls ?? []).join("\n")}
                   onChange={(event) =>
-                    setDraft((current) => current ? { ...current, galleryUrls: splitProfileList(event.target.value) } : current)
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            galleryUrls: splitProfileList(event.target.value),
+                          }
+                        : current,
+                    )
                   }
                 />
               </label>
               <label className="profile-admin-wide">
                 添加详情相册照片（最多12张）
-                <input type="file" accept="image/jpeg,image/png" disabled={saving || (draft.galleryUrls?.length ?? 0) >= 12} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadPhoto(file, "GALLERY"); }} />
-                <div className="profile-admin-gallery">{(profile.galleryUrls ?? []).map((url) => <img key={url} src={photoPreviews[url] || url} alt="本人授权的相册照片" style={{ width: 90, height: 120, objectFit: "cover", borderRadius: 10, margin: 5 }} />)}</div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  disabled={saving || (draft.galleryUrls?.length ?? 0) >= 12}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    void uploadPhoto(file, "GALLERY");
+                  }}
+                />
+                <div className="profile-admin-gallery">
+                  {(profile.galleryUrls ?? []).map((url) => (
+                    <img
+                      key={url}
+                      src={photoPreviews[url] || url}
+                      alt="本人授权的相册照片"
+                      style={{
+                        width: 90,
+                        height: 120,
+                        objectFit: "cover",
+                        borderRadius: 10,
+                        margin: 5,
+                      }}
+                    />
+                  ))}
+                </div>
               </label>
               <label className="profile-admin-wide">
                 已核验资质展示名称（每行一项）
@@ -711,65 +948,114 @@ function AdminTechnicianProfilePanel({
                   value={(draft.certificates ?? []).join("\n")}
                   placeholder="只填写已核验的资质名称，不填写证件号"
                   onChange={(event) =>
-                    setDraft((current) => current ? { ...current, certificates: splitProfileList(event.target.value) } : current)
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            certificates: splitProfileList(event.target.value),
+                          }
+                        : current,
+                    )
                   }
                 />
                 <small>不得录入身份证号、证件号码或未经核验的资质。</small>
               </label>
               <div className="profile-admin-actions profile-admin-wide">
-                <button className="ghost-action" disabled={saving} onClick={() => void saveProfile()}>
+                {dirty && (
+                  <p className="profile-admin-dirty">
+                    有未保存修改。提交审核会先保存；审核通过或发布前，请保存并重新提交审核。
+                  </p>
+                )}
+                <button
+                  className="ghost-action"
+                  disabled={saving}
+                  onClick={() => void saveProfile()}
+                >
                   {saving ? "保存中…" : "保存修改"}
                 </button>
                 <button
                   className="ghost-action"
-                  disabled={saving || (profile.status !== "DRAFT" && profile.status !== "REJECTED")}
+                  disabled={
+                    saving ||
+                    (profile.status !== "DRAFT" &&
+                      profile.status !== "REJECTED")
+                  }
                   onClick={() => void runWorkflowAction("submit-review")}
                 >
                   提交最新资料审核
                 </button>
                 <button
                   className="primary-action compact"
-                  disabled={saving || profile.status !== "PENDING_REVIEW"}
+                  disabled={
+                    saving || dirty || profile.status !== "PENDING_REVIEW"
+                  }
                   onClick={() => void runWorkflowAction("approve")}
                 >
                   审核通过
                 </button>
                 {profile.status === "PUBLISHED" ? (
-                  <button className="danger-action" disabled={saving} onClick={() => void runWorkflowAction("unpublish")}>
+                  <button
+                    className="danger-action"
+                    disabled={saving}
+                    onClick={() => void runWorkflowAction("unpublish")}
+                  >
                     暂停公开
                   </button>
                 ) : (
                   <button
                     className="primary-action compact"
-                    disabled={saving || profile.status !== "APPROVED"}
+                    disabled={saving || dirty || profile.status !== "APPROVED"}
                     onClick={() => void runWorkflowAction("publish")}
                   >
                     发布到客户端
                   </button>
                 )}
               </div>
-            </div>
+            </fieldset>
             <aside className="profile-admin-reviews">
               <div>
                 <span>客户评价 · UGC 审核</span>
-                <strong>{profile.reviewSummary.averageRating?.toFixed(1) ?? "暂无"}</strong>
+                <strong>
+                  {profile.reviewSummary.averageRating?.toFixed(1) ?? "暂无"}
+                </strong>
                 <small>
-                  {profile.reviewSummary.reviewCount} 条已公开 · {profile.reviewSummary.completedOrders} 个已完成订单
+                  {profile.reviewSummary.reviewCount} 条已公开 ·{" "}
+                  {profile.reviewSummary.completedOrders} 个已完成订单
                 </small>
                 <div className="review-status-summary">
-                  <span>待审 {reviews.filter((review) => review.status === "PENDING_REVIEW").length}</span>
-                  <span>公开 {reviews.filter((review) => review.status === "PUBLISHED").length}</span>
-                  <span>隐藏 {reviews.filter((review) => review.status === "HIDDEN").length}</span>
+                  <span>
+                    待审{" "}
+                    {
+                      reviews.filter(
+                        (review) => review.status === "PENDING_REVIEW",
+                      ).length
+                    }
+                  </span>
+                  <span>
+                    公开{" "}
+                    {
+                      reviews.filter((review) => review.status === "PUBLISHED")
+                        .length
+                    }
+                  </span>
+                  <span>
+                    隐藏{" "}
+                    {
+                      reviews.filter((review) => review.status === "HIDDEN")
+                        .length
+                    }
+                  </span>
                 </div>
               </div>
               {reviews.map((review) => (
-                <article className={`review-admin-item status-${review.status.toLowerCase()}`} key={review.id}>
+                <article
+                  className={`review-admin-item status-${review.status.toLowerCase()}`}
+                  key={review.id}
+                >
                   <header>
                     <div>
                       <b>{review.customerAlias}</b>
-                      <small>
-                        {reviewStatusLabels[review.status]}
-                      </small>
+                      <small>{reviewStatusLabels[review.status]}</small>
                     </div>
                     <span>{"★".repeat(review.rating)}</span>
                   </header>
@@ -782,7 +1068,7 @@ function AdminTechnicianProfilePanel({
                       {review.status !== "PUBLISHED" && (
                         <button
                           className="review-publish-action"
-                          disabled={reviewSavingId === review.id}
+                          disabled={saving || Boolean(reviewSavingId)}
                           onClick={() => void moderateReview(review, "publish")}
                         >
                           {reviewSavingId === review.id
@@ -795,7 +1081,7 @@ function AdminTechnicianProfilePanel({
                       {review.status !== "HIDDEN" && (
                         <button
                           className="review-hide-action"
-                          disabled={reviewSavingId === review.id}
+                          disabled={saving || Boolean(reviewSavingId)}
                           onClick={() => void moderateReview(review, "hide")}
                         >
                           {reviewSavingId === review.id ? "处理中…" : "隐藏"}

@@ -24,6 +24,14 @@ describe("TechnicianWorkbenchService", () => {
             appointmentStart: new Date("2026-10-07T06:00:00.000Z"),
             appointmentEnd: new Date("2026-10-07T07:00:00.000Z"),
             items: [{ serviceName: "肩颈舒缓", durationMinutes: 60 }],
+            payment: {
+              kind: "FRIEND",
+              status: "SUCCEEDED",
+              succeededAt: new Date("2026-10-07T01:00:00Z"),
+              payerUserId: "private-payer",
+              payerOpenIdHash: "private-openid",
+              payer: { displayName: "private-name" },
+            },
           },
           {
             id: "order-2",
@@ -123,6 +131,18 @@ describe("TechnicianWorkbenchService", () => {
     );
     expect(result.orders[0]).not.toHaveProperty("customerName");
     expect(result.orders[0]).not.toHaveProperty("address");
+    expect(result.orders[0]?.payment).toEqual({
+      kind: "FRIEND",
+      status: "SUCCEEDED",
+      succeededAt: "2026-10-07T01:00:00.000Z",
+    });
+    expect(result.orders[1]?.payment).toBeNull();
+    expect(JSON.stringify(result)).not.toMatch(
+      /private-payer|private-openid|private-name|payerUserId|payerOpenIdHash/,
+    );
+    expect(prisma.order.findMany.mock.calls[0]?.[0].include.payment).toEqual({
+      select: { kind: true, status: true, succeededAt: true },
+    });
   });
 
   it("returns this month's completed-order gross flow without inventing a payable income", async () => {

@@ -67,6 +67,10 @@ test("private SPA and static files include safety headers", async () => {
     res.headers.get("content-security-policy"),
     /frame-ancestors 'none'/,
   );
+  assert.equal(
+    res.headers.get("content-security-policy"),
+    "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+  );
   assert.equal(res.headers.get("x-content-type-options"), "nosniff");
   assert.match(await res.text(), /Private test/);
   assert.match(await (await fetch(base + "/assets/app.js")).text(), /fixture/);
@@ -128,7 +132,10 @@ test("API proxy supports guarded profile edits and customer soft-delete", async 
   assert.equal(captured.url, "/v1/orders/order-1");
 });
 test("unsupported API writes and static POST are refused", async () => {
-  assert.equal((await fetch(base + "/v1/orders", { method: "PUT" })).status, 405);
+  assert.equal(
+    (await fetch(base + "/v1/orders", { method: "PUT" })).status,
+    405,
+  );
   assert.equal((await fetch(base, { method: "POST" })).status, 405);
 });
 test("SPA subroutes work without exposing other extensions", async () => {

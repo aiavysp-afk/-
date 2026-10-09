@@ -84,6 +84,7 @@ for marker in \
   'location = /v1/payments/notifications' \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
+  'location ~ ^/v1/admin/organizations/[^/]+/customer-center/wallet-ledger$ {' \
   'if ($zydj_admin_request_denied) { return 403; }' \
   'if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }' \
   'proxy_pass http://127.0.0.1:3222;'; do
@@ -211,6 +212,14 @@ for benefit_route in newcomer-coupons wallet/first-recharge-reward/claim; do
     --header 'Content-Type: application/json' --data '{}' \
     "https://api.mtsc.top/v1/customer-center/$benefit_route")
   [[ $benefit_status == 401 ]]
+done
+# Probe both gateway paths with no identity; this creates no ledger mutation.
+wallet_ledger_route=/v1/admin/organizations/probe/customer-center/wallet-ledger
+for wallet_ledger_host in api.mtsc.top admin.mtsc.top; do
+  wallet_ledger_status=$(curl --silent --show-error --connect-timeout 2 --max-time 10 \
+    --request GET --output /dev/null --write-out '%{http_code}' \
+    --resolve "$wallet_ledger_host:443:127.0.0.1" "https://$wallet_ledger_host$wallet_ledger_route")
+  [[ $wallet_ledger_status == 401 ]]
 done
 # Invitations never bypass login; no live transaction is created by these probes.
 friend_probe_token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

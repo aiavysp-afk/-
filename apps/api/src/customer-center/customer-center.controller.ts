@@ -19,12 +19,14 @@ import {
   CustomerCouponQuerySchema,
   CustomerFeedbackCreateSchema,
   StoredValueCardQuerySchema,
+  AdminStoredValueLedgerQuerySchema,
 } from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { CustomerCenterService } from "./customer-center.service.js";
 import { CustomerCouponsService } from "./customer-coupons.service.js";
+import { AdminStoredValueLedgerService } from "./admin-stored-value-ledger.service.js";
 
 @Controller("customer-center")
 @UseGuards(SessionAuthGuard)
@@ -39,9 +41,16 @@ export class CustomerCenterController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Query("organizationId") organizationId?: string,
   ) {
-    const query = CustomerCenterOrganizationQuerySchema.safeParse({ organizationId });
+    const query = CustomerCenterOrganizationQuerySchema.safeParse({
+      organizationId,
+    });
     if (!query.success) throw new BadRequestException("新人优惠券参数无效");
-    return { data: await this.customerCoupons.newcomerOffer(principal, query.data.organizationId) };
+    return {
+      data: await this.customerCoupons.newcomerOffer(
+        principal,
+        query.data.organizationId,
+      ),
+    };
   }
 
   @Post("newcomer-coupons")
@@ -51,7 +60,12 @@ export class CustomerCenterController {
   ) {
     const input = CustomerCenterOrganizationQuerySchema.safeParse(body ?? {});
     if (!input.success) throw new BadRequestException("新人优惠券参数无效");
-    return { data: await this.customerCoupons.claimNewcomerCoupons(principal, input.data.organizationId) };
+    return {
+      data: await this.customerCoupons.claimNewcomerCoupons(
+        principal,
+        input.data.organizationId,
+      ),
+    };
   }
 
   @Get()
@@ -225,7 +239,23 @@ export class CustomerCenterController {
 @Controller("admin/organizations/:organizationId/customer-center")
 @UseGuards(SessionAuthGuard)
 export class AdminCustomerCenterController {
-  constructor(private readonly center: CustomerCenterService) {}
+  constructor(
+    private readonly center: CustomerCenterService,
+    private readonly walletLedger: AdminStoredValueLedgerService,
+  ) {}
+
+  @Get("wallet-ledger")
+  async ledger(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Query() query: unknown,
+  ) {
+    const input = AdminStoredValueLedgerQuerySchema.safeParse(query ?? {});
+    if (!input.success) throw new BadRequestException("账本筛选参数无效");
+    return {
+      data: await this.walletLedger.get(principal, organizationId, input.data),
+    };
+  }
 
   @Get("config")
   async config(

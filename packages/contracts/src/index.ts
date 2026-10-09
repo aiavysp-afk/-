@@ -241,6 +241,16 @@ export const OrderViewSchema = z.object({
   createdAt: IsoDateTimeSchema,
 });
 
+export const PaymentKindSchema = z.enum(["SELF", "FRIEND"]);
+export const PaymentStatusSchema = z.enum([
+  "PENDING",
+  "SUCCEEDED",
+  "CLOSED",
+  "FAILED",
+  "REFUNDING",
+  "REFUNDED",
+]);
+
 export const OperationsDashboardOrderSchema = z.object({
   id: z.string(),
   orderNo: z.string(),
@@ -273,6 +283,14 @@ export const TechnicianWorkbenchOrderSchema = z.object({
   appointmentStart: IsoDateTimeSchema,
   appointmentEnd: IsoDateTimeSchema,
   status: OrderStatusSchema,
+  payment: z
+    .object({
+      kind: PaymentKindSchema,
+      status: PaymentStatusSchema,
+      succeededAt: IsoDateTimeSchema.nullable(),
+    })
+    .nullable()
+    .default(null),
   destination: Gcj02CoordinateSchema.extend({
     addressLabel: z.string().min(5).max(200),
   }).nullable(),
@@ -685,14 +703,6 @@ export const AuditLogEntrySchema = z.object({
 });
 
 export const PaymentProviderSchema = z.enum(["MOCK", "WECHAT"]);
-export const PaymentStatusSchema = z.enum([
-  "PENDING",
-  "SUCCEEDED",
-  "CLOSED",
-  "FAILED",
-  "REFUNDING",
-  "REFUNDED",
-]);
 
 export const WechatPayParametersSchema = z.object({
   timeStamp: z.string().regex(/^\d+$/),
@@ -714,7 +724,6 @@ export const PaymentIntentSchema = z.object({
   wechatPayParameters: WechatPayParametersSchema.optional(),
 });
 
-export const PaymentKindSchema = z.enum(["SELF", "FRIEND"]);
 export const FriendPaymentShareSchema = z.object({
   token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   miniappPath: z
@@ -775,6 +784,9 @@ export const AdminPaymentViewSchema = z.object({
   kind: PaymentKindSchema,
   payer: z.object({ userId: z.string(), displayName: z.string() }).nullable(),
   succeededAt: IsoDateTimeSchema.nullable(),
+  failureCode: z.string().nullable().default(null),
+  recoveryReviewAt: IsoDateTimeSchema.nullable().default(null),
+  reviewRequired: z.boolean().default(false),
 });
 
 export const WecomCustomerServiceUrlSchema = z
@@ -1257,6 +1269,63 @@ export const StoredValueTransactionSchema = z.object({
   occurredAt: IsoDateTimeSchema,
 });
 
+export const AdminStoredValueLedgerQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    customerId: z.string().trim().min(1).max(128).optional(),
+  })
+  .strict();
+const StoredValueCustomerSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+});
+export const AdminStoredValueLedgerSchema = z.object({
+  organizationId: z.string(),
+  generatedAt: IsoDateTimeSchema,
+  limit: z.number().int().min(1).max(100),
+  summary: z.object({
+    balanceFen: MoneyFenSchema,
+    successfulRechargeFen: MoneyFenSchema,
+    successfulRechargeCount: z.number().int().nonnegative(),
+  }),
+  accounts: z.array(
+    z.object({
+      id: z.string(),
+      customer: StoredValueCustomerSchema,
+      balanceFen: MoneyFenSchema,
+      updatedAt: IsoDateTimeSchema,
+    }),
+  ),
+  recharges: z.array(
+    z.object({
+      id: z.string(),
+      accountId: z.string(),
+      customer: StoredValueCustomerSchema,
+      amountFen: MoneyFenSchema,
+      status: StoredValueRechargeIntentSchema.shape.status,
+      merchantPaymentNo: z.string(),
+      providerTransactionId: z.string().nullable(),
+      prepayState: StoredValueRechargeIntentSchema.shape.prepayState,
+      prepayFailureCode: z.string().nullable(),
+      createdAt: IsoDateTimeSchema,
+      succeededAt: IsoDateTimeSchema.nullable(),
+    }),
+  ),
+  transactions: z.array(
+    StoredValueTransactionSchema.extend({
+      accountId: z.string(),
+      customer: StoredValueCustomerSchema,
+      rechargeId: z.string().nullable(),
+      rewardId: z.string().nullable(),
+    }),
+  ),
+  hasMore: z.object({
+    accounts: z.boolean(),
+    recharges: z.boolean(),
+    transactions: z.boolean(),
+  }),
+});
+
 export const CustomerSettingsSchema = z.object({
   organizationId: z.string(),
   userId: z.string(),
@@ -1575,6 +1644,12 @@ export type FirstRechargeRewardClaim = z.infer<
 >;
 export type StoredValueTransaction = z.infer<
   typeof StoredValueTransactionSchema
+>;
+export type AdminStoredValueLedger = z.infer<
+  typeof AdminStoredValueLedgerSchema
+>;
+export type AdminStoredValueLedgerQuery = z.infer<
+  typeof AdminStoredValueLedgerQuerySchema
 >;
 export type CustomerSettings = z.infer<typeof CustomerSettingsSchema>;
 export type CustomerAddressCreate = z.infer<typeof CustomerAddressCreateSchema>;

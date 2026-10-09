@@ -22,6 +22,8 @@ const record = {
     authIdentities: [{ openId: "openid-must-not-escape" }],
   },
   succeededAt,
+  failureCode: null,
+  recoveryReviewAt: null,
   amountFen: 19800n,
   refundReservedFen: 0n,
   refundedFen: 0n,
@@ -75,6 +77,9 @@ describe("organization finance payment payer serialization", () => {
         kind: "FRIEND",
         payer: { userId: "payer-1", displayName: "微信好友" },
         succeededAt: succeededAt.toISOString(),
+        failureCode: null,
+        recoveryReviewAt: null,
+        reviewRequired: false,
         amountFen: 19800,
         reservedFen: 0,
         refundedFen: 0,
@@ -92,6 +97,8 @@ describe("organization finance payment payer serialization", () => {
         kind: true,
         payer: { select: { id: true, displayName: true } },
         succeededAt: true,
+        failureCode: true,
+        recoveryReviewAt: true,
         amountFen: true,
         refundReservedFen: true,
         refundedFen: true,
@@ -128,6 +135,37 @@ describe("organization finance payment payer serialization", () => {
       expect.objectContaining({ kind: "SELF", payer: null, succeededAt: null }),
     ]);
   });
+
+  it.each([
+    ["SUCCEEDED", "FULFILLMENT_REVIEW_REQUIRED", null, 0n, true],
+    ["REFUNDING", "FULFILLMENT_REVIEW_REQUIRED", null, 100n, true],
+    ["REFUNDED", "FULFILLMENT_REVIEW_REQUIRED", null, 19800n, false],
+    ["SUCCEEDED", "FULFILLMENT_REVIEW_REQUIRED", null, 19800n, false],
+    ["PENDING", null, succeededAt, 0n, true],
+    ["CLOSED", null, succeededAt, 0n, false],
+  ])(
+    "marks %s payments for review only while unresolved",
+    async (
+      status,
+      failureCode,
+      recoveryReviewAt,
+      refundedFen,
+      reviewRequired,
+    ) => {
+      const { service } = setup([
+        { ...record, status, failureCode, recoveryReviewAt, refundedFen },
+      ]);
+      const [result] = await service.listPayments(principal(), "org-1");
+      expect(result).toMatchObject({
+        failureCode,
+        recoveryReviewAt:
+          recoveryReviewAt instanceof Date
+            ? recoveryReviewAt.toISOString()
+            : null,
+        reviewRequired,
+      });
+    },
+  );
 
   it.each(["ADMIN", "FINANCE_APPROVER", "FINANCE_REQUESTER"] as UserRole[])(
     "allows %s only within the authorized organization after MFA",

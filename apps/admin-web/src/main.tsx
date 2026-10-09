@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   Bell,
@@ -23,6 +23,7 @@ import type { LucideIcon } from "lucide-react";
 import type {
   AdminServiceItem,
   AuthSession,
+  AuthUser,
   DispatchBoard,
   OperationsDashboard,
   ServiceItem,
@@ -33,6 +34,13 @@ import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
 import { SafetyWorkspace } from "./safety";
 import { CustomerCenterWorkspace } from "./customer-center-workspace";
+import { StoredValueLedgerWorkspace } from "./stored-value-ledger-workspace";
+import { financeOrganizationIds } from "./stored-value-ledger";
+import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
+import {
+  isDispatchSelectionEligible,
+  reconcileDispatchSelections,
+} from "./dispatch-selection";
 import {
   AuditWorkspace,
   SchedulingWorkspace,
@@ -57,6 +65,7 @@ type Section =
   | "audit"
   | "security"
   | "customerCenter"
+  | "walletLedger"
   | "settings";
 type CatalogRow = AdminServiceItem | ServiceItem;
 
@@ -72,6 +81,7 @@ const nav: Array<{
   { icon: PanelsTopLeft, label: "客户中心", section: "customerCenter" },
   { icon: CalendarDays, label: "排班中心", section: "scheduling" },
   { icon: CircleDollarSign, label: "退款复核", section: "refunds" },
+  { icon: CircleDollarSign, label: "储值账本", section: "walletLedger" },
   { icon: MessageCircleWarning, label: "安全值班", section: "safety" },
   { icon: MapPinned, label: "服务区域", section: "area" },
   { icon: ShieldCheck, label: "权限审计", section: "audit" },
@@ -132,9 +142,11 @@ function Dashboard({
   const [dashboard, setDashboard] = useState<OperationsDashboard | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const requests = useMemo(createLatestRequest, []);
 
   const load = useCallback(async () => {
     if (!token || !organizationId) return;
+    const isCurrent = requests.begin();
     setLoading(true);
     setError("");
     try {
@@ -143,18 +155,25 @@ function Dashboard({
         {},
         token,
       );
+      if (!isCurrent()) return;
       setDashboard(response.data);
     } catch (caught) {
+      if (!isCurrent()) return;
       setDashboard(null);
       setError(caught instanceof Error ? caught.message : "经营概览加载失败");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [organizationId, token]);
+  }, [organizationId, token, requests]);
 
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => () => requests.invalidate(), [requests]);
+  useBackgroundRefresh(
+    () => void load(),
+    Boolean(token && organizationId && !loading),
+  );
 
   if (!token || !organizationId) {
     return (
@@ -228,9 +247,10 @@ function Dashboard({
   return (
     <>
       <section className="notice">
-        <span>开发环境</span>
+        <span>{import.meta.env.DEV ? "开发环境" : "运营数据"}</span>
         <p>
-          下方数据来自本地数据库；微信支付、短信、地图与正式安全值班仍未接入。
+          {import.meta.env.DEV ? "当前为开发构建。" : "当前为生产构建。"}
+          数据来自当前组织；支付成功以服务端确认记录为准，通道启用不代表真实资金验收完成。
         </p>
         <button onClick={() => void load()} disabled={loading}>
           {loading ? "读取中…" : "刷新数据"}
@@ -325,9 +345,12 @@ function DispatchWorkspace({
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const requests = useMemo(createLatestRequest, []);
+  const assignmentBusy = useRef(false);
 
   const load = useCallback(async () => {
-    if (!token || !organizationId) return;
+    if (!token || !organizationId || assignmentBusy.current) return;
+    const isCurrent = requests.begin();
     setLoading(true);
     setError("");
     try {
@@ -336,33 +359,41 @@ function DispatchWorkspace({
         {},
         token,
       );
+      if (!isCurrent()) return;
       setBoard(response.data);
-      setSelection((current) => {
-        const next = { ...current };
-        for (const order of response.data.orders) {
-          next[order.id] =
-            current[order.id] ??
-            order.therapist?.id ??
-            order.eligibleTherapists[0]?.id ??
-            "";
-        }
-        return next;
-      });
+      setSelection((current) =>
+        reconcileDispatchSelections(response.data.orders, current),
+      );
     } catch (caught) {
+      if (!isCurrent()) return;
       setBoard(null);
       setError(caught instanceof Error ? caught.message : "调度看板加载失败");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [organizationId, token]);
+  }, [organizationId, token, requests]);
 
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => () => requests.invalidate(), [requests]);
+  useBackgroundRefresh(
+    () => void load(),
+    Boolean(token && organizationId && !loading && !savingId),
+  );
 
   async function assign(orderId: string) {
     const therapistId = selection[orderId];
-    if (!therapistId) return;
+    const order = board?.orders.find((item) => item.id === orderId);
+    if (
+      !order ||
+      !isDispatchSelectionEligible(order, therapistId) ||
+      loading ||
+      assignmentBusy.current
+    )
+      return;
+    assignmentBusy.current = true;
+    const isCurrent = requests.begin();
     setSavingId(orderId);
     setError("");
     setMessage("");
@@ -372,11 +403,15 @@ function DispatchWorkspace({
         { method: "POST", body: JSON.stringify({ therapistId }) },
         token,
       );
+      if (!isCurrent()) return;
       setMessage("技师指派成功，订单已进入履约队列。");
+      assignmentBusy.current = false;
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "技师指派失败");
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "技师指派失败");
     } finally {
+      assignmentBusy.current = false;
       setSavingId("");
     }
   }
@@ -491,9 +526,22 @@ function DispatchWorkspace({
                       [order.id]: event.target.value,
                     }))
                   }
-                  disabled={isAssigned || savingId === order.id}
+                  disabled={isAssigned || loading || Boolean(savingId)}
                 >
-                  <option value="">暂无可用技师</option>
+                  <option value="">
+                    {order.eligibleTherapists.length
+                      ? "请选择可接单技师"
+                      : "暂无可用技师"}
+                  </option>
+                  {isAssigned &&
+                    order.therapist &&
+                    !order.eligibleTherapists.some(
+                      (item) => item.id === order.therapist?.id,
+                    ) && (
+                      <option value={order.therapist.id}>
+                        {order.therapist.displayName}
+                      </option>
+                    )}
                   {order.eligibleTherapists.map((therapist) => (
                     <option value={therapist.id} key={therapist.id}>
                       {therapist.displayName}
@@ -503,7 +551,9 @@ function DispatchWorkspace({
                 <button
                   className="primary-action compact"
                   disabled={
-                    isAssigned || !selection[order.id] || savingId === order.id
+                    loading ||
+                    Boolean(savingId) ||
+                    !isDispatchSelectionEligible(order, selection[order.id])
                   }
                   onClick={() => void assign(order.id)}
                 >
@@ -729,23 +779,24 @@ function App() {
   );
   const [displayName, setDisplayName] = useState("未登录");
   const [organizationId, setOrganizationId] = useState("");
+  const [user, setUser] = useState<AuthUser | null>(null);
   const currentToken = useRef(token);
   currentToken.current = token;
 
   useEffect(() => {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
-    if (!token) return;
+    if (!token) {
+      setUser(null);
+      return;
+    }
+    setUser(null);
     let current = true;
-    void apiRequest<{
-      data: {
-        displayName: string;
-        memberships: Array<{ organizationId: string }>;
-      };
-    }>("/auth/me", {
+    void apiRequest<{ data: AuthUser }>("/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => {
         if (current) {
+          setUser(r.data);
           setDisplayName(r.data.displayName);
           setOrganizationId(r.data.memberships[0]?.organizationId ?? "");
         }
@@ -758,6 +809,7 @@ function App() {
           setToken("");
           setDisplayName("未登录");
           setOrganizationId("");
+          setUser(null);
         } else setDisplayName("会话待重新验证");
       });
     return () => {
@@ -782,6 +834,7 @@ function App() {
     setToken("");
     setDisplayName("未登录");
     setOrganizationId("");
+    setUser(null);
   }
 
   async function developmentLogin(code = "local-safety-admin") {
@@ -797,6 +850,7 @@ function App() {
     setToken(response.data.accessToken);
     setDisplayName(response.data.user.displayName);
     setOrganizationId(response.data.user.memberships[0]?.organizationId ?? "");
+    setUser(response.data.user);
   }
 
   function acceptBrowserSession(session: AuthSession) {
@@ -813,6 +867,7 @@ function App() {
     setToken(session.accessToken);
     setDisplayName(session.user.displayName);
     setOrganizationId(session.user.memberships[0]?.organizationId ?? "");
+    setUser(session.user);
   }
 
   const canSearch = (
@@ -830,22 +885,28 @@ function App() {
           </div>
         </div>
         <nav>
-          {nav.map(({ icon: Icon, label, section: target }) => (
-            <button
-              className={target === section ? "active" : ""}
-              disabled={!target}
-              key={label}
-              onClick={() => {
-                if (!target) return;
-                setSection(target);
-                setQuery("");
-              }}
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-              {target === section && <i />}
-            </button>
-          ))}
+          {nav
+            .filter(
+              (item) =>
+                item.section !== "walletLedger" ||
+                financeOrganizationIds(user).length > 0,
+            )
+            .map(({ icon: Icon, label, section: target }) => (
+              <button
+                className={target === section ? "active" : ""}
+                disabled={!target}
+                key={label}
+                onClick={() => {
+                  if (!target) return;
+                  setSection(target);
+                  setQuery("");
+                }}
+              >
+                <Icon size={19} />
+                <span>{label}</span>
+                {target === section && <i />}
+              </button>
+            ))}
         </nav>
         <button
           className="sidebar-card"
@@ -891,21 +952,23 @@ function App() {
                     ? "技师管理"
                     : section === "customerCenter"
                       ? "客户中心配置与监控"
-                      : section === "scheduling"
-                        ? "排班中心"
-                        : section === "security"
-                          ? "账户安全"
-                          : section === "safety"
-                            ? "安全值班与升级"
-                            : section === "refunds"
-                              ? "退款申请与复核"
-                              : section === "area"
-                                ? "服务区域"
-                                : section === "audit"
-                                  ? "权限审计"
-                                  : section === "settings"
-                                    ? "系统设置与上线门禁"
-                                    : "服务目录管理"}
+                      : section === "walletLedger"
+                        ? "储值账户与入账流水"
+                        : section === "scheduling"
+                          ? "排班中心"
+                          : section === "security"
+                            ? "账户安全"
+                            : section === "safety"
+                              ? "安全值班与升级"
+                              : section === "refunds"
+                                ? "退款申请与复核"
+                                : section === "area"
+                                  ? "服务区域"
+                                  : section === "audit"
+                                    ? "权限审计"
+                                    : section === "settings"
+                                      ? "系统设置与上线门禁"
+                                      : "服务目录管理"}
             </h1>
           </div>
           <div className="header-actions">
@@ -952,6 +1015,7 @@ function App() {
         </header>
         {section === "dashboard" ? (
           <Dashboard
+            key={`${token}:${organizationId}`}
             token={token}
             organizationId={organizationId}
             login={() => developmentLogin()}
@@ -959,6 +1023,7 @@ function App() {
           />
         ) : section === "dispatch" ? (
           <DispatchWorkspace
+            key={`${token}:${organizationId}`}
             token={token}
             organizationId={organizationId}
             login={() => developmentLogin("local-scheduling-dispatcher")}
@@ -966,6 +1031,7 @@ function App() {
           />
         ) : section === "technicians" ? (
           <TechniciansWorkspace
+            key={`${token}:${organizationId}`}
             token={token}
             organizationId={organizationId}
             login={() => developmentLogin("local-safety-admin")}
@@ -973,12 +1039,22 @@ function App() {
           />
         ) : section === "customerCenter" ? (
           <CustomerCenterWorkspace
+            key={`${token}:${organizationId}`}
             token={token}
             organizationId={organizationId}
+            user={user}
             login={() => developmentLogin("local-safety-admin")}
+          />
+        ) : section === "walletLedger" ? (
+          <StoredValueLedgerWorkspace
+            key={token}
+            token={token}
+            user={user}
+            preferredOrganizationId={organizationId}
           />
         ) : section === "scheduling" ? (
           <SchedulingWorkspace
+            key={`${token}:${organizationId}`}
             token={token}
             organizationId={organizationId}
             login={() => developmentLogin("local-safety-admin")}

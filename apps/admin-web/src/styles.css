@@ -1164,9 +1164,126 @@ h1 {
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
 }
 .profile-admin-form {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.profile-admin-dirty {
+  color: #8a602c;
+  font-size: 11px;
+  line-height: 1.7;
+  width: 100%;
+}
+.wallet-ledger-organization,
+.wallet-ledger-filters label {
+  display: grid;
+  gap: 7px;
+  color: #56645e;
+  font-size: 11px;
+}
+.wallet-ledger-organization select,
+.wallet-ledger-filters input,
+.wallet-ledger-filters select {
+  background: #fff;
+  border: 1px solid #dbe1dd;
+  border-radius: 9px;
+  color: #263a33;
+  font: inherit;
+  max-width: 320px;
+  padding: 9px 11px;
+}
+.wallet-ledger-filters {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.wallet-ledger-summary {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.wallet-ledger-summary article {
+  background: #eff7f2;
+  border: 1px solid #dbe8df;
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+.wallet-ledger-summary span {
+  color: #65786e;
+  font-size: 11px;
+}
+.wallet-ledger-summary strong {
+  color: #284d3e;
+  font-size: 22px;
+}
+.wallet-ledger-note {
+  color: #718079;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.wallet-ledger-section {
+  margin-top: 18px;
+  padding: 20px;
+}
+.wallet-ledger-section h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+.wallet-ledger-table {
+  overflow-x: auto;
+}
+.wallet-ledger-table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.wallet-ledger-table th {
+  color: #718079;
+  font-size: 11px;
+  text-align: left;
+}
+.wallet-ledger-table th,
+.wallet-ledger-table td {
+  border-bottom: 1px solid #e8ede9;
+  padding: 12px 10px;
+  vertical-align: top;
+}
+.wallet-ledger-table td {
+  color: #34483e;
+  font-size: 12px;
+  max-width: 300px;
+  overflow-wrap: anywhere;
+}
+.wallet-ledger-table strong,
+.wallet-ledger-table small,
+.wallet-ledger-table span {
+  display: block;
+  margin-bottom: 5px;
+}
+.wallet-ledger-table small {
+  color: #718079;
+  font-size: 10px;
+}
+.wallet-review-required {
+  color: #9d5822;
+  background: #fff5e7;
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+@media (max-width: 760px) {
+  .wallet-ledger-summary {
+    grid-template-columns: 1fr;
+  }
+  .wallet-ledger-filters label {
+    width: 100%;
+  }
 }
 .profile-admin-form label {
   color: #56645e;

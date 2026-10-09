@@ -72,3 +72,47 @@ export function profileUpdateFrom(
     certificates: profile.certificates,
   };
 }
+
+export function profileHasUnsavedChanges(
+  profile: TechnicianProfile,
+  draft: TechnicianProfileUpdate,
+) {
+  const normalize = (value: TechnicianProfileUpdate) => ({
+    publicName: value.publicName ?? "",
+    ageRange: value.ageRange ?? null,
+    avatarUrl: value.avatarUrl || null,
+    galleryUrls: value.galleryUrls ?? [],
+    introduction: value.introduction ?? "",
+    specialties: value.specialties ?? [],
+    serviceYears: value.serviceYears ?? null,
+    certificates: value.certificates ?? [],
+  });
+  return (
+    JSON.stringify(normalize(profileUpdateFrom(profile))) !==
+    JSON.stringify(normalize(draft))
+  );
+}
+
+export async function submitLatestProfile(
+  draft: TechnicianProfileUpdate,
+  save: (draft: TechnicianProfileUpdate) => Promise<TechnicianProfile>,
+  submit: () => Promise<TechnicianProfile>,
+  isCurrent: () => boolean,
+) {
+  await save(draft);
+  if (!isCurrent()) return null;
+  return submit();
+}
+
+export function draftWithUploadedPhoto(
+  draft: TechnicianProfileUpdate,
+  kind: "AVATAR" | "GALLERY",
+  publicUrl: string,
+): TechnicianProfileUpdate {
+  return kind === "AVATAR"
+    ? { ...draft, avatarUrl: publicUrl }
+    : {
+        ...draft,
+        galleryUrls: [...new Set([...(draft.galleryUrls ?? []), publicUrl])],
+      };
+}

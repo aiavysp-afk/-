@@ -65,6 +65,7 @@ export class OrderDispatchService {
         organizationId,
         role: UserRole.THERAPIST,
         status: MembershipStatus.ACTIVE,
+        user: { status: "ACTIVE" },
       },
       include: { user: { select: { id: true, displayName: true } } },
       orderBy: { createdAt: "asc" },
@@ -80,6 +81,39 @@ export class OrderDispatchService {
           select: { therapistId: true, startsAt: true, endsAt: true },
         })
       : [];
+    const reservations =
+      orders.length && therapistIds.length
+        ? await this.prisma.appointmentReservation.findMany({
+            where: {
+              organizationId,
+              therapistId: { in: therapistIds },
+              startsAt: {
+                lt: new Date(
+                  Math.max(
+                    ...orders.map((order) => order.appointmentEnd.getTime()),
+                  ),
+                ),
+              },
+              endsAt: {
+                gt: new Date(
+                  Math.min(
+                    ...orders.map((order) => order.appointmentStart.getTime()),
+                  ),
+                ),
+              },
+              OR: [
+                { status: ReservationStatus.CONFIRMED },
+                { status: ReservationStatus.HOLD, expiresAt: { gt: now } },
+              ],
+            },
+            select: {
+              id: true,
+              therapistId: true,
+              startsAt: true,
+              endsAt: true,
+            },
+          })
+        : [];
 
     return {
       generatedAt: now.toISOString(),
@@ -90,13 +124,21 @@ export class OrderDispatchService {
           throw new InternalServerErrorException("订单服务快照不完整");
         }
         const eligibleTherapists = memberships
-          .filter((membership) =>
-            shifts.some(
-              (shift) =>
-                shift.therapistId === membership.userId &&
-                shift.startsAt <= order.appointmentStart &&
-                shift.endsAt >= order.appointmentEnd,
-            ),
+          .filter(
+            (membership) =>
+              shifts.some(
+                (shift) =>
+                  shift.therapistId === membership.userId &&
+                  shift.startsAt <= order.appointmentStart &&
+                  shift.endsAt >= order.appointmentEnd,
+              ) &&
+              !reservations.some(
+                (reservation) =>
+                  reservation.therapistId === membership.userId &&
+                  reservation.id !== order.reservationId &&
+                  reservation.startsAt < order.appointmentEnd &&
+                  reservation.endsAt > order.appointmentStart,
+              ),
           )
           .map((membership) => membership.user);
         return {
