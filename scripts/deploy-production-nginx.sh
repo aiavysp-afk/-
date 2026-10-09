@@ -82,12 +82,26 @@ for marker in \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'if ($zydj_admin_request_denied) { return 403; }' \
-  'return 503 maintenance;'; do
+  'if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }' \
+  'proxy_pass http://127.0.0.1:3222;'; do
   grep -Fq "$marker" "$candidate" || {
     echo "Downloaded Nginx config is missing a release marker"
     exit 1
   }
 done
+
+# Deploy the production-only loopback admin adapter first. Do not install a
+# gateway that routes private staff traffic to an absent or acceptance service.
+systemctl is-active --quiet zhongyuan-daojia-private-admin.service
+admin_release="/opt/zhongyuan-daojia-admin/releases/$release_id"
+[[ $(readlink -f /opt/zhongyuan-daojia-admin/current) == "$admin_release" ]]
+[[ -f "$admin_release/DEPLOY_COMMIT" && $(<"$admin_release/DEPLOY_COMMIT") == "$release_id" ]]
+admin_pid=$(systemctl show zhongyuan-daojia-private-admin.service -p MainPID --value)
+[[ $admin_pid =~ ^[1-9][0-9]*$ && $(readlink -f "/proc/$admin_pid/cwd") == "$admin_release" ]]
+[[ $(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
+  http://127.0.0.1:3222/) == 200 ]]
+[[ $(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
+  http://127.0.0.1:3222/v1/admin/catalog/services) == 401 ]]
 
 cp -a -- "$target" "$backup"
 chown --reference="$target" "$candidate"
@@ -141,7 +155,25 @@ admin_status=$(curl --silent --show-error --output /dev/null --write-out '%{http
 customer_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
   --resolve api.mtsc.top:443:127.0.0.1 \
   https://api.mtsc.top/v1/customer-center)
-[[ $api_status == 200 && $admin_status == 503 && $customer_status == 401 ]]
+[[ $api_status == 200 && $admin_status == 200 && $customer_status == 401 ]]
+private_catalog_status=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
+  --resolve admin.mtsc.top:443:127.0.0.1 https://admin.mtsc.top/v1/admin/catalog/services)
+private_unknown_status=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
+  --resolve admin.mtsc.top:443:127.0.0.1 https://admin.mtsc.top/v1/admin/unknown)
+[[ $private_catalog_status == 401 && $private_unknown_status == 404 ]]
+# An actual public source can additionally prove the maintenance gate here.
+# NAT/EIP hosts often have only private interfaces: do not mistake a private
+# request for a public proof. An independent external client must verify 503
+# before the operator accepts this release. Never disable TLS verification.
+public_ipv4=$(ip -4 route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
+[[ $public_ipv4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+if [[ $public_ipv4 == 127.* || $public_ipv4 == 10.* || $public_ipv4 == 192.168.* || $public_ipv4 =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]]; then
+  echo "Private/NAT source detected: independent external verification of public admin 503 is required"
+else
+  public_admin_status=$(curl --silent --show-error --max-time 10 --interface "$public_ipv4" --output /dev/null --write-out '%{http_code}' \
+    --resolve "admin.mtsc.top:443:$public_ipv4" https://admin.mtsc.top/)
+  [[ $public_admin_status == 503 ]]
+fi
 for benefit_route in newcomer-coupons wallet/first-recharge-reward/claim; do
   benefit_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
     --resolve api.mtsc.top:443:127.0.0.1 --request POST \

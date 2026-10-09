@@ -93,6 +93,25 @@ test("production nginx evaluates the private-network gate against the URI path",
   );
 });
 
+test("admin TLS vhost exposes the UI only behind unchanged private-network protection", () => {
+  const admin = config.slice(config.lastIndexOf("\nserver {"));
+  assert.ok(admin.includes("server_name admin.mtsc.top;"));
+  assert.ok(admin.includes("if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }"));
+  assert.ok(admin.includes("proxy_pass http://127.0.0.1:3222;"));
+  assert.ok(admin.includes("proxy_set_header Host admin.mtsc.top;"));
+  assert.doesNotMatch(admin, /proxy_pass http:\/\/127\.0\.0\.1:321[023]/);
+  assert.doesNotMatch(admin, /proxy_set_header Origin|real_ip_header|set_real_ip_from|default-src 'none'/);
+  const geo = config.slice(config.indexOf("geo $zydj_admin_network_allowed {"), config.indexOf("\n}", config.indexOf("geo $zydj_admin_network_allowed {")) + 2);
+  assert.equal(geo.trim(), `geo $zydj_admin_network_allowed {
+    default 0;
+    127.0.0.1/32 1;
+    ::1/128 1;
+    10.0.0.0/8 1;
+    172.16.0.0/12 1;
+    192.168.0.0/16 1;
+}`);
+});
+
 test("production nginx keeps unknown API paths closed", () => {
   assert.match(config, /return 404/);
   assert.doesNotMatch(config, /location \/v1\/ \{/);

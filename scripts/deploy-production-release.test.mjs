@@ -102,10 +102,14 @@ test("production rollback verifies links, service cwd and DB-backed health", () 
   assert.ok(deploy.includes("exit 70"));
 });
 
-test("public admin host remains in maintenance until its network gate exists", () => {
+test("admin UI is restricted to the existing private network gate while public users get maintenance", () => {
   const admin = serverBlock("admin.mtsc.top");
   assert.ok(admin.includes("return 503 maintenance"));
-  assert.ok(admin.includes("Retry-After"));
+  assert.ok(admin.includes('Retry-After "3600"'));
+  assert.ok(admin.includes("if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }"));
+  assert.ok(admin.includes("proxy_pass http://127.0.0.1:3222;"));
+  assert.ok(admin.includes("proxy_set_header Host admin.mtsc.top;"));
+  assert.doesNotMatch(admin, /proxy_set_header Origin|real_ip_header|set_real_ip_from/);
   assert.doesNotMatch(
     admin,
     /root \/var\/www\/zhongyuan-daojia-admin|try_files/,
@@ -134,7 +138,14 @@ test("Nginx deployment validates, reloads, probes and restores the exact active 
   assert.ok(nginxDeploy.includes("restore_nginx"));
   assert.ok(nginxDeploy.includes("CRITICAL: Nginx deployment failed"));
   assert.ok(nginxDeploy.includes("--resolve api.mtsc.top:443:127.0.0.1"));
-  assert.ok(nginxDeploy.includes("admin_status == 503"));
+  assert.ok(nginxDeploy.includes("admin_status == 200"));
+  assert.ok(nginxDeploy.includes("public_admin_status == 503"));
+  assert.ok(nginxDeploy.includes("private_catalog_status == 401 && $private_unknown_status == 404"));
+  assert.ok(nginxDeploy.includes("systemctl is-active --quiet zhongyuan-daojia-private-admin.service"));
+  assert.ok(nginxDeploy.includes('admin_release="/opt/zhongyuan-daojia-admin/releases/$release_id"'));
+  assert.ok(nginxDeploy.includes('$(readlink -f /opt/zhongyuan-daojia-admin/current) == "$admin_release"'));
+  assert.ok(nginxDeploy.includes('readlink -f "/proc/$admin_pid/cwd"'));
+  assert.ok(nginxDeploy.includes('$(<"$admin_release/DEPLOY_COMMIT") == "$release_id"'));
   assert.ok(nginxDeploy.includes("customer_status == 401"));
   assert.ok(
     nginxDeploy.includes(

@@ -22,10 +22,33 @@ export async function prepareTechnicianPhoto(file: File) {
 }
 
 export async function loadTechnicianPhotoPreview(publicUrl: string, apiBaseUrl: string, profilePath: string, token: string) {
-  if (!publicUrl.startsWith(`${apiBaseUrl}/technicians/`)) return publicUrl;
-  const photoId = /\/photos\/([A-Za-z0-9-]+)$/.exec(publicUrl)?.[1];
-  if (!photoId) return publicUrl;
-  const response = await fetch(`${apiBaseUrl}${profilePath}/photos/${encodeURIComponent(photoId)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const apiBase = apiBaseUrl.replace(/\/$/, "");
+  // Private production builds use /v1; persisted public photos still belong to
+  // this project's HTTPS API. Never authenticate a fetch to the supplied URL.
+  const api = new URL(apiBase, "https://api.mtsc.top");
+  const localHttp = api.protocol === "http:" && ["127.0.0.1", "localhost"].includes(api.hostname);
+  if (api.pathname !== "/v1" || api.search || api.hash || api.username || api.password ||
+    (api.protocol !== "https:" && !localHttp) || (apiBase.startsWith("/") && apiBase !== "/v1")) {
+    throw new Error("照片接口配置无效");
+  }
+  const photo = new URL(publicUrl);
+  // Existing external CDN photos remain public and receive no Authorization.
+  if (photo.origin !== api.origin) return publicUrl;
+  const match = /^\/v1\/technicians\/([A-Za-z0-9_-]+)\/photos\/([A-Za-z0-9-]+)$/.exec(photo.pathname);
+  if (!match) return publicUrl;
+  const [, technicianId, photoId] = match;
+  if (!technicianId || !photoId) return publicUrl;
+  if (photo.search || photo.hash || photo.username || photo.password) throw new Error("照片地址异常");
+  const admin = /^\/admin\/organizations\/[A-Za-z0-9_-]+\/technicians\/([A-Za-z0-9_-]+)\/profile$/.exec(profilePath);
+  if (profilePath !== "/technician/workbench/profile" && (!admin || admin[1] !== technicianId)) {
+    throw new Error("照片不属于当前技师资料");
+  }
+  const response = await fetch(`${apiBase}${profilePath}/photos/${encodeURIComponent(photoId)}`, {
+    credentials: "omit", redirect: "error", headers: { Authorization: `Bearer ${token}` },
+  });
   if (!response.ok) throw new Error("本人照片预览读取失败");
+  if (response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "image/jpeg") {
+    throw new Error("照片预览格式无效");
+  }
   return URL.createObjectURL(await response.blob());
 }

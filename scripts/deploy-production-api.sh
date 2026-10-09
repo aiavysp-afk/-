@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy one exact public main commit to the production API and technician H5.
-# The public admin site intentionally remains in maintenance mode until a
-# private network, VPN, or independent identity gateway is in place.
+# This deploy does not publish the admin UI. Its independent private deployment
+# keeps public access in maintenance and uses only the existing trusted networks.
 set -euo pipefail
 umask 077
 
