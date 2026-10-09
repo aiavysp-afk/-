@@ -78,6 +78,7 @@ for marker in \
   'server_name api.mtsc.top;' \
   'server_name admin.mtsc.top;' \
   'location ~ ^/v1/customer-center' \
+  'location ~ ^/v1/customer-center/wallet/recharges' \
   'location = /v1/technician-invitations/claim' \
   'if ($zydj_admin_request_denied) { return 403; }' \
   'return 503 maintenance;'; do

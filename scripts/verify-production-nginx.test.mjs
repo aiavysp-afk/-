@@ -256,6 +256,10 @@ test("production nginx exposes only the required customer-center client routes a
     "~ ^/v1/customer-center(?:/(?:coupons|wallet(?:/ledger)?|settings))?$",
     ["GET"],
   );
+  assertAllowedMethods(
+    "~ ^/v1/customer-center/wallet/recharges(?:/[^/]+/reconcile)?$",
+    ["POST"],
+  );
   assertAllowedMethods("= /v1/customer-center/addresses", ["GET", "POST"]);
   assertAllowedMethods("~ ^/v1/customer-center/addresses/[^/]+$", [
     "PATCH",
