@@ -51,6 +51,22 @@ cd "$release"
 "$pnpm_bin" --filter @zydj/contracts build
 "$pnpm_bin" --filter @zydj/api exec prisma generate
 "$pnpm_bin" --filter @zydj/api build
+# Optional native image packages must work on this release's Linux runtime
+# before a backup, migration, or release switch touches production state.
+(
+  cd "$release/apps/api"
+  "$node_root/bin/node" --input-type=module <<'NODE'
+import sharp from "sharp";
+const bytes = await sharp({
+  create: { width: 2, height: 2, channels: 3, background: "#146c53" },
+}).jpeg().toBuffer();
+const metadata = await sharp(bytes, { limitInputPixels: 4 }).metadata();
+if (metadata.format !== "jpeg" || metadata.width !== 2 || metadata.height !== 2) {
+  throw new Error("Production photo decoder verification failed");
+}
+console.log("Production photo decoder verified");
+NODE
+)
 VITE_API_BASE_URL=https://api.mtsc.top/v1 \
   "$pnpm_bin" --filter @zydj/workbench-h5 build
 [[ -f "$release/apps/workbench-h5/dist/index.html" ]] || exit 1

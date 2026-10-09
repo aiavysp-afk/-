@@ -1,0 +1,14 @@
+<view class="photo-page">
+  <view class="nav"><text bindtap="back">‹</text><text>本人技师照片</text><view/></view>
+  <view class="intro"><text>先上传照片，资料后续补录</text><text>仅供已入驻的本人技师使用。姓名、年龄段不必填写；后台审核发布后，照片同步展示在客户列表和详情页。</text></view>
+  <view wx:if="{{loading}}" class="notice">正在读取本人资料…</view>
+  <view wx:if="{{error}}" class="notice error">{{error}}</view>
+  <view wx:if="{{message}}" class="notice success">{{message}}</view>
+  <block wx:if="{{profile}}">
+    <view class="card"><view class="heading"><text>卡片头像</text><text>{{statusLabel}}</text></view><image wx:if="{{avatarPreview}}" class="avatar" src="{{avatarPreview}}" mode="aspectFill" data-url="{{avatarPreview}}" bindtap="preview"/><view wx:else class="empty">暂无本人头像</view><button data-kind="AVATAR" loading="{{busy}}" disabled="{{busy}}" bindtap="upload">选择并上传头像</button></view>
+    <view class="card"><view class="heading"><text>详情页相册</text><text>{{galleryPreviews.length}} / 12张</text></view><view wx:if="{{galleryPreviews.length}}" class="gallery"><image wx:for="{{galleryPreviews}}" wx:key="*this" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="preview"/></view><view wx:else class="empty">暂无相册照片</view><button data-kind="GALLERY" loading="{{busy}}" disabled="{{busy || galleryPreviews.length >= 12}}" bindtap="upload">添加个人照片</button></view>
+    <checkbox-group bindchange="onAuthorization"><label class="authorization"><checkbox value="authorized" checked="{{authorized}}" color="#09BD8A"/><text>确认照片为本人、已授权平台审核后公开；不上传身份证、证件号码、他人肖像或未经授权的照片。</text></label></checkbox-group>
+    <view class="card review-form"><view class="heading"><text>提交审核前补充真实资料</text></view><text class="review-help">照片可以先保存；姓名、年龄段仍可留空。审核前填写真实介绍和擅长，不填写未核验的资质。</text><textarea placeholder="真实个人介绍" value="{{introduction}}" maxlength="2000" bindinput="onIntroduction"/><input placeholder="擅长项目，以逗号分隔" value="{{specialties}}" maxlength="800" bindinput="onSpecialties"/><button loading="{{busy}}" disabled="{{busy || profile.status === 'PENDING_REVIEW' || profile.status === 'APPROVED' || profile.status === 'PUBLISHED'}}" bindtap="submitReview">提交最新资料审核</button></view>
+    <view class="privacy">单张照片自动压缩为JPG，去除照片定位等隐藏信息。草稿仅本人和有权限的平台人员可见；上传不会自动激活接单资格或发布资料。</view>
+  </block>
+</view>

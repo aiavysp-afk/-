@@ -20,6 +20,9 @@ describe("admin technician profile helpers", () => {
     expect(paths.profileAction("approve")).toBe(
       "/admin/organizations/org-1/technicians/tech-1/profile/approve",
     );
+    expect(paths.profileAction("submit-review")).toBe(
+      "/admin/organizations/org-1/technicians/tech-1/profile/submit-review",
+    );
     expect(paths.profileAction("publish")).toBe(
       "/admin/organizations/org-1/technicians/tech-1/profile/publish",
     );

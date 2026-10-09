@@ -13,6 +13,7 @@ import type {
   TechnicianRoute,
   TechnicianWorkbench,
   TechnicianWorkbenchOrder,
+  TechnicianPhotoUploadResult,
 } from "@zydj/contracts";
 import {
   Bell,
@@ -42,6 +43,7 @@ import {
   type TechnicianProfile,
   type TechnicianProfileDraft,
 } from "./technician-profile";
+import { loadTechnicianPhotoPreview, prepareTechnicianPhoto } from "./technician-photo";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -957,6 +959,7 @@ function ProfileView({
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
+  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
 
   const loadProfile = useCallback(async () => {
     setProfileLoading(true);
@@ -981,6 +984,35 @@ function ProfileView({
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    let active = true;
+    const blobUrls: string[] = [];
+    const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter((url): url is string => Boolean(url));
+    void Promise.all(urls.map(async (url) => {
+      const preview = await loadTechnicianPhotoPreview(url, API_BASE_URL, TECHNICIAN_PROFILE_PATHS.profile, token);
+      if (preview.startsWith("blob:")) blobUrls.push(preview);
+      return [url, preview] as const;
+    })).then((entries) => {
+      if (active) setPhotoPreviews(Object.fromEntries(entries));
+      else blobUrls.forEach((url) => URL.revokeObjectURL(url));
+    }).catch(() => { blobUrls.forEach((url) => URL.revokeObjectURL(url)); if (active) setProfileError("照片预览读取失败，请刷新后重试"); });
+    return () => { active = false; blobUrls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [profile, token]);
+
+  async function uploadProfilePhoto(file: File | undefined, kind: "AVATAR" | "GALLERY") {
+    if (!file || profileSaving) return;
+    if (!window.confirm("确认上传本人已授权照片，审核后公开给客户？请勿上传身份证、证件号码、他人肖像或未经授权的照片。")) return;
+    setProfileSaving(true); setProfileError(""); setProfileMessage("");
+    try {
+      const base64 = await prepareTechnicianPhoto(file);
+      const response = await apiRequest<{ data: TechnicianPhotoUploadResult }>(`${TECHNICIAN_PROFILE_PATHS.profile}/photos`, { method: "POST", body: JSON.stringify({ kind, base64, authorized: true }) }, token);
+      setProfile(response.data.profile);
+      setDraft((current) => ({ ...current, ...(kind === "AVATAR" ? { avatarUrl: response.data.publicUrl } : { galleryUrls: response.data.profile.galleryUrls }) }));
+      setProfileMessage("照片已保存并同步后台，审核发布后展示给客户；姓名、年龄段可后续补录。");
+    } catch (caught) { setProfileError(caught instanceof Error ? caught.message : "照片上传失败"); }
+    finally { setProfileSaving(false); }
+  }
 
   async function saveProfile(showConfirmation = true) {
     if (!draft || profileSaving) return null;
@@ -1034,8 +1066,8 @@ function ProfileView({
         {profile?.avatarUrl ? (
           <img
             className="profile-avatar profile-avatar-image"
-            src={profile.avatarUrl}
-            alt={`${profile.publicName}的公开头像`}
+            src={photoPreviews[profile.avatarUrl] || profile.avatarUrl}
+            alt="本人授权的技师照片"
           />
         ) : (
           <div className="profile-avatar">技</div>
@@ -1075,7 +1107,7 @@ function ProfileView({
         {draft && (
           <div className="profile-form">
             <label>
-              客户端公开称呼
+              客户端公开称呼（可留空）
               <input
                 value={draft.publicName ?? ""}
                 maxLength={40}
@@ -1088,6 +1120,22 @@ function ProfileView({
                   )
                 }
               />
+            </label>
+            <label>
+              年龄段（可留空）
+              <select disabled={profileLocked} value={draft.ageRange ?? ""} onChange={(event) => setDraft((current) => current ? { ...current, ageRange: (event.target.value || null) as TechnicianProfileDraft["ageRange"] } : current)}>
+                <option value="">暂不填写/不展示</option><option value="18-23岁">18-23岁</option><option value="24-29岁">24-29岁</option><option value="30-39岁">30-39岁</option><option value="40岁及以上">40岁及以上</option>
+              </select>
+            </label>
+            <label>
+              上传本人头像照片
+              <input type="file" accept="image/jpeg,image/png" disabled={profileSaving || profileLocked} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadProfilePhoto(file, "AVATAR"); }} />
+              <small>自动压缩并去除照片定位等隐藏信息，不能上传证件文件。</small>
+            </label>
+            <label>
+              添加详情页相册照片（最多12张）
+              <input type="file" accept="image/jpeg,image/png" disabled={profileSaving || profileLocked || (draft.galleryUrls?.length ?? 0) >= 12} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadProfilePhoto(file, "GALLERY"); }} />
+              <div>{(profile?.galleryUrls ?? []).map((url) => <img key={url} src={photoPreviews[url] || url} alt="本人授权的相册照片" style={{ width: 75, height: 100, objectFit: "cover", borderRadius: 10, margin: 4 }} />)}</div>
             </label>
             <label>
               头像 HTTPS 地址

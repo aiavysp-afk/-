@@ -2,6 +2,7 @@ import type {
   AvailabilitySlot,
   BookingHold,
   CustomerAddress,
+  CustomerCoupon,
   OrderQuote,
   OrderView,
   PaymentIntent,
@@ -27,6 +28,8 @@ import {
 } from "../../utils/amap";
 import {
   AppointmentMode,
+  assertServerQuote,
+  bookingCouponRows,
   pickSlotIndex,
   quoteDisplay,
   shanghaiDate,
@@ -52,6 +55,11 @@ const categoryNames: Record<ServiceItem["category"], string> = {
 };
 
 Page({
+  quoteRevision: 0,
+  slotsRevision: 0,
+  quoteRefreshQueued: false,
+  quoteTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  pageClosed: false,
   data: {
     service: null as ServiceItem | null,
     price: "",
@@ -90,6 +98,17 @@ Page({
     orderKey: "",
     quoteDetails: null as QuoteDisplay | null,
     quoteCouponId: undefined as string | null | undefined,
+    quoteLoading: false,
+    quoteError: "",
+    quoteFingerprint: "",
+    reservationSlotKey: "",
+    reservationExpiresAt: "",
+    couponChoice: "auto",
+    coupons: [] as ReturnType<typeof bookingCouponRows>,
+    couponsLoading: false,
+    couponsError: "",
+    couponPickerOpen: false,
+    couponSummary: "自动选择最高可用优惠",
     loggedIn: false,
     phoneVerified: false,
     loginBusy: false,
@@ -105,6 +124,7 @@ Page({
     reviewsError: "",
   },
   async onLoad(options: { slug?: string; therapistId?: string }) {
+    this.pageClosed = false;
     if (!requireVerifiedCustomerAccess()) return;
     const session = getStoredSession();
     this.setData({
@@ -129,6 +149,7 @@ Page({
       await Promise.all([
         this.loadSlots(),
         this.loadServiceReviews(service.slug),
+        this.loadCoupons(),
       ]);
     } catch (error) {
       this.fail(error);
@@ -142,6 +163,8 @@ Page({
       phoneVerified: session?.user.phoneVerified === true,
     });
     await this.loadSavedAddresses();
+    if (this.data.service) void this.loadCoupons();
+    this.scheduleQuote();
   },
   async loadSavedAddresses() {
     if (this.data.addressBookLoading || this.data.orderSubmissionAttempted)
@@ -189,7 +212,7 @@ Page({
     }
   },
   applySavedAddress(address: CustomerAddress) {
-    if (this.data.orderSubmissionAttempted) return;
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
     this.setData({
       selectedAddressId: address.id,
       contactName: address.contactName,
@@ -204,6 +227,7 @@ Page({
       quoteDetails: null,
       error: "",
     });
+    this.invalidateQuote();
   },
   chooseSavedAddress(event: { currentTarget: { dataset: { id: string } } }) {
     const address = this.data.savedAddresses.find(
@@ -212,7 +236,7 @@ Page({
     if (address) this.applySavedAddress(address);
   },
   openAddressManager() {
-    if (this.data.orderSubmissionAttempted) return;
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
     wx.navigateTo({ url: "/pages/addresses/index" });
   },
   async login() {
@@ -256,11 +280,16 @@ Page({
   },
   async loadSlots() {
     if (!this.data.service) return;
+    const revision = ++this.slotsRevision;
+    const serviceId = this.data.service.id;
+    const date = this.data.date;
+    this.invalidateQuote(false);
     this.setData({ error: "", selected: -1 });
     try {
       const slots = await api<AvailabilitySlot[]>(
-        `/availability/slots?serviceId=${encodeURIComponent(this.data.service.id)}&date=${this.data.date}`,
+        `/availability/slots?serviceId=${encodeURIComponent(serviceId)}&date=${date}`,
       );
+      if (this.pageClosed || revision !== this.slotsRevision) return;
       const slotViews = slots.map((slot, sourceIndex) => {
         const label = shanghaiTime(slot.startsAt).slice(11);
         return {
@@ -286,8 +315,9 @@ Page({
         selected,
         selectedSlotLabel: slotViews[selected]?.label ?? "",
       });
+      this.invalidateQuote();
     } catch (error) {
-      this.fail(error);
+      if (!this.pageClosed && revision === this.slotsRevision) this.fail(error);
     }
   },
   async loadServiceReviews(slug: string) {
@@ -314,7 +344,7 @@ Page({
     }
   },
   async dateChanged(e: { detail: { value: string } }) {
-    if (this.data.reservationId) return;
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
     this.setData({
       date: e.detail.value,
       selected: -1,
@@ -329,7 +359,7 @@ Page({
   async setAppointmentMode(e: {
     currentTarget: { dataset: { mode: AppointmentMode } };
   }) {
-    if (this.data.reservationId) return;
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
     const appointmentMode = e.currentTarget.dataset.mode;
     if (appointmentMode === this.data.appointmentMode) return;
     this.setData({
@@ -352,7 +382,7 @@ Page({
     });
   },
   select(e: { currentTarget: { dataset: { index: number } } }) {
-    if (!this.data.reservationId) {
+    if (!this.data.busy && !this.data.orderSubmissionAttempted) {
       const selected = Number(e.currentTarget.dataset.index);
       this.setData({
         selected,
@@ -360,10 +390,11 @@ Page({
         quoteDetails: null,
         error: "",
       });
+      this.invalidateQuote();
     }
   },
   selectHour(e: { currentTarget: { dataset: { hour: string } } }) {
-    if (this.data.reservationId) return;
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
     const activeHour = e.currentTarget.dataset.hour;
     const visibleSlots = this.data.slots.filter(
       (slot) => slot.hourKey === activeHour,
@@ -377,6 +408,7 @@ Page({
       quoteDetails: null,
       error: "",
     });
+    this.invalidateQuote();
   },
   input(e: {
     currentTarget: { dataset: { field: string } };
@@ -385,7 +417,7 @@ Page({
     const field = e.currentTarget.dataset.field;
     if (
       ["contactName", "phone", "detail", "doorNumber"].includes(field) &&
-      !this.data.orderSubmissionAttempted
+      !this.data.orderSubmissionAttempted && !this.data.busy
     ) {
       const addressFieldChanged = ["detail", "doorNumber"].includes(field);
       this.setData({
@@ -401,14 +433,17 @@ Page({
             }
           : {}),
       });
+      this.invalidateQuote();
     }
   },
   async locateAddress() {
-    if (this.data.locationBusy || this.data.orderSubmissionAttempted) return;
+    if (this.data.locationBusy || this.data.busy || this.data.orderSubmissionAttempted) return;
     this.setData({ locationBusy: true, error: "", suggestions: [] });
+    const revision = this.quoteRevision;
     try {
       const point = await getGcj02Location();
       const address = await reverseGeocode(this.data.amapMiniappKey, point);
+      if (this.pageClosed || revision !== this.quoteRevision || this.data.orderSubmissionAttempted) return;
       this.setData({
         selectedAddressId: "",
         detail: address.detail.slice(0, 140),
@@ -418,6 +453,7 @@ Page({
         addressVerificationId: "",
         quoteDetails: null,
       });
+      this.invalidateQuote();
       wx.showToast({ title: "已定位并转为中文地址", icon: "success" });
     } catch (error) {
       this.fail(error);
@@ -430,6 +466,7 @@ Page({
       this.data.suggestionBusy ||
       !this.data.addressSuggestionAvailable ||
       this.data.orderSubmissionAttempted
+      || this.data.busy
     )
       return;
     const keyword = this.data.detail.trim();
@@ -444,6 +481,7 @@ Page({
         keyword,
         this.data.serviceCity,
       );
+      if (this.pageClosed || this.data.detail.trim() !== keyword || this.data.orderSubmissionAttempted) return;
       this.setData({ suggestions });
       if (!suggestions.length)
         this.fail(new Error("当前服务城市内未找到匹配地址，请继续手填"));
@@ -454,7 +492,7 @@ Page({
     }
   },
   selectAddress(e: { currentTarget: { dataset: { index: number } } }) {
-    if (this.data.orderSubmissionAttempted) return;
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
     const suggestion =
       this.data.suggestions[Number(e.currentTarget.dataset.index)];
     if (!suggestion) return;
@@ -471,9 +509,153 @@ Page({
       addressVerificationId: "",
       quoteDetails: null,
     });
+    this.invalidateQuote();
   },
   consentChanged(e: { detail: { value: string[] } }) {
     this.setData({ consent: e.detail.value.includes("agree") });
+  },
+  draftFingerprint() {
+    const slot = this.data.slots[this.data.selected];
+    return JSON.stringify({
+      serviceId: this.data.service?.id,
+      therapistId: slot?.therapistId,
+      startsAt: slot?.startsAt,
+      quantity: this.data.quantity,
+      couponChoice: this.data.couponChoice,
+      contactName: this.data.contactName.trim(),
+      phone: this.data.phone,
+      address: this.fullAddress(),
+      latitude: this.data.latitude,
+      longitude: this.data.longitude,
+    });
+  },
+  invalidateQuote(refresh = true) {
+    if (this.data.orderSubmissionAttempted) return;
+    ++this.quoteRevision;
+    this.setData({ quoteDetails: null, quoteFingerprint: "", quoteError: "" });
+    if (refresh) this.scheduleQuote();
+  },
+  scheduleQuote() {
+    if (this.quoteTimer) clearTimeout(this.quoteTimer);
+    if (this.pageClosed || this.data.busy || this.data.orderSubmissionAttempted) return;
+    this.quoteTimer = setTimeout(() => {
+      this.quoteTimer = undefined;
+      void this.refreshQuote();
+    }, 400);
+  },
+  async loadCoupons() {
+    if (this.data.couponsLoading) return;
+    this.setData({ couponsLoading: true, couponsError: "" });
+    try {
+      const coupons = await api<CustomerCoupon[]>(customerCenterPath("/customer-center/coupons"));
+      if (this.pageClosed) return;
+      this.setData({ coupons: bookingCouponRows(coupons, this.data.service?.priceFen ?? 0) });
+    } catch (error) {
+      if (!this.pageClosed) this.setData({
+        couponsError: error instanceof Error ? error.message : "优惠券读取失败，请重试",
+      });
+    } finally {
+      if (!this.pageClosed) this.setData({ couponsLoading: false });
+    }
+  },
+  async openCoupons() {
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
+    this.setData({ couponPickerOpen: true });
+    await this.loadCoupons();
+  },
+  closeCoupons() {
+    this.setData({ couponPickerOpen: false });
+  },
+  ignoreTap() {},
+  chooseCoupon(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
+    const couponChoice = event.currentTarget.dataset.id;
+    if (!["auto", "none"].includes(couponChoice)
+      && !this.data.coupons.some((row) => row.id === couponChoice && row.eligible)) return;
+    this.setData({ couponChoice, couponPickerOpen: false });
+    this.invalidateQuote();
+  },
+  async refreshQuote(force = false) {
+    if (this.pageClosed || this.data.orderSubmissionAttempted || (this.data.busy && !force)) return false;
+    if (this.data.quoteLoading) {
+      this.quoteRefreshQueued = true;
+      return false;
+    }
+    const service = this.data.service;
+    const slot = this.data.slots[this.data.selected];
+    if (!service || !slot) return false;
+    if (this.data.quantity !== 1) {
+      this.setData({ quoteError: "当前预约系统每单仅支持 1 项服务" });
+      return false;
+    }
+    const session = getStoredSession();
+    if (!session || needsPhoneVerification(session)) return false;
+    const revision = this.quoteRevision;
+    const fingerprint = this.draftFingerprint();
+    const slotKey = `${service.id}:${slot.therapistId}:${slot.startsAt}`;
+    const couponChoice = this.data.couponChoice;
+    this.setData({ quoteLoading: true, quoteError: "", quoteDetails: null });
+    try {
+      if (this.data.reservationId && (this.data.reservationSlotKey !== slotKey
+        || Date.parse(this.data.reservationExpiresAt) <= Date.now())) {
+        const oldId = this.data.reservationId;
+        if (Date.parse(this.data.reservationExpiresAt) > Date.now()) {
+          await api(`/booking-holds/${encodeURIComponent(oldId)}/release`, "POST", {});
+        }
+        this.setData({ reservationId: "", reservationSlotKey: "", reservationExpiresAt: "", addressVerificationId: "" });
+      }
+      if (!this.data.reservationId) {
+        // A hold is real capacity, not an invented technician/time. Keep only
+        // one active hold and release it before changing the chosen slot.
+        const hold = await api<BookingHold>("/booking-holds", "POST", {
+          serviceId: service.id, therapistId: slot.therapistId, startsAt: slot.startsAt,
+        });
+        this.setData({
+          reservationId: hold.id, reservationSlotKey: slotKey,
+          reservationExpiresAt: hold.expiresAt, orderKey: newKey(), addressVerificationId: "",
+        });
+        if (this.pageClosed) {
+          await api(`/booking-holds/${encodeURIComponent(hold.id)}/release`, "POST", {});
+          return false;
+        }
+      }
+      const reservationId = this.data.reservationId;
+      const quote = await api<OrderQuote>("/orders/quote", "POST", {
+        reservationId,
+        ...(couponChoice === "auto" ? {} : { couponId: couponChoice === "none" ? null : couponChoice }),
+      });
+      assertServerQuote(quote, reservationId);
+      if (quote.travelFeeFen !== 0) throw new Error("当前报价异常，已阻止提交");
+      if (this.pageClosed) {
+        await api(`/booking-holds/${encodeURIComponent(reservationId)}/release`, "POST", {});
+        return false;
+      }
+      if (revision !== this.quoteRevision || fingerprint !== this.draftFingerprint()) return false;
+      const appliedCoupon = this.data.coupons.find((row) => row.id === quote.couponId);
+      this.setData({
+        quoteDetails: quoteDisplay(quote), quoteCouponId: quote.couponId ?? null,
+        quoteFingerprint: fingerprint,
+        coupons: bookingCouponRows(this.data.coupons, quote.serviceAmountFen),
+        couponSummary: quote.discountFen > 0
+          ? `${appliedCoupon?.title ?? "已使用优惠券"} · 减 ¥${money(quote.discountFen)}`
+          : couponChoice === "none" ? "本单不使用优惠券" : "暂无符合项目费门槛的优惠券",
+      });
+      return true;
+    } catch (error) {
+      if (!this.pageClosed && revision === this.quoteRevision) this.setData({
+        quoteDetails: null, quoteFingerprint: "",
+        quoteError: error instanceof Error ? error.message : "实时价格读取失败，请重试",
+      });
+      return false;
+    } finally {
+      if (!this.pageClosed) {
+        this.setData({ quoteLoading: false });
+        if (this.quoteRefreshQueued || revision !== this.quoteRevision) {
+          this.quoteRefreshQueued = false;
+          this.scheduleQuote();
+        }
+      }
+    }
   },
   fullAddress() {
     return `${this.data.detail.trim()} ${this.data.doorNumber.trim()}`.trim();
@@ -497,6 +679,7 @@ Page({
       addressVerificationId: "",
       quoteDetails: null,
     });
+    this.invalidateQuote(false);
     wx.showToast({ title: "手填地址已用高德识别", icon: "success" });
     return geocoded;
   },
@@ -519,10 +702,9 @@ Page({
     return { service, slot };
   },
   async prepareOrder() {
-    if (this.data.busy) return;
+    if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy) return;
     const draft = this.validDraft();
     if (!draft) return;
-    const { service, slot } = draft;
     this.setData({ busy: true, error: "" });
     try {
       let session = getStoredSession();
@@ -539,13 +721,9 @@ Page({
         return;
       }
       const addressPoint = await this.ensureAddressCoordinates();
-      if (!this.data.reservationId) {
-        const hold = await api<BookingHold>("/booking-holds", "POST", {
-          serviceId: service.id,
-          therapistId: slot.therapistId,
-          startsAt: slot.startsAt,
-        });
-        this.setData({ reservationId: hold.id, orderKey: newKey() });
+      if (!await this.refreshQuote(true)) {
+        this.fail(new Error(this.data.quoteError || "服务器价格尚未确认，请稍后重试"));
+        return;
       }
       if (
         this.data.addressVerificationRequired &&
@@ -564,16 +742,6 @@ Page({
         );
         this.setData({ addressVerificationId: verification.id });
       }
-      const quote = await api<OrderQuote>("/orders/quote", "POST", {
-        reservationId: this.data.reservationId,
-      });
-      if (quote.travelFeeFen !== 0)
-        throw new Error("平台承诺技师免出行费，当前报价异常，已阻止提交");
-      this.setData({
-        quoteDetails: quoteDisplay(quote),
-        quoteCouponId: quote.couponId,
-      });
-      wx.showToast({ title: "价格已由服务器核定", icon: "success" });
     } catch (error) {
       this.fail(error);
     } finally {
@@ -581,10 +749,21 @@ Page({
     }
   },
   async create() {
-    if (this.data.busy) return;
+    if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy) return;
     if (!this.data.quoteDetails) {
       await this.prepareOrder();
       return;
+    }
+    if (!this.data.orderSubmissionAttempted) {
+      const shownPayable = this.data.quoteDetails.payable;
+      const shownCoupon = this.data.quoteCouponId;
+      await this.prepareOrder();
+      if (this.data.error || !this.data.quoteDetails) return;
+      if (this.data.quoteDetails.payable !== shownPayable || this.data.quoteCouponId !== shownCoupon) {
+        wx.showToast({ title: "优惠或价格已更新，请核对后再提交", icon: "none" });
+        return;
+      }
+      if (this.data.quoteFingerprint !== this.draftFingerprint()) return;
     }
     if (!this.validDraft() || !this.data.reservationId) return;
     this.setData({ busy: true, error: "" });
@@ -625,11 +804,16 @@ Page({
         },
         this.data.orderKey,
       );
-      if (order.travelFeeFen !== 0) {
+      if (this.pageClosed) return;
+      if (order.travelFeeFen !== 0
+        || !this.data.quoteDetails
+        || money(order.serviceAmountFen) !== this.data.quoteDetails.serviceAmount
+        || money(order.discountFen) !== this.data.quoteDetails.discount
+        || money(order.payableFen) !== this.data.quoteDetails.payable) {
         wx.showModal({
           title: "订单价格异常",
           content:
-            "平台承诺免出行费，该订单未通过金额复核，不会调起支付。请在订单页联系客服处理。",
+            "该订单未通过金额复核，不会调起支付。请在订单页核对金额或联系客服处理。",
           showCancel: false,
         });
         wx.redirectTo({ url: "/pages/orders/index" });
@@ -640,6 +824,9 @@ Page({
         orderKey: "",
         addressVerificationId: "",
         quoteDetails: null,
+        reservationSlotKey: "",
+        reservationExpiresAt: "",
+        quoteFingerprint: "",
         orderSubmissionAttempted: false,
       });
       await this.payCreatedOrder(order);
@@ -760,6 +947,13 @@ Page({
     wx.showToast({ title: "支付结果确认中，请在订单页刷新", icon: "none" });
   },
   onUnload() {
+    this.pageClosed = true;
+    ++this.quoteRevision;
+    ++this.slotsRevision;
+    if (this.quoteTimer) clearTimeout(this.quoteTimer);
+    if (this.data.reservationId && !this.data.orderSubmissionAttempted && !this.data.quoteLoading) {
+      void api(`/booking-holds/${encodeURIComponent(this.data.reservationId)}/release`, "POST", {}).catch(() => undefined);
+    }
     this.setData({
       contactName: "",
       phone: "",

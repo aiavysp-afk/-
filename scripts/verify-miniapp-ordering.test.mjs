@@ -104,6 +104,26 @@ test("verified customer service browsing and order submission stay on the custom
             boundaries: [],
           },
         ],
+        "/technicians": [
+          {
+            technicianId: "user-public-booking-capacity",
+            publicName: "",
+            avatarUrl: null,
+            galleryUrls: [],
+            introduction: "",
+            specialties: [],
+            certificates: [],
+            serviceYears: null,
+            freeTravelFee: true,
+            travelFeeFen: 0,
+            status: "PUBLISHED",
+            reviewSummary: {
+              averageRating: null,
+              reviewCount: 0,
+              completedOrders: 0,
+            },
+          },
+        ],
         "/auth/wechat-miniapp": {
           accessToken: "session-token",
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -120,7 +140,7 @@ test("verified customer service browsing and order submission stay on the custom
           therapistId: "user-public-booking-capacity",
           startsAt: "2026-10-08T02:00:00.000Z",
           endsAt: "2026-10-08T03:00:00.000Z",
-          expiresAt: "2026-10-08T01:55:00.000Z",
+          expiresAt: "2099-10-08T01:55:00.000Z",
           status: "HOLD",
         },
         "/orders/quote": {
@@ -151,7 +171,17 @@ test("verified customer service browsing and order submission stay on the custom
       };
       success({
         statusCode: path === "/orders" ? 201 : 200,
-        data: { data: responses[path] },
+        data: {
+          data: path.startsWith("/availability/slots?")
+            ? [
+                {
+                  therapistId: "user-public-booking-capacity",
+                  startsAt: "2026-10-08T02:00:00.000Z",
+                  endsAt: "2026-10-08T03:00:00.000Z",
+                },
+              ]
+            : responses[path],
+        },
       });
     },
   };
@@ -200,15 +230,28 @@ test("verified customer service browsing and order submission stay on the custom
   assert.equal(captured.data.error, "");
   assert.equal(storage.has("zydj.auth.session"), true);
   assert.deepEqual(
-    calls.filter((item) => item.path.startsWith("/")).map((item) => item.path),
+    calls
+      .filter(
+        (item) =>
+          item.path.startsWith("/") &&
+          item.path !== "/technicians" &&
+          !item.path.startsWith("/availability/slots?"),
+      )
+      .map((item) => item.path),
     [
       "/catalog/services",
       "/booking-holds",
+      "/orders/quote",
       "/orders/quote",
       "/orders",
       "/orders/order-1/payment-intent",
       "/pages/orders/index",
     ],
+  );
+  assert.equal(calls.filter((item) => item.path === "/technicians").length, 1);
+  assert.equal(
+    calls.filter((item) => item.path.startsWith("/availability/slots?")).length,
+    2,
   );
   const order = calls.find((item) => item.path === "/orders");
   assert.match(order.header.Authorization, /^Bearer /);

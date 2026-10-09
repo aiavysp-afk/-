@@ -459,7 +459,7 @@ export const TechnicianInvitationStatusSchema = z.enum([
 
 export const TechnicianInvitationCreateSchema = z
   .object({
-    publicName: z.string().trim().min(2).max(40),
+    publicName: z.string().trim().max(40).refine((value) => value === "" || value.length >= 2, "公开称呼可留空，填写时至少2个字").default(""),
     expiresInHours: z.number().int().min(1).max(168).default(72),
   })
   .strict();
@@ -510,7 +510,9 @@ const PublicHttpsUrlSchema = z
 
 export const TechnicianProfileUpdateSchema = z
   .object({
-    publicName: z.string().trim().min(2).max(40).optional(),
+    // Public presentation is separate from the staff account's verified identity.
+    publicName: z.string().trim().max(40).refine((value) => value === "" || value.length >= 2, "公开称呼可留空，填写时至少2个字").optional(),
+    ageRange: z.enum(["18-23岁", "24-29岁", "30-39岁", "40岁及以上"]).nullable().optional(),
     avatarUrl: PublicHttpsUrlSchema.nullable().optional(),
     galleryUrls: z.array(PublicHttpsUrlSchema).max(12).optional(),
     introduction: z.string().trim().max(2_000).optional(),
@@ -553,6 +555,7 @@ export const TechnicianProfileSchema = z.object({
   technicianId: z.string(),
   displayName: z.string(),
   publicName: z.string(),
+  ageRange: z.enum(["18-23岁", "24-29岁", "30-39岁", "40岁及以上"]).nullable().optional(),
   avatarUrl: PublicHttpsUrlSchema.nullable(),
   galleryUrls: z.array(PublicHttpsUrlSchema),
   introduction: z.string(),
@@ -567,6 +570,22 @@ export const TechnicianProfileSchema = z.object({
   travelFeeFen: z.literal(0),
   updatedAt: IsoDateTimeSchema,
 });
+
+export const TechnicianPhotoUploadSchema = z.object({
+  kind: z.enum(["AVATAR", "GALLERY"]),
+  // The default Fastify 1MiB body limit remains unchanged. Decode before trusting size.
+  base64: z.string().min(4).max(699_052).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  authorized: z.literal(true),
+}).strict();
+
+export const TechnicianPhotoUploadResultSchema = z.object({
+  photoId: z.string(),
+  publicUrl: PublicHttpsUrlSchema,
+  profile: TechnicianProfileSchema,
+});
+
+export type TechnicianPhotoUpload = z.infer<typeof TechnicianPhotoUploadSchema>;
+export type TechnicianPhotoUploadResult = z.infer<typeof TechnicianPhotoUploadResultSchema>;
 
 export const OrderHideResultSchema = z.object({
   orderId: z.string(),

@@ -699,7 +699,9 @@ model TechnicianProfile {
   organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   technicianId    String                  @unique
   technician      User                    @relation("TechnicianProfileOwner", fields: [technicianId], references: [id], onDelete: Cascade)
-  publicName      String
+  publicName      String                  @default("")
+  ageRange        String?
+  version         Int                     @default(0)
   avatarUrl       String?
   galleryUrls     Json                    @default("[]")
   introduction    String                  @default("")
@@ -713,8 +715,25 @@ model TechnicianProfile {
   reviewedAt      DateTime?
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
+  photos          TechnicianPhoto[]
 
   @@index([organizationId, status, updatedAt])
+}
+
+// Only approved profile references are served publicly. Private drafts require
+// owner or organization management authorization; backups include photo bytes.
+model TechnicianPhoto {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     TechnicianProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  digest      String
+  content     Bytes
+  width       Int
+  height      Int
+  createdAt   DateTime          @default(now())
+
+  @@unique([profileId, digest])
+  @@index([profileId, createdAt])
 }
 
 model TechnicianReview {

@@ -134,7 +134,8 @@
 .service-subtitle {
   display: block;
   color: #78847f;
-  font-size: 21rpx;
+  font-size: 25rpx;
+  font-weight: 500;
   margin: 12rpx 0;
 }
 .service-tags {
@@ -143,7 +144,8 @@
   flex-wrap: wrap;
 }
 .service-tags text {
-  font-size: 17rpx;
+  font-size: 21rpx;
+  font-weight: 500;
   color: #80601f;
   background: #f7f0df;
   border-radius: 8rpx;
@@ -700,4 +702,92 @@ checkbox {
   font-size: 58rpx;
   color: #b48b48;
   margin-bottom: 18rpx;
+}
+.coupon-link {
+  color: #14865d;
+  font-size: 24rpx;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.coupon-summary {
+  display: block;
+  margin-top: 20rpx;
+  padding: 18rpx;
+  border-radius: 14rpx;
+  background: #e8f7ef;
+  color: #166d4d;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+.coupon-error,
+.coupon-unavailable {
+  display: block;
+  color: #a65342;
+  font-size: 23rpx;
+  margin-top: 10rpx;
+}
+.coupon-mask {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  background: #163d3299;
+  display: flex;
+  align-items: flex-end;
+}
+.coupon-sheet {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 30rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 32rpx 32rpx 0 0;
+  background: #fff;
+  animation: coupon-slide-in 180ms ease-out;
+}
+.coupon-scroll {
+  max-height: 50vh;
+}
+.coupon-option {
+  margin: 18rpx 0 0;
+  padding: 20rpx 24rpx;
+  border: 2rpx solid transparent;
+  border-radius: 20rpx;
+  color: #285145;
+  background: #edf8f2;
+  text-align: left;
+  line-height: 1.6;
+}
+.coupon-option.selected {
+  border-color: #16a873;
+  background: #ddf8e9;
+}
+.coupon-option > text {
+  display: block;
+  font-size: 24rpx;
+  font-weight: 500;
+}
+.coupon-option > text:first-child {
+  font-size: 27rpx;
+  font-weight: 600;
+}
+.coupon-option > view {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+.coupon-value {
+  color: #12986a;
+  font-size: 36rpx;
+  font-weight: 700;
+}
+.coupon-option.unavailable {
+  color: #8c9591;
+  background: #f2f3f2;
+}
+.coupon-option.unavailable .coupon-value {
+  color: #8c9591;
+}
+@keyframes coupon-slide-in {
+  from { transform: translateY(28rpx); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

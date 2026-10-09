@@ -67,6 +67,10 @@ Page({
         wx.showToast({ title: "技师端地址已复制", icon: "success" }),
     });
   },
+  openOwnPhotos() {
+    if (!this.data.result || !requireVerifiedCustomerAccess()) return;
+    wx.navigateTo({ url: "/pages/technician-photos/index" });
+  },
   openStaffLoginConfirmation() {
     wx.navigateTo({ url: "/pages/admin-login/index" });
   },

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const pagePath = "../apps/miniapp/pages/home/index.js";
@@ -123,8 +124,11 @@ test("home keeps actual published catalog prices, orders recommendations and fil
       );
     },
     {
-      reply: (input) =>
-        input.success({ statusCode: 200, data: { data: services } }),
+      reply: (input, path) =>
+        input.success({
+          statusCode: 200,
+          data: { data: path === "/catalog/services" ? services : [] },
+        }),
     },
   );
 });
@@ -173,8 +177,14 @@ test("service selection opens the matching real technician detail; unavailable s
     const page = loadPage();
     page.data.allServices = services;
     page.data.allTherapists = [
-      { id: "actual-tech", services: [{ id: "french", slots: [{}] }] },
+      {
+        id: "actual-tech",
+        bookable: true,
+        publishedProfile: true,
+        services: [{ id: "french", slots: [{}] }],
+      },
     ];
+    page.data.profileCount = 1;
     page.applyCategory();
     page.bookService({ currentTarget: { dataset: { slug: "french" } } });
     assert.equal(
@@ -183,7 +193,7 @@ test("service selection opens the matching real technician detail; unavailable s
     );
     page.bookService({ currentTarget: { dataset: { slug: "tuina" } } });
     assert.equal(navigations.length, 1);
-    assert.deepEqual(toasts, ["该项目暂无可预约技师"]);
+    assert.deepEqual(toasts, ["该项目当前未开放预约时段"]);
   });
 });
 
@@ -266,5 +276,187 @@ test("coupon lookup failure stays retryable and never claims success", async () 
       assert.ok(page.data.newcomerError);
     },
     { reply: (input) => input.fail({ errMsg: "fixture network failure" }) },
+  );
+});
+
+test("no public profiles remains an honest onboarding state and skips unpublishable capacity", async () => {
+  await host(
+    async ({ requests, navigations, toasts }) => {
+      const page = loadPage();
+      await Promise.all([page.loadServices(), page.loadTherapists()]);
+      assert.equal(
+        requests.filter((request) => request.path === "/technicians").length,
+        1,
+      );
+      assert.equal(
+        requests.filter((request) => request.path === "/catalog/services")
+          .length,
+        1,
+      );
+      assert.equal(
+        requests.filter((request) => request.path.startsWith("/availability/"))
+          .length,
+        0,
+      );
+      assert.equal(page.data.profileCount, 0);
+      assert.deepEqual(page.data.therapists, []);
+      assert.equal(page.data.services[0].bookingState, "NO_PROFILE");
+      assert.equal(page.data.services[0].bookingLabel, "技师上线中");
+      page.bookService({ currentTarget: { dataset: { slug: "french" } } });
+      assert.deepEqual(navigations, []);
+      assert.deepEqual(toasts, ["技师资料审核发布后即可预约"]);
+    },
+    {
+      reply(input, path) {
+        input.success({
+          statusCode: 200,
+          data: { data: path === "/catalog/services" ? services : [] },
+        });
+      },
+    },
+  );
+});
+
+test("one project's failed availability cannot hide another real bookable project", async () => {
+  await host(
+    async () => {
+      const page = loadPage();
+      await page.loadServices();
+      assert.equal(page.data.error, "");
+      assert.equal(page.data.therapists.length, 1);
+      assert.equal(
+        page.data.services.find((item) => item.id === "french").bookingState,
+        "AVAILABLE",
+      );
+      assert.equal(
+        page.data.services.find((item) => item.id === "tuina").bookingState,
+        "ERROR",
+      );
+      assert.equal(
+        page.data.services.find((item) => item.id === "ear").bookingState,
+        "NO_SLOTS",
+      );
+      assert.ok(page.data.scheduleError);
+    },
+    {
+      reply(input, path) {
+        if (path.includes("serviceId=tuina"))
+          return input.fail({ errMsg: "fixture schedule failure" });
+        const data =
+          path === "/catalog/services"
+            ? services
+            : path === "/technicians"
+              ? [profile("real-tech")]
+              : path.includes("serviceId=french")
+                ? [
+                    {
+                      therapistId: "real-tech",
+                      startsAt: "2099-01-01T00:00:00.000Z",
+                      endsAt: "2099-01-01T02:00:00.000Z",
+                    },
+                  ]
+                : [];
+        input.success({ statusCode: 200, data: { data } });
+      },
+    },
+  );
+});
+
+test("refresh invalidates stale bookability immediately and a failed reload cannot retain it", async () => {
+  let rejectCatalog;
+  await host(
+    async ({ navigations, toasts }) => {
+      const page = loadPage();
+      page.data.allServices = services;
+      page.data.allTherapists = [
+        {
+          id: "old-tech",
+          bookable: true,
+          publishedProfile: true,
+          services: [{ id: "french", slots: [{}] }],
+        },
+      ];
+      page.data.profileCount = 1;
+      page.applyCategory();
+      assert.equal(
+        page.data.services.find((item) => item.id === "french").bookingState,
+        "AVAILABLE",
+      );
+      const pending = page.loadServices();
+      assert.equal(page.data.services[0].bookingState, "LOADING");
+      assert.equal(page.data.services[0].therapistId, "");
+      page.bookService({ currentTarget: { dataset: { slug: "french" } } });
+      assert.deepEqual(navigations, []);
+      assert.deepEqual(toasts, ["正在更新可约状态，请稍候"]);
+      rejectCatalog();
+      await pending;
+      assert.equal(page.data.services[0].bookingState, "ERROR");
+      assert.equal(page.data.services[0].bookableCount, 0);
+    },
+    {
+      reply(input, path) {
+        if (path === "/catalog/services")
+          rejectCatalog = () =>
+            input.fail({ errMsg: "fixture reload failure" });
+        else
+          input.success({
+            statusCode: 200,
+            data: { data: [profile("old-tech")] },
+          });
+      },
+    },
+  );
+});
+
+test("project binding checks all bookable technicians, not only the first eight displayed cards", async () => {
+  await host(async () => {
+    const page = loadPage();
+    page.data.allServices = services;
+    page.data.profileCount = 9;
+    page.data.allTherapists = Array.from({ length: 9 }, (_, index) => ({
+      id: `tech-${index}`,
+      bookable: true,
+      publishedProfile: true,
+      services: [{ id: index === 8 ? "french" : "ear", slots: [{}] }],
+    }));
+    page.data.therapists = page.data.allTherapists.slice(0, 8);
+    page.applyCategory();
+    assert.equal(
+      page.data.services.find((item) => item.id === "french").therapistId,
+      "tech-8",
+    );
+    assert.equal(
+      page.data.services.find((item) => item.id === "french").bookingState,
+      "AVAILABLE",
+    );
+  });
+});
+
+test("project duration and selling points retain readable larger and heavier text", () => {
+  const homeStyles = readFileSync(
+    new URL("../apps/miniapp/pages/home/index.wxss", import.meta.url),
+    "utf8",
+  );
+  const serviceStyles = readFileSync(
+    new URL("../apps/miniapp/pages/services/index.wxss", import.meta.url),
+    "utf8",
+  );
+  const sharedStyles = readFileSync(
+    new URL("../apps/miniapp/app.wxss", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    homeStyles,
+    /\.service-sub\s*\{[^}]*font-size:\s*22rpx[^}]*font-weight:\s*600/,
+  );
+  assert.match(
+    homeStyles,
+    /\.service-facts text\s*\{[^}]*font-size:\s*20rpx[^}]*font-weight:\s*600/,
+  );
+  assert.match(serviceStyles, /\.card-desc\{font-size:22rpx;font-weight:600/);
+  assert.match(serviceStyles, /\.meta\{font-size:21rpx;font-weight:600/);
+  assert.match(
+    sharedStyles,
+    /\.compliance-note\{font-size:24rpx;font-weight:500/,
   );
 });

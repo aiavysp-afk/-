@@ -11,6 +11,7 @@ import {
 } from "./technicians.controller.js";
 import { TechnicianInvitationsService } from "./technician-invitations.service.js";
 import { TechniciansService } from "./technicians.service.js";
+import { TechnicianPhotoService } from "./technician-photo.service.js";
 
 @Module({
   imports: [AuthModule],
@@ -23,7 +24,7 @@ import { TechniciansService } from "./technicians.service.js";
     AdminTechnicianReviewsController,
     TechnicianReviewsController,
   ],
-  providers: [TechniciansService, TechnicianInvitationsService],
+  providers: [TechniciansService, TechnicianInvitationsService, TechnicianPhotoService],
   exports: [TechniciansService],
 })
 export class TechniciansModule {}

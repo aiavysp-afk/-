@@ -3,17 +3,21 @@ import {
   type PublicTherapistDetailView,
 } from "../../utils/therapists";
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
+import { canUploadOwnTechnicianPhotos, refreshOwnTechnicianPhotoAccess } from "../../utils/technician-photos";
 
 Page({
   data: {
     error: "",
     loading: true,
+    canUploadOwnPhotos: false,
     therapist: null as PublicTherapistDetailView | null,
     selectedServiceSlug: "",
     selectedServiceName: "",
   },
   async onLoad(options: { id?: string; slug?: string }) {
     if (!requireVerifiedCustomerAccess()) return;
+    this.setData({ canUploadOwnPhotos: canUploadOwnTechnicianPhotos() });
+    void refreshOwnTechnicianPhotoAccess().then((allowed) => this.setData({ canUploadOwnPhotos: allowed })).catch(() => this.setData({ canUploadOwnPhotos: false }));
     if (!options.id) {
       this.setData({ error: "缺少技师参数", loading: false });
       return;
@@ -52,6 +56,10 @@ Page({
   },
   back() {
     wx.navigateBack({ delta: 1 });
+  },
+  openOwnPhotos() {
+    if (!requireVerifiedCustomerAccess() || !this.data.canUploadOwnPhotos) return;
+    wx.navigateTo({ url: "/pages/technician-photos/index" });
   },
   book(event: { currentTarget: { dataset: { slug: string } } }) {
     const therapist = this.data.therapist;

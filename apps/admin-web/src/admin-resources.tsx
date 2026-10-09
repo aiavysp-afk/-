@@ -21,6 +21,7 @@ import type {
   TechnicianInvitationCreated,
   TechnicianProfile,
   TechnicianProfileUpdate,
+  TechnicianPhotoUploadResult,
 } from "@zydj/contracts";
 import {
   adminTechnicianProfilePaths,
@@ -29,6 +30,7 @@ import {
   reviewStatusLabels,
   splitProfileList,
 } from "./technician-profile";
+import { loadTechnicianPhotoPreview, prepareTechnicianPhoto } from "./technician-photo";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -178,8 +180,8 @@ export function TechniciansWorkspace({
 
   async function createInvitation() {
     const publicName = inviteName.trim();
-    if (publicName.length < 2 || inviteBusy) {
-      setError("请填写2至40字的客户端公开称呼");
+    if ((publicName.length > 0 && publicName.length < 2) || inviteBusy) {
+      setError("公开称呼可留空，填写时需2至40字");
       return;
     }
     setInviteBusy(true);
@@ -265,7 +267,7 @@ export function TechniciansWorkspace({
           <input
             maxLength={40}
             value={inviteName}
-            placeholder="填写客户端公开称呼"
+            placeholder="公开称呼可留空，后续补录"
             onChange={(event) => setInviteName(event.target.value)}
           />
           <button
@@ -303,7 +305,7 @@ export function TechniciansWorkspace({
           {invitations.slice(0, 12).map((invitation) => (
             <div key={invitation.id}>
               <span>
-                <strong>{invitation.publicName}</strong>
+                <strong>{invitation.publicName || "姓名待补录的技师邀请"}</strong>
                 <small>
                   {invitation.status === "CLAIMED"
                     ? `已由 ${invitation.claimedDisplayName ?? "已验证账号"} 认领`
@@ -414,6 +416,7 @@ function AdminTechnicianProfilePanel({
   onClose: () => void;
 }) {
   const [profile, setProfile] = useState<TechnicianProfile | null>(null);
+  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<TechnicianProfileUpdate | null>(null);
   const [reviews, setReviews] = useState<AdminTechnicianReview[]>([]);
   const [loading, setLoading] = useState(false);
@@ -451,6 +454,35 @@ function AdminTechnicianProfilePanel({
 
   useEffect(() => void load(), [load]);
 
+  useEffect(() => {
+    let active = true;
+    const blobUrls: string[] = [];
+    const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter((url): url is string => Boolean(url));
+    void Promise.all(urls.map(async (url) => {
+      const preview = await loadTechnicianPhotoPreview(url, API_BASE_URL, profilePath, token);
+      if (preview.startsWith("blob:")) blobUrls.push(preview);
+      return [url, preview] as const;
+    })).then((entries) => {
+      if (active) setPhotoPreviews(Object.fromEntries(entries));
+      else blobUrls.forEach((url) => URL.revokeObjectURL(url));
+    }).catch(() => { blobUrls.forEach((url) => URL.revokeObjectURL(url)); if (active) setError("照片预览读取失败，请刷新后重试"); });
+    return () => { active = false; blobUrls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [profile, profilePath, token]);
+
+  async function uploadPhoto(file: File | undefined, kind: "AVATAR" | "GALLERY") {
+    if (!file || saving) return;
+    if (!window.confirm("确认已取得该技师本人照片授权？照片会同步统一后台，需单独审核/发布后才向客户展示。不要上传身份证或证件号码。")) return;
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const base64 = await prepareTechnicianPhoto(file);
+      const result = await request<TechnicianPhotoUploadResult>(`${profilePath}/photos`, token, { kind, base64, authorized: true });
+      setProfile(result.profile);
+      setDraft((current) => ({ ...current, ...(kind === "AVATAR" ? { avatarUrl: result.publicUrl } : { galleryUrls: result.profile.galleryUrls }) }));
+      setMessage("照片已保存并同步技师端；公开状态待审核/发布，姓名和年龄段可留空。");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "照片上传失败"); }
+    finally { setSaving(false); }
+  }
+
   async function saveProfile(showConfirmation = true) {
     if (!draft || saving) return null;
     setSaving(true);
@@ -476,9 +508,10 @@ function AdminTechnicianProfilePanel({
   }
 
   async function runWorkflowAction(
-    action: "approve" | "publish" | "unpublish",
+    action: "submit-review" | "approve" | "publish" | "unpublish",
   ) {
     const labels = {
+      "submit-review": "确认已保存并查看最新照片和真实资料，提交后台审核？姓名、年龄段可后补。",
       approve: "确认资料内容与真人授权、资质核验结果一致并通过审核？",
       publish: "确认将这份资料公开给客户端客户查看？",
       unpublish: "确认暂停公开这份技师资料？",
@@ -496,7 +529,9 @@ function AdminTechnicianProfilePanel({
       setProfile(value);
       setDraft(profileUpdateFrom(value));
       setMessage(
-        action === "approve"
+        action === "submit-review"
+          ? "最新资料已提交审核，审核通过并单独发布后才会对客户公开。"
+          : action === "approve"
           ? "审核已通过，仍需单独发布才会对客户公开。"
           : action === "publish"
             ? "资料已公开，客户端将读取同一份资料。"
@@ -567,7 +602,7 @@ function AdminTechnicianProfilePanel({
         <>
           <div className="profile-admin-summary">
             {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} alt={`${profile.publicName}的公开头像`} />
+              <img src={photoPreviews[profile.avatarUrl] || profile.avatarUrl} alt="本人授权的技师照片" />
             ) : (
               <div className="resource-icon"><UserRound size={22} /></div>
             )}
@@ -586,7 +621,7 @@ function AdminTechnicianProfilePanel({
           <div className="profile-admin-layout">
             <div className="profile-admin-form">
               <label>
-                客户端公开称呼
+                客户端公开称呼（可留空）
                 <input
                   maxLength={40}
                   value={draft.publicName ?? ""}
@@ -594,6 +629,18 @@ function AdminTechnicianProfilePanel({
                     setDraft((current) => current ? { ...current, publicName: event.target.value } : current)
                   }
                 />
+              </label>
+              <label>
+                年龄段（可留空，后续补录）
+                <select value={draft.ageRange ?? ""} onChange={(event) => setDraft((current) => current ? { ...current, ageRange: (event.target.value || null) as TechnicianProfileUpdate["ageRange"] } : current)}>
+                  <option value="">暂不填写/不展示</option>
+                  <option value="18-23岁">18-23岁</option><option value="24-29岁">24-29岁</option><option value="30-39岁">30-39岁</option><option value="40岁及以上">40岁及以上</option>
+                </select>
+              </label>
+              <label>
+                上传头像照片
+                <input type="file" accept="image/jpeg,image/png" disabled={saving} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadPhoto(file, "AVATAR"); }} />
+                <small>自动压缩去定位信息；不上传证件。旧地址录入功能继续保留。</small>
               </label>
               <label>
                 头像 HTTPS 地址
@@ -653,6 +700,11 @@ function AdminTechnicianProfilePanel({
                 />
               </label>
               <label className="profile-admin-wide">
+                添加详情相册照片（最多12张）
+                <input type="file" accept="image/jpeg,image/png" disabled={saving || (draft.galleryUrls?.length ?? 0) >= 12} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadPhoto(file, "GALLERY"); }} />
+                <div className="profile-admin-gallery">{(profile.galleryUrls ?? []).map((url) => <img key={url} src={photoPreviews[url] || url} alt="本人授权的相册照片" style={{ width: 90, height: 120, objectFit: "cover", borderRadius: 10, margin: 5 }} />)}</div>
+              </label>
+              <label className="profile-admin-wide">
                 已核验资质展示名称（每行一项）
                 <textarea
                   rows={4}
@@ -667,6 +719,13 @@ function AdminTechnicianProfilePanel({
               <div className="profile-admin-actions profile-admin-wide">
                 <button className="ghost-action" disabled={saving} onClick={() => void saveProfile()}>
                   {saving ? "保存中…" : "保存修改"}
+                </button>
+                <button
+                  className="ghost-action"
+                  disabled={saving || (profile.status !== "DRAFT" && profile.status !== "REJECTED")}
+                  onClick={() => void runWorkflowAction("submit-review")}
+                >
+                  提交最新资料审核
                 </button>
                 <button
                   className="primary-action compact"

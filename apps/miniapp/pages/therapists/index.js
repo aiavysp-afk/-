@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
+const technician_photos_1 = require("../../utils/technician-photos");
 const therapists_1 = require("../../utils/therapists");
 Page({
     data: {
@@ -20,6 +21,7 @@ Page({
             { key: "ORDERS", label: "服务单量" },
         ],
         loading: false,
+        canUploadOwnPhotos: false,
         selectedTherapist: null,
         therapists: [],
         visibleTherapists: [],
@@ -30,6 +32,8 @@ Page({
     async onShow() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
+        this.setData({ canUploadOwnPhotos: (0, technician_photos_1.canUploadOwnTechnicianPhotos)() });
+        void (0, technician_photos_1.refreshOwnTechnicianPhotoAccess)().then((allowed) => this.setData({ canUploadOwnPhotos: allowed })).catch(() => this.setData({ canUploadOwnPhotos: false }));
         await this.load();
     },
     async load() {
@@ -51,6 +55,11 @@ Page({
         finally {
             this.setData({ loading: false });
         }
+    },
+    openOwnPhotos() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)() || !this.data.canUploadOwnPhotos)
+            return;
+        wx.navigateTo({ url: "/pages/technician-photos/index" });
     },
     selectFilter(event) {
         this.setData({ activeFilter: event.currentTarget.dataset.key });

@@ -124,16 +124,28 @@ const loadPublicTherapists = async () => {
     ]);
     if (profiles.some((profile) => profile.freeTravelFee !== true || profile.travelFeeFen !== 0))
         throw new Error("技师出行费配置异常，已阻止下单");
+    if (!profiles.length)
+        return [];
     const today = shanghaiDate(0);
     const tomorrow = shanghaiDate(1);
-    const rows = await Promise.all(services.map(async (service) => {
+    const results = await Promise.allSettled(services.map(async (service) => {
         const [todaySlots, tomorrowSlots] = await Promise.all([
             (0, api_1.api)(`/availability/slots?serviceId=${encodeURIComponent(service.id)}&date=${today}`),
             (0, api_1.api)(`/availability/slots?serviceId=${encodeURIComponent(service.id)}&date=${tomorrow}`),
         ]);
         return { service, today: todaySlots, tomorrow: tomorrowSlots };
     }));
-    return (0, exports.buildPublicTherapists)(rows, profiles);
+    const rows = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    const incomplete = results.some((result) => result.status === "rejected");
+    if (services.length && !rows.length)
+        throw new Error("项目排班读取失败，请重新加载");
+    return (0, exports.buildPublicTherapists)(rows, profiles).map((therapist) => !therapist.bookable && incomplete
+        ? {
+            ...therapist,
+            statusLabel: "排班待确认",
+            earliestLabel: "排班读取不完整",
+        }
+        : therapist);
 };
 exports.loadPublicTherapists = loadPublicTherapists;
 const loadPublicTherapist = async (technicianId) => {

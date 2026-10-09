@@ -6,7 +6,34 @@ declare function Component<T extends object>(options: T): void;
 declare function getApp<T extends object>(): T;
 declare function setInterval(handler: () => void, timeout?: number): number;
 declare function clearInterval(handle: number): void;
+
+declare function setTimeout(handler: () => void, timeout?: number): number;
+
+declare function clearTimeout(handle: number): void;
 declare const wx: {
+  chooseMedia(options: {
+    count: number; mediaType: ["image"]; sourceType: ("album" | "camera")[]; sizeType: ("compressed" | "original")[];
+    success(result: { tempFiles: { tempFilePath: string; size: number }[] }): void;
+    fail(error: { errMsg: string }): void;
+  }): void;
+  compressImage(options: {
+    src: string; quality: number; compressedWidth?: number;
+    success(result: { tempFilePath: string }): void;
+    fail(error: { errMsg: string }): void;
+  }): void;
+  getFileSystemManager(): {
+    readFile(options: {
+      filePath: string; encoding: "base64";
+      success(result: { data: string }): void;
+      fail(error: { errMsg: string }): void;
+    }): void;
+  };
+  downloadFile(options: {
+    url: string; header?: Record<string, string>;
+    success(result: { statusCode: number; tempFilePath: string }): void;
+    fail(error: { errMsg: string }): void;
+  }): void;
+  previewImage(options: { current?: string; urls: string[] }): void;
   getLocation(options: {
     type: "gcj02";
     isHighAccuracy?: boolean;

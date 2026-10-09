@@ -24,11 +24,12 @@
     <view class="therapist-stream">
       <view wx:for="{{therapists}}" wx:key="id" class="therapist-card" data-id="{{item.id}}" bindtap="openTherapist">
         <view class="therapist-portrait"><image wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill"/><view wx:else class="portrait-placeholder"><view class="portrait-head"/><view class="portrait-body"/></view><text class="therapist-status">{{item.statusLabel}}</text></view>
-        <view class="therapist-copy"><text class="therapist-name">{{item.alias}}</text><view class="therapist-tags"><text wx:if="{{item.express}}" class="express-tag">极速达</text><text>免出行费</text></view><text class="therapist-rating">{{item.ratingLabel}}</text><text class="therapist-next">最早 {{item.earliestLabel}}</text><view class="therapist-action">查看技师 <text>›</text></view></view>
+        <view class="therapist-copy"><text wx:if="{{item.alias}}" class="therapist-name">{{item.alias}}</text><view class="therapist-tags"><text wx:if="{{item.express}}" class="express-tag">极速达</text><text>免出行费</text></view><text class="therapist-rating">{{item.ratingLabel}}</text><text class="therapist-next">最早 {{item.earliestLabel}}</text><view class="therapist-action">查看技师 <text>›</text></view></view>
       </view>
     </view>
   </scroll-view>
-  <view wx:else class="empty-state"><view class="empty-calendar"><view/><view/><text>◇</text></view><text>暂无可预约技师</text><text>新技师完成审核与排班后将在这里展示</text></view>
+  <view wx:else class="empty-state"><view class="empty-calendar"><view/><view/><text>◇</text></view><text>{{scheduleError?'排班暂未读取完整':profileCount?'预约时段待开放':'技师上线准备中'}}</text><text>{{scheduleError?'点击重新读取，确认最新可约时间':profileCount?'公开技师完成排班后即可预约':'个人照片、资料审核和真实排班完成后展示'}}</text><button wx:if="{{scheduleError}}" bindtap="retryServices">重新读取排班</button></view>
+  <view wx:if="{{scheduleError && therapists.length}}" class="schedule-notice"><text>{{scheduleError}}</text><text bindtap="retryServices">重试 ›</text></view>
 
   <view class="section-head"><view><text class="section-title">推荐项目</text><text class="section-desc">选好项目，查看可服务技师</text></view><text class="section-more" bindtap="openServices">全部项目 ›</text></view>
   <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
@@ -36,7 +37,7 @@
   <view wx:elif="{{services.length}}" class="service-list">
     <view wx:for="{{services}}" wx:key="id" class="service-card {{item.bookableCount?'':'awaiting-schedule'}}" data-slug="{{item.slug}}" bindtap="bookService">
       <view class="service-visual {{item.tone}} {{item.artwork}}"><view class="visual-orbit"/><view class="visual-stone"/><view class="visual-leaf"/><text>{{item.badge || item.categoryLabel}}</text><text class="visual-caption">CARE AT HOME</text></view>
-      <view class="service-main"><view class="service-heading"><text>{{item.name}}</text><text>{{item.bookableCount?'可预约':'暂不可约'}}</text></view><text class="service-sub">{{item.subtitle}}</text><view class="service-facts"><text>{{item.duration}}</text><text>免出行费</text></view><view class="service-bottom"><view><text>项目费用</text><text><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">/次</text></text></view><view class="service-action {{item.bookableCount?'':'muted'}}">{{item.bookableCount?'选技师 ›':'暂无可约'}}</view></view></view>
+      <view class="service-main"><view class="service-heading"><text>{{item.name}}</text><text>{{item.bookingLabel}}</text></view><text class="service-sub">{{item.subtitle}}</text><view class="service-facts"><text>{{item.duration}}</text><text>免出行费</text></view><view class="service-bottom"><view><text>项目费用</text><text><text class="currency">¥</text><text class="amount">{{item.price}}</text><text class="unit">/次</text></text></view><view class="service-action {{item.bookableCount?'':'muted'}}">{{item.bookingAction}}</view></view></view>
     </view>
   </view>
   <view wx:else class="empty-state service-empty"><view class="empty-calendar"><view/><view/><text>◇</text></view><text>该分类暂无已上架项目</text><text>可切换其他分类，查看更多正规服务</text></view>

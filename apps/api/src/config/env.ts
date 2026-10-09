@@ -17,6 +17,8 @@ const EnvSchema = z.object({
     ),
   BRAND_NAME: z.string().default("中原到家"),
   SERVICE_CITY: z.string().trim().min(2).max(32).default("郑州市"),
+  // Empty disables photo uploads. Use an HTTPS /v1 URL on the API origin.
+  TECHNICIAN_PHOTO_PUBLIC_BASE_URL: z.union([z.literal(""), z.string().trim().url().refine((value) => value.startsWith("https://") && new URL(value).pathname === "/v1" && !new URL(value).search && !new URL(value).hash, "照片公开地址须为 HTTPS API /v1 地址")]).default(""),
   WECHAT_MINIAPP_APP_ID: z.string().default("wxab76ea213eb6d01a"),
   WECHAT_MINIAPP_SECRET: z.string().default(""),
   WECHAT_OFFICIAL_ACCOUNT_ID: z.string().default("gh_a4b5f9d63539"),

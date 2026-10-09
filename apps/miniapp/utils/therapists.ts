@@ -210,9 +210,10 @@ export const loadPublicTherapists = async () => {
     )
   )
     throw new Error("技师出行费配置异常，已阻止下单");
+  if (!profiles.length) return [];
   const today = shanghaiDate(0);
   const tomorrow = shanghaiDate(1);
-  const rows = await Promise.all(
+  const results = await Promise.allSettled(
     services.map(async (service): Promise<ServiceAvailability> => {
       const [todaySlots, tomorrowSlots] = await Promise.all([
         api<AvailabilitySlot[]>(
@@ -225,7 +226,21 @@ export const loadPublicTherapists = async () => {
       return { service, today: todaySlots, tomorrow: tomorrowSlots };
     }),
   );
-  return buildPublicTherapists(rows, profiles);
+  const rows = results.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
+  const incomplete = results.some((result) => result.status === "rejected");
+  if (services.length && !rows.length)
+    throw new Error("项目排班读取失败，请重新加载");
+  return buildPublicTherapists(rows, profiles).map((therapist) =>
+    !therapist.bookable && incomplete
+      ? {
+          ...therapist,
+          statusLabel: "排班待确认",
+          earliestLabel: "排班读取不完整",
+        }
+      : therapist,
+  );
 };
 
 export const loadPublicTherapist = async (

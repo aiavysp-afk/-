@@ -10,7 +10,7 @@
     <view class="service-card">
       <view class="service-art"><view class="stone one"/><view class="stone two"/><text>SPA</text></view>
       <view class="service-copy">
-        <view class="service-heading"><text>{{service.name}}</text><text>可预约</text></view>
+        <view class="service-heading"><text>{{service.name}}</text><text>{{slots.length?'可预约':'请选择可约日期'}}</text></view>
         <text class="service-subtitle">{{service.subtitle}}</text>
         <view class="service-tags"><text wx:if="{{service.badge}}">{{service.badge}}</text><text>{{categoryName}}</text><text>{{service.durationMinutes}}分钟</text></view>
         <view class="service-price"><text>¥</text><text>{{price}}</text><text>/次</text></view>
@@ -25,14 +25,14 @@
     <view class="panel appointment-panel">
       <view class="panel-head"><view><text class="panel-title">上门时间</text><text class="panel-note">仅使用后台真实可预约时段</text></view><text wx:if="{{selectedSlotLabel}}" class="selected-summary">{{date}} {{selectedSlotLabel}}</text></view>
       <view class="mode-tabs">
-        <button class="{{appointmentMode==='soon'?'active':''}}" data-mode="soon" bindtap="setAppointmentMode" disabled="{{!!reservationId}}"><text>尽快上门</text><text>选择今日最早可约</text></button>
-        <button class="{{appointmentMode==='schedule'?'active':''}}" data-mode="schedule" bindtap="setAppointmentMode" disabled="{{!!reservationId}}"><text>预约时间</text><text>选择未来日期时段</text></button>
+        <button class="{{appointmentMode==='soon'?'active':''}}" data-mode="soon" bindtap="setAppointmentMode" disabled="{{busy || orderSubmissionAttempted}}"><text>尽快上门</text><text>选择今日最早可约</text></button>
+        <button class="{{appointmentMode==='schedule'?'active':''}}" data-mode="schedule" bindtap="setAppointmentMode" disabled="{{busy || orderSubmissionAttempted}}"><text>预约时间</text><text>选择未来日期时段</text></button>
       </view>
-      <picker wx:if="{{appointmentMode==='schedule'}}" mode="date" value="{{date}}" start="{{minDate}}" end="{{maxDate}}" bindchange="dateChanged" disabled="{{!!reservationId}}"><view class="date-field"><text>预约日期</text><text>{{date}} ›</text></view></picker>
+      <picker wx:if="{{appointmentMode==='schedule'}}" mode="date" value="{{date}}" start="{{minDate}}" end="{{maxDate}}" bindchange="dateChanged" disabled="{{busy || orderSubmissionAttempted}}"><view class="date-field"><text>预约日期</text><text>{{date}} ›</text></view></picker>
       <text wx:if="{{preferredTherapistId && selected >= 0}}" class="preferred-note">已优先选择该技师的可约时段，你仍可改选</text>
       <text wx:elif="{{preferredTherapistId && slots.length}}" class="preferred-note warning">该技师当日暂无时段，可返回技师页或改选其他可约人员</text>
-      <scroll-view wx:if="{{hourOptions.length}}" class="hour-picker" scroll-x enhanced show-scrollbar="{{false}}"><view><button wx:for="{{hourOptions}}" wx:key="*this" class="{{activeHour===item?'active':''}}" data-hour="{{item}}" bindtap="selectHour" disabled="{{!!reservationId}}">{{item}} 时段</button></view></scroll-view>
-      <view class="slots"><button wx:for="{{visibleSlots}}" wx:key="key" class="{{selected===item.sourceIndex?'selected':''}}" data-index="{{item.sourceIndex}}" bindtap="select" disabled="{{!!reservationId}}">{{item.label}}</button></view>
+      <scroll-view wx:if="{{hourOptions.length}}" class="hour-picker" scroll-x enhanced show-scrollbar="{{false}}"><view><button wx:for="{{hourOptions}}" wx:key="*this" class="{{activeHour===item?'active':''}}" data-hour="{{item}}" bindtap="selectHour" disabled="{{busy || orderSubmissionAttempted}}">{{item}} 时段</button></view></scroll-view>
+      <view class="slots"><button wx:for="{{visibleSlots}}" wx:key="key" class="{{selected===item.sourceIndex?'selected':''}}" data-index="{{item.sourceIndex}}" bindtap="select" disabled="{{busy || orderSubmissionAttempted}}">{{item.label}}</button></view>
       <view wx:if="{{!slots.length}}" class="empty-slot"><text>当前日期暂无可预约时段</text><text>请选择其他日期后再试</text></view>
     </view>
 
@@ -69,14 +69,21 @@
         </view>
       </scroll-view>
       <view wx:if="{{addressBookLoaded && !addressBookLoading && !addressBookError && savedAddresses.length===0}}" class="address-book-empty"><text>暂无已保存地址</text><text bindtap="openAddressManager">去新增 ›</text></view>
-      <input class="field" placeholder="联系人（至少2字）" value="{{contactName}}" data-field="contactName" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="40" />
-      <input class="field" placeholder="下单联系手机号（11位）" type="number" value="{{phone}}" data-field="phone" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="11" />
-      <input class="field" placeholder="手动填写小区/道路，或定位后自动带入" value="{{detail}}" data-field="detail" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="140" />
-      <input class="field" placeholder="楼栋、单元、门牌号" value="{{doorNumber}}" data-field="doorNumber" bindinput="input" disabled="{{orderSubmissionAttempted}}" maxlength="50" />
+      <input class="field" placeholder="联系人（至少2字）" value="{{contactName}}" data-field="contactName" bindinput="input" disabled="{{busy || orderSubmissionAttempted}}" maxlength="40" />
+      <input class="field" placeholder="下单联系手机号（11位）" type="number" value="{{phone}}" data-field="phone" bindinput="input" disabled="{{busy || orderSubmissionAttempted}}" maxlength="11" />
+      <input class="field" placeholder="手动填写小区/道路，或定位后自动带入" value="{{detail}}" data-field="detail" bindinput="input" disabled="{{busy || orderSubmissionAttempted}}" maxlength="140" />
+      <input class="field" placeholder="楼栋、单元、门牌号" value="{{doorNumber}}" data-field="doorNumber" bindinput="input" disabled="{{busy || orderSubmissionAttempted}}" maxlength="50" />
       <view wx:if="{{addressSuggestionAvailable}}" class="address-actions"><button bindtap="locateAddress" loading="{{locationBusy}}" disabled="{{locationBusy || orderSubmissionAttempted}}">⌖ 高德定位当前地址</button><button bindtap="searchAddress" loading="{{suggestionBusy}}" disabled="{{suggestionBusy || orderSubmissionAttempted}}">⌕ 搜索{{serviceCity}}地址</button></view>
       <text wx:if="{{latitude!==null}}" class="coordinate-ok">已取得 GCJ-02 坐标，请核对并补充楼栋门牌</text>
       <text class="map-note">{{latitude!==null?'提交前将再次核验服务范围':'手动填写后，提交时会自动用高德识别坐标并核验服务范围'}}</text>
       <view wx:if="{{suggestions.length}}" class="suggestions"><button wx:for="{{suggestions}}" wx:key="id" data-index="{{index}}" bindtap="selectAddress" disabled="{{orderSubmissionAttempted}}"><text>{{item.title}}</text><text>{{item.address}}</text></button></view>
+    </view>
+
+    <view class="panel coupon-panel">
+      <view class="panel-head"><view><text class="panel-title">优惠券</text><text class="panel-note">已领取的优惠券自动按项目费门槛抵扣</text></view><text class="coupon-link" bindtap="openCoupons">选择优惠券 ›</text></view>
+      <text class="coupon-summary">{{quoteLoading?'正在核对可用优惠…':couponSummary}}</text>
+      <text class="panel-note">不可用券会标注原因；是否适用及最终减免以服务器报价为准。</text>
+      <text wx:if="{{couponsError}}" class="coupon-error">{{couponsError}}</text>
     </view>
 
     <view class="panel boundary-panel">
@@ -86,20 +93,37 @@
     </view>
 
     <view class="panel price-panel">
-      <view class="panel-head"><view><text class="panel-title">价格明细</text><text class="panel-note">最终金额由服务器核价，不使用前端估算</text></view><text class="quote-badge">{{quoteDetails?'已核价':'待核价'}}</text></view>
-      <view class="price-row"><text>服务项目费</text><text>¥{{quoteDetails?quoteDetails.serviceAmount:price}}</text></view>
+      <view class="panel-head"><view><text class="panel-title">价格明细</text><text class="panel-note">最终金额由服务器核价，不使用前端估算</text></view><text class="quote-badge">{{quoteLoading?'实时更新中':quoteDetails?'服务器实付':'请选择预约时段'}}</text></view>
+      <view class="price-row"><text>服务项目费</text><text>{{quoteDetails?'¥'+quoteDetails.serviceAmount:'—'}}</text></view>
       <view class="price-row"><text>出行费</text><text class="free-travel">免出行费（¥0.00）</text></view>
-      <view class="price-row discount"><text>优惠减免</text><text>{{quoteDetails?'-¥'+quoteDetails.discount:'待优惠模块接入'}}</text></view>
-      <view class="price-total"><text>应付合计</text><view><text>¥</text><text>{{quoteDetails?quoteDetails.payable:price}}</text></view></view>
-      <text wx:if="{{!quoteDetails}}" class="quote-tip">填写完整预约信息后，先点击下方按钮获取服务器正式报价。</text>
+      <view class="price-row discount"><text>优惠减免</text><text>{{quoteDetails?'-¥'+quoteDetails.discount:'—'}}</text></view>
+      <view class="price-total"><text>最终实付</text><view><text wx:if="{{quoteDetails}}">¥</text><text>{{quoteDetails?quoteDetails.payable:'—'}}</text></view></view>
+      <text wx:if="{{!quoteDetails}}" class="quote-tip">{{quoteLoading?'正在向服务器读取最终实付金额…':'选择可预约时段后自动更新正式报价；提交前还会核验服务地址。'}}</text>
+      <text wx:if="{{quoteError}}" class="error">{{quoteError}}</text>
     </view>
 
     <text class="error" wx:if="{{error}}">{{error}}</text>
-    <button wx:if="{{!quoteDetails}}" class="primary action" bindtap="prepareOrder" loading="{{busy}}" disabled="{{busy || !slots.length}}">{{reservationId?'重新获取服务器报价':'核对订单与价格'}}</button>
-    <button wx:else class="primary action" bindtap="create" loading="{{busy}}" disabled="{{busy}}">{{orderSubmissionAttempted?'使用原幂等键重试提交':'提交订单并支付 · ¥'+quoteDetails.payable}}</button>
+    <button wx:if="{{!quoteDetails}}" class="primary action" bindtap="prepareOrder" loading="{{busy || quoteLoading}}" disabled="{{busy || quoteLoading || !slots.length}}">{{reservationId?'重新获取服务器报价':'核对订单与价格'}}</button>
+    <button wx:else class="primary action" bindtap="create" loading="{{busy}}" disabled="{{busy || quoteLoading}}">{{orderSubmissionAttempted?'使用原幂等键重试提交':'提交订单并支付 · ¥'+quoteDetails.payable}}</button>
     <text class="payment-note">提交成功后将立即打开微信支付；支付结果只以微信支付通知和服务器原单查询为准。</text>
     <navigator class="help-link" url="/pages/profile/index" open-type="switchTab">需要帮助？前往“我的”联系客服 ›</navigator>
     <view class="safe-bottom" />
   </view>
   <view wx:else class="loading-state"><view class="loading-mark">✦</view><text>{{error || '正在读取服务详情…'}}</text></view>
+  <view wx:if="{{couponPickerOpen}}" class="coupon-mask" bindtap="closeCoupons">
+    <view class="coupon-sheet" catchtap="ignoreTap">
+      <view class="panel-head"><text class="panel-title">选择优惠券</text><text class="coupon-link" bindtap="closeCoupons">关闭 ✕</text></view>
+      <button class="coupon-option {{couponChoice==='auto'?'selected':''}}" data-id="auto" bindtap="chooseCoupon" disabled="{{busy || orderSubmissionAttempted}}"><text>自动选择最高可用优惠</text><text>按项目费金额由服务器匹配</text></button>
+      <button class="coupon-option {{couponChoice==='none'?'selected':''}}" data-id="none" bindtap="chooseCoupon" disabled="{{busy || orderSubmissionAttempted}}"><text>本单不使用优惠券</text></button>
+      <text wx:if="{{couponsLoading}}" class="panel-note">正在读取账户优惠券…</text>
+      <text wx:if="{{couponsError}}" class="coupon-error">{{couponsError}}</text>
+      <scroll-view class="coupon-scroll" scroll-y>
+        <button wx:for="{{coupons}}" wx:key="id" class="coupon-option {{!item.eligible?'unavailable':''}} {{couponChoice===item.id?'selected':''}}" data-id="{{item.id}}" bindtap="chooseCoupon" disabled="{{!item.eligible || busy || orderSubmissionAttempted}}">
+          <view><text class="coupon-value">¥{{item.amount}}</text><text>{{item.title}}</text></view>
+          <text>{{item.threshold}}</text><text>{{item.scope}}</text><text>有效期至 {{item.validity}}</text><text wx:if="{{item.reason}}" class="coupon-unavailable">{{item.reason}}</text>
+        </button>
+        <view wx:if="{{!couponsLoading && !couponsError && !coupons.length}}" class="empty-slot"><text>暂无已领取的优惠券</text><text>可返回首页领取新人优惠券后使用</text></view>
+      </scroll-view>
+    </view>
+  </view>
 </view>

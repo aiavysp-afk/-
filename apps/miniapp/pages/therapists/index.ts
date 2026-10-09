@@ -1,4 +1,5 @@
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
+import { canUploadOwnTechnicianPhotos, refreshOwnTechnicianPhotoAccess } from "../../utils/technician-photos";
 import {
   loadPublicTherapists,
   type PublicTherapistView,
@@ -23,6 +24,7 @@ Page({
       { key: "ORDERS", label: "服务单量" },
     ],
     loading: false,
+    canUploadOwnPhotos: false,
     selectedTherapist: null as PublicTherapistView | null,
     therapists: [] as PublicTherapistView[],
     visibleTherapists: [] as PublicTherapistView[],
@@ -32,6 +34,8 @@ Page({
   },
   async onShow() {
     if (!requireVerifiedCustomerAccess()) return;
+    this.setData({ canUploadOwnPhotos: canUploadOwnTechnicianPhotos() });
+    void refreshOwnTechnicianPhotoAccess().then((allowed) => this.setData({ canUploadOwnPhotos: allowed })).catch(() => this.setData({ canUploadOwnPhotos: false }));
     await this.load();
   },
   async load() {
@@ -50,6 +54,10 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+  openOwnPhotos() {
+    if (!requireVerifiedCustomerAccess() || !this.data.canUploadOwnPhotos) return;
+    wx.navigateTo({ url: "/pages/technician-photos/index" });
   },
   selectFilter(event: {
     currentTarget: {

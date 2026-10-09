@@ -38,6 +38,7 @@ export function profileDraftFrom(
 ): TechnicianProfileDraft {
   return {
     publicName: profile.publicName,
+    ...(profile.ageRange !== undefined ? { ageRange: profile.ageRange } : {}),
     avatarUrl: profile.avatarUrl,
     galleryUrls: profile.galleryUrls,
     introduction: profile.introduction,

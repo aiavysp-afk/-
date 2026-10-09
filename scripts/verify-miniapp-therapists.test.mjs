@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 const require = createRequire(import.meta.url);
 const {
   buildPublicTherapists,
+  loadPublicTherapists,
 } = require("../apps/miniapp/utils/therapists.js");
 
 const service = (id, slug, name, priceFen = 19_800) => ({
@@ -103,6 +104,99 @@ test("availability without an approved public profile is not exposed", () => {
     },
   ]);
   assert.deepEqual(therapists, []);
+});
+
+test("a blank optional public name remains blank and never exposes an internal display name", () => {
+  const entry = profile("tech-a", "");
+  entry.displayName = "private legal name";
+  const [technician] = buildPublicTherapists([], [entry]);
+  assert.equal(technician.alias, "");
+  assert.notEqual(technician.alias, entry.displayName);
+});
+
+const withPublicApi = async (reply, callback) => {
+  const oldWx = globalThis.wx;
+  const oldApp = globalThis.getApp;
+  globalThis.getApp = () => ({
+    globalData: { apiBaseUrl: "https://public.fixture.test/v1" },
+  });
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    removeStorageSync() {},
+    request(input) {
+      reply(input, input.url.replace("https://public.fixture.test/v1", ""));
+    },
+  };
+  try {
+    await callback();
+  } finally {
+    globalThis.wx = oldWx;
+    globalThis.getApp = oldApp;
+  }
+};
+
+test("technician detail loading keeps healthy real schedules when another project fails", async () => {
+  await withPublicApi(
+    (input, path) => {
+      if (path.includes("serviceId=svc-b"))
+        return input.fail({ errMsg: "fixture failure" });
+      const data =
+        path === "/technicians"
+          ? [profile("tech-a", ""), profile("tech-b", "")]
+          : path === "/catalog/services"
+            ? [service("svc-a", "a", "项目A"), service("svc-b", "b", "项目B")]
+            : [slot("tech-a", "2099-01-01T00:00:00.000Z")];
+      input.success({ statusCode: 200, data: { data } });
+    },
+    async () => {
+      const technicians = await loadPublicTherapists();
+      assert.equal(
+        technicians.find((item) => item.id === "tech-a").bookable,
+        true,
+      );
+      const incomplete = technicians.find((item) => item.id === "tech-b");
+      assert.equal(incomplete.bookable, false);
+      assert.equal(incomplete.statusLabel, "排班待确认");
+      assert.equal(incomplete.earliestLabel, "排班读取不完整");
+    },
+  );
+});
+
+test("a full schedule outage is an error, not a fabricated unbookable status", async () => {
+  await withPublicApi(
+    (input, path) => {
+      if (path.startsWith("/availability/"))
+        return input.fail({ errMsg: "fixture outage" });
+      input.success({
+        statusCode: 200,
+        data: {
+          data:
+            path === "/technicians"
+              ? [profile("tech-a", "")]
+              : [service("svc-a", "a", "项目A")],
+        },
+      });
+    },
+    async () => {
+      await assert.rejects(loadPublicTherapists(), /项目排班读取失败/);
+    },
+  );
+});
+
+test("unsafe travel fees block discovery rather than showing a false free-travel claim", async () => {
+  const entry = profile("tech-a", "");
+  entry.travelFeeFen = 100;
+  await withPublicApi(
+    (input, path) => {
+      input.success({
+        statusCode: 200,
+        data: { data: path === "/technicians" ? [entry] : [] },
+      });
+    },
+    async () => {
+      await assert.rejects(loadPublicTherapists(), /出行费配置异常/);
+    },
+  );
 });
 
 test("technician pages disclose missing public data instead of hard-coding claims", () => {

@@ -6,7 +6,7 @@ import type {
 } from "@zydj/contracts";
 
 type AdminReviewStatus = AdminTechnicianReview["status"];
-type AdminProfileAction = "approve" | "publish" | "unpublish";
+type AdminProfileAction = "submit-review" | "approve" | "publish" | "unpublish";
 type AdminReviewAction = "publish" | "hide";
 
 export function adminTechnicianProfilePaths(
@@ -63,6 +63,7 @@ export function profileUpdateFrom(
 ): TechnicianProfileUpdate {
   return {
     publicName: profile.publicName,
+    ...(profile.ageRange !== undefined ? { ageRange: profile.ageRange } : {}),
     avatarUrl: profile.avatarUrl,
     galleryUrls: profile.galleryUrls,
     introduction: profile.introduction,

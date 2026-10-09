@@ -1,11 +1,12 @@
 <view class="detail-page">
   <view class="nav"><text bindtap="back">‹</text><text>技师详情</text><view/></view>
+  <button wx:if="{{canUploadOwnPhotos}}" class="own-photo-entry" bindtap="openOwnPhotos">管理本人技师照片 ›</button>
   <view wx:if="{{loading}}" class="detail-state">正在读取真实排班…</view>
   <view wx:elif="{{error}}" class="detail-state error">{{error}}</view>
   <view wx:elif="{{therapist}}">
     <view class="profile-hero">
       <view class="portrait tone-{{therapist.avatarIndex}}"><image wx:if="{{therapist.avatarUrl}}" src="{{therapist.avatarUrl}}" mode="aspectFill"/><block wx:else><view class="head"/><view class="body"/></block></view>
-      <view class="profile-copy"><view><text class="name">{{therapist.alias}}</text><text class="status {{therapist.statusTone}}">{{therapist.statusLabel}}</text></view><view class="tags"><text wx:for="{{therapist.tags}}" wx:key="*this">{{item}}</text></view><text class="earliest">最早可约 {{therapist.earliestLabel}}</text></view>
+      <view class="profile-copy"><view><text wx:if="{{therapist.alias}}" class="name">{{therapist.alias}}</text><text class="status {{therapist.statusTone}}">{{therapist.statusLabel}}</text></view><view class="tags"><text wx:for="{{therapist.tags}}" wx:key="*this">{{item}}</text></view><text class="earliest">最早可约 {{therapist.earliestLabel}}</text></view>
     </view>
     <view class="summary"><view><text>{{therapist.ratingLabel}}</text><text>用户评价</text></view><view><text>{{therapist.completedOrdersLabel}}</text><text>已完成订单</text></view><view><text>{{therapist.yearsExperienceLabel}}</text><text>从业年限</text></view></view>
     <view class="section"><text class="section-title">技师简介</text><text class="section-body">{{therapist.profile}}</text></view>

@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import {
   MembershipStatus,
   OrderStatus,
@@ -17,18 +18,23 @@ import type {
   AdminTechnicianReview,
   TechnicianProfile,
   TechnicianProfileUpdate,
+  TechnicianPhotoUpload,
+  TechnicianPhotoUploadResult,
   TechnicianReview,
   TechnicianReviewCreate,
 } from "@zydj/contracts";
 import { AccessControlService } from "../auth/access-control.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
+import { MAX_TECHNICIAN_PHOTO_COUNT, TechnicianPhotoService } from "./technician-photo.service.js";
 
 type ProfileRecord = {
   id: string;
   organizationId: string;
   technicianId: string;
   publicName: string;
+  ageRange?: string | null;
+  version?: number;
   avatarUrl: string | null;
   galleryUrls: Prisma.JsonValue;
   introduction: string;
@@ -46,6 +52,7 @@ export class TechniciansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: AccessControlService,
+    private readonly photos?: TechnicianPhotoService,
   ) {}
 
   async listPublic(): Promise<TechnicianProfile[]> {
@@ -132,6 +139,7 @@ export class TechniciansService {
       principal.displayName,
     );
     const data = this.profileUpdateData(input);
+    data.version = { increment: 1 };
     data.status = TechnicianProfileStatus.DRAFT;
     data.rejectionReason = null;
     data.reviewedById = null;
@@ -183,6 +191,94 @@ export class TechniciansService {
     return this.toProfile(updated, false);
   }
 
+  async uploadOwnPhoto(principal: AuthPrincipal, input: TechnicianPhotoUpload): Promise<TechnicianPhotoUploadResult> {
+    const membership = await this.getOwnMembership(principal);
+    const current = await this.ensureProfile(membership.organizationId, principal.userId, principal.displayName);
+    return this.savePhoto(principal, current, input, false);
+  }
+
+  async uploadAdminPhoto(principal: AuthPrincipal, organizationId: string, technicianId: string, input: TechnicianPhotoUpload): Promise<TechnicianPhotoUploadResult> {
+    const current = await this.getAuthorizedProfile(principal, organizationId, technicianId);
+    return this.savePhoto(principal, current, input, true);
+  }
+
+  async getPublicPhoto(technicianId: string, photoId: string) {
+    const profile = await this.getPublicProfileRecord(technicianId);
+    const photo = await this.prisma.technicianPhoto.findFirst({ where: { id: photoId, profileId: profile.id } });
+    const urls = [profile.avatarUrl, ...this.stringArray(profile.galleryUrls, "相册")];
+    const expectedPath = `/v1/technicians/${encodeURIComponent(technicianId)}/photos/${encodeURIComponent(photoId)}`;
+    if (!photo || !urls.some((url) => url && new URL(url).pathname === expectedPath)) {
+      throw new NotFoundException("照片未公开或已从资料中移除");
+    }
+    return photo;
+  }
+
+  async getOwnPhoto(principal: AuthPrincipal, photoId: string) {
+    const membership = await this.getOwnMembership(principal);
+    return this.getPrivatePhoto(membership.organizationId, principal.userId, photoId);
+  }
+
+  async getAdminPhoto(principal: AuthPrincipal, organizationId: string, technicianId: string, photoId: string) {
+    this.access.assertPermission(principal, "technicians.manage", organizationId);
+    await this.getTechnicianMembership(organizationId, technicianId);
+    return this.getPrivatePhoto(organizationId, technicianId, photoId);
+  }
+
+  private async getPrivatePhoto(organizationId: string, technicianId: string, photoId: string) {
+    const photo = await this.prisma.technicianPhoto.findFirst({
+      where: { id: photoId, profile: { organizationId, technicianId } },
+    });
+    if (!photo) throw new NotFoundException("本人照片不存在");
+    return photo;
+  }
+
+  private async savePhoto(principal: AuthPrincipal, current: ProfileRecord, input: TechnicianPhotoUpload, adminView: boolean): Promise<TechnicianPhotoUploadResult> {
+    if (!this.photos) throw new InternalServerErrorException("照片服务未就绪");
+    const candidateId = randomUUID();
+    // Validate configuration before accepting or processing any photo bytes.
+    this.photos.publicUrl(current.technicianId, candidateId);
+    const normalized = await this.photos.normalize(input.base64);
+    const photos = this.photos;
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "TechnicianProfile" WHERE "id" = ${current.id} FOR UPDATE`;
+      const locked = await tx.technicianProfile.findUniqueOrThrow({ where: { id: current.id } });
+      let photo = await tx.technicianPhoto.findUnique({ where: { profileId_digest: { profileId: current.id, digest: normalized.digest } } });
+      if (!photo) {
+        const [count, recentCount] = await Promise.all([
+          tx.technicianPhoto.count({ where: { profileId: current.id } }),
+          tx.technicianPhoto.count({ where: { profileId: current.id, createdAt: { gte: new Date(Date.now() - 60_000) } } }),
+        ]);
+        if (count >= MAX_TECHNICIAN_PHOTO_COUNT) throw new ForbiddenException("照片存储已达24张上限，请联系管理员整理历史照片");
+        if (recentCount >= 6) throw new ForbiddenException("照片上传过于频繁，请一分钟后重试");
+        photo = await tx.technicianPhoto.create({ data: { id: candidateId, profileId: current.id, ...normalized } });
+      }
+      const publicUrl = photos.publicUrl(current.technicianId, photo.id);
+      const gallery = this.stringArray(locked.galleryUrls, "相册");
+      if (input.kind === "GALLERY" && !gallery.includes(publicUrl) && gallery.length >= 12) {
+        throw new ForbiddenException("公开相册最多12张，请先移除不再展示的照片");
+      }
+      // All new photos invalidate any previous review, including admin uploads.
+      const status = TechnicianProfileStatus.DRAFT;
+      const record = await tx.technicianProfile.update({
+        where: { id: current.id },
+        data: {
+          ...(input.kind === "AVATAR" ? { avatarUrl: publicUrl } : { galleryUrls: [...new Set([...gallery, publicUrl])] }),
+          status, rejectionReason: null, version: { increment: 1 },
+          reviewedById: null, reviewedAt: null,
+        },
+        include: { technician: { select: { displayName: true } } },
+      });
+      await tx.auditLog.create({ data: {
+        actorId: principal.userId, organizationId: current.organizationId,
+        action: adminView ? "TECHNICIAN_PHOTO_ADMIN_UPLOADED" : "TECHNICIAN_PHOTO_SELF_UPLOADED",
+        resourceType: "TechnicianPhoto", resourceId: photo.id,
+        metadata: { kind: input.kind, previousStatus: locked.status, status, width: photo.width, height: photo.height },
+      } });
+      return { photoId: photo.id, publicUrl, record };
+    });
+    return { photoId: result.photoId, publicUrl: result.publicUrl, profile: await this.toProfile(result.record, false) };
+  }
+
   async getAdminProfile(
     principal: AuthPrincipal,
     organizationId: string,
@@ -227,18 +323,17 @@ export class TechniciansService {
     );
     const updated = await this.prisma.$transaction(async (tx) => {
       const data = this.profileUpdateData(input);
-      if (current.status === TechnicianProfileStatus.PUBLISHED) {
-        data.status = TechnicianProfileStatus.APPROVED;
-        data.rejectionReason = null;
-        data.reviewedById = principal.userId;
-        data.reviewedAt = new Date();
-      }
+      data.version = { increment: 1 };
+      data.status = TechnicianProfileStatus.DRAFT;
+      data.rejectionReason = null;
+      data.reviewedById = null;
+      data.reviewedAt = null;
       const changed = await tx.technicianProfile.updateMany({
-        where: { id: current.id, status: current.status },
+        where: { id: current.id, status: current.status, version: current.version ?? 0 },
         data,
       });
       if (changed.count !== 1) {
-        throw new ConflictException("技师资料审核状态已变化");
+        throw new ConflictException("技师资料内容或审核状态已变化，请刷新后重新操作");
       }
       const record = await tx.technicianProfile.findUniqueOrThrow({
         where: { id: current.id },
@@ -260,6 +355,17 @@ export class TechniciansService {
       });
       return record;
     });
+    return this.toProfile(updated, false);
+  }
+
+  async submitAdminProfile(principal: AuthPrincipal, organizationId: string, technicianId: string): Promise<TechnicianProfile> {
+    const current = await this.getAuthorizedProfile(principal, organizationId, technicianId);
+    if (current.status === TechnicianProfileStatus.PENDING_REVIEW) return this.toProfile(current, false);
+    if (current.status !== TechnicianProfileStatus.DRAFT && current.status !== TechnicianProfileStatus.REJECTED) {
+      throw new ConflictException("当前资料状态不能重复提交审核");
+    }
+    this.assertProfileComplete(current);
+    const updated = await this.changeStatus(principal, current, TechnicianProfileStatus.PENDING_REVIEW, "TECHNICIAN_PROFILE_ADMIN_SUBMITTED");
     return this.toProfile(updated, false);
   }
 
@@ -617,7 +723,8 @@ export class TechniciansService {
       create: {
         organizationId,
         technicianId,
-        publicName: displayName,
+        // Do not copy a potentially private account name into public profiles.
+        publicName: "",
       },
       update: {},
       include: { technician: { select: { displayName: true } } },
@@ -654,6 +761,7 @@ export class TechniciansService {
   ): Prisma.TechnicianProfileUncheckedUpdateInput {
     const data: Prisma.TechnicianProfileUncheckedUpdateInput = {};
     if (input.publicName !== undefined) data.publicName = input.publicName;
+    if (input.ageRange !== undefined) data.ageRange = input.ageRange;
     if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl;
     if (input.galleryUrls !== undefined) data.galleryUrls = input.galleryUrls;
     if (input.introduction !== undefined)
@@ -675,16 +783,17 @@ export class TechniciansService {
   ): Promise<ProfileRecord> {
     return this.prisma.$transaction(async (tx) => {
       const changed = await tx.technicianProfile.updateMany({
-        where: { id: current.id, status: current.status },
+        where: { id: current.id, status: current.status, version: current.version ?? 0 },
         data: {
           status,
+          version: { increment: 1 },
           rejectionReason: null,
           reviewedById: reviewed ? principal.userId : null,
           reviewedAt: reviewed ? new Date() : null,
         },
       });
       if (changed.count !== 1) {
-        throw new ConflictException("技师资料审核状态已变化");
+        throw new ConflictException("技师资料内容或审核状态已变化，请刷新后重新审核");
       }
       const updated = await tx.technicianProfile.findUniqueOrThrow({
         where: { id: current.id },
@@ -706,12 +815,11 @@ export class TechniciansService {
 
   private assertProfileComplete(profile: ProfileRecord) {
     if (
-      !profile.publicName.trim() ||
       !profile.avatarUrl ||
       !profile.introduction.trim() ||
       !this.stringArray(profile.specialties, "擅长项目").length
     ) {
-      throw new ForbiddenException("公开昵称、头像、简介和擅长项目填写完整后才能提交");
+      throw new ForbiddenException("头像、真实简介和擅长项目填写完整后才能提交；公开称呼和年龄段可留空");
     }
   }
 
@@ -750,6 +858,7 @@ export class TechniciansService {
       technicianId: profile.technicianId,
       displayName: publicView ? profile.publicName : profile.technician.displayName,
       publicName: profile.publicName,
+      ageRange: (profile.ageRange ?? null) as TechnicianProfile["ageRange"],
       avatarUrl: profile.avatarUrl,
       galleryUrls: this.stringArray(profile.galleryUrls, "相册"),
       introduction: profile.introduction,

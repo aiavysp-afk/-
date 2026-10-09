@@ -79,6 +79,16 @@ test("production release verifies the exact API process before switching the tec
   assert.doesNotMatch(deploy, /ln -sfn/);
 });
 
+test("production photo decoder is verified before backup, migrations and switches", () => {
+  const decoder = deploy.indexOf('import sharp from "sharp";');
+  assert.ok(decoder > deploy.indexOf('"$pnpm_bin" --filter @zydj/api build'));
+  assert.ok(decoder < deploy.indexOf('backup="$base/backups/'));
+  assert.ok(decoder < deploy.indexOf("prisma migrate deploy"));
+  assert.ok(deploy.includes('cd "$release/apps/api"'));
+  assert.ok(deploy.includes('metadata.format !== "jpeg"'));
+  assert.ok(deploy.includes("limitInputPixels: 4"));
+});
+
 test("production rollback verifies links, service cwd and DB-backed health", () => {
   for (const expected of [
     'restore_current_link "$previous_web" "$web_base/current"',

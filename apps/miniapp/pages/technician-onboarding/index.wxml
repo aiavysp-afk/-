@@ -17,6 +17,7 @@
     <text class="card-title">身份认领成功</text>
     <text>{{result.organizationName}} · {{result.publicName}}</text>
     <text class="note">当前资料仍是草稿，不会向客户公开。请进入技师端，使用同一微信账号登录并填写本人头像、介绍和资质；后台审核通过并单独发布后才会展示。</text>
+    <button bindtap="openOwnPhotos">先上传本人照片</button>
     <button bindtap="copyWorkbenchAddress">复制技师端地址</button>
     <button class="secondary" bindtap="openStaffLoginConfirmation">技师端已显示配对码，前往确认登录</button>
   </view>

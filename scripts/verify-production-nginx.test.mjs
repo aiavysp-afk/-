@@ -192,7 +192,7 @@ test("production nginx exposes the exact customer refund and safety incident met
 
 test("production nginx keeps public technician reads separate from authenticated writes", () => {
   const publicProfiles = assertAllowedMethods(
-    "~ ^/v1/technicians(?:/[^/]+(?:/reviews)?)?$",
+    "~ ^/v1/technicians(?:/[^/]+(?:/reviews|/photos/[A-Za-z0-9-]+)?)?$",
     ["GET"],
   );
   assert.doesNotMatch(publicProfiles, /admin|workbench|orders/);
@@ -210,6 +210,15 @@ test("production nginx keeps public technician reads separate from authenticated
 
   assert.doesNotMatch(config, /location\s+\/v1\/technicians\s*\{/);
   assert.doesNotMatch(config, /technician\/workbench\/profile\/\.\*/);
+});
+
+test("production photo upload and preview routes keep owner/admin authorization fences", () => {
+  assertAllowedMethods("= /v1/technician/workbench/profile/photos", ["POST", "OPTIONS"]);
+  assertAllowedMethods("~ ^/v1/technician/workbench/profile/photos/[A-Za-z0-9-]+$", ["GET", "OPTIONS"]);
+  assertAllowedMethods("~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/photos$", ["POST", "OPTIONS"]);
+  assertAllowedMethods("~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/photos/[A-Za-z0-9-]+$", ["GET", "OPTIONS"]);
+  assert.ok(config.includes("if ($zydj_admin_request_denied) { return 403; }"));
+  assert.match(config, /client_max_body_size 1m;/);
 });
 
 test("production nginx exposes technician invitations without broadening technician APIs", () => {
@@ -236,7 +245,7 @@ test("production nginx exposes exact authenticated admin profile and review mode
     ["GET", "PATCH", "OPTIONS"],
   );
   assertAllowedMethods(
-    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/(?:approve|publish|unpublish)$",
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/(?:submit-review|approve|publish|unpublish)$",
     ["POST", "OPTIONS"],
   );
   assertAllowedMethods(

@@ -2,10 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const therapists_1 = require("../../utils/therapists");
 const auth_1 = require("../../utils/auth");
+const technician_photos_1 = require("../../utils/technician-photos");
 Page({
     data: {
         error: "",
         loading: true,
+        canUploadOwnPhotos: false,
         therapist: null,
         selectedServiceSlug: "",
         selectedServiceName: "",
@@ -14,6 +16,8 @@ Page({
         var _a, _b;
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
+        this.setData({ canUploadOwnPhotos: (0, technician_photos_1.canUploadOwnTechnicianPhotos)() });
+        void (0, technician_photos_1.refreshOwnTechnicianPhotoAccess)().then((allowed) => this.setData({ canUploadOwnPhotos: allowed })).catch(() => this.setData({ canUploadOwnPhotos: false }));
         if (!options.id) {
             this.setData({ error: "缺少技师参数", loading: false });
             return;
@@ -52,6 +56,11 @@ Page({
     },
     back() {
         wx.navigateBack({ delta: 1 });
+    },
+    openOwnPhotos() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)() || !this.data.canUploadOwnPhotos)
+            return;
+        wx.navigateTo({ url: "/pages/technician-photos/index" });
     },
     book(event) {
         const therapist = this.data.therapist;

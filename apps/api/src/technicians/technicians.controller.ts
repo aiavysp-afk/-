@@ -6,12 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from "@nestjs/common";
 import {
   TechnicianInvitationClaimSchema,
   TechnicianInvitationCreateSchema,
   TechnicianProfileUpdateSchema,
+  TechnicianPhotoUploadSchema,
   TechnicianReviewCreateSchema,
 } from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
@@ -19,6 +21,16 @@ import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { TechnicianInvitationsService } from "./technician-invitations.service.js";
 import { TechniciansService } from "./technicians.service.js";
+import type { FastifyReply } from "fastify";
+
+function sendPhoto(reply: FastifyReply, content: Uint8Array) {
+  return reply.type("image/jpeg")
+    .header("Cache-Control", "private, no-store")
+    .header("X-Content-Type-Options", "nosniff")
+    .header("Content-Security-Policy", "default-src 'none'")
+    .header("Cross-Origin-Resource-Policy", "cross-origin")
+    .send(Buffer.from(content));
+}
 
 @Controller("technician-invitations")
 @UseGuards(SessionAuthGuard)
@@ -103,6 +115,12 @@ export class PublicTechniciansController {
     return { data, meta: { total: data.length } };
   }
 
+  @Get(":technicianId/photos/:photoId")
+  async photo(@Param("technicianId") technicianId: string, @Param("photoId") photoId: string, @Res() reply: FastifyReply) {
+    const photo = await this.technicians.getPublicPhoto(technicianId, photoId);
+    return sendPhoto(reply, photo.content);
+  }
+
   @Get(":technicianId")
   async get(@Param("technicianId") technicianId: string) {
     return { data: await this.technicians.getPublic(technicianId) };
@@ -134,6 +152,19 @@ export class TechnicianProfileController {
   @Post("submit-review")
   async submit(@CurrentPrincipal() principal: AuthPrincipal) {
     return { data: await this.technicians.submitOwnProfile(principal) };
+  }
+
+  @Post("photos")
+  async uploadPhoto(@CurrentPrincipal() principal: AuthPrincipal, @Body() body: unknown) {
+    const parsed = TechnicianPhotoUploadSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("请选择本人授权的JPG或PNG照片，单张不超过512KB");
+    return { data: await this.technicians.uploadOwnPhoto(principal, parsed.data) };
+  }
+
+  @Get("photos/:photoId")
+  async photo(@CurrentPrincipal() principal: AuthPrincipal, @Param("photoId") photoId: string, @Res() reply: FastifyReply) {
+    const photo = await this.technicians.getOwnPhoto(principal, photoId);
+    return sendPhoto(reply, photo.content);
   }
 }
 
@@ -178,6 +209,11 @@ export class AdminTechnicianProfileController {
     };
   }
 
+  @Post("submit-review")
+  async submit(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string) {
+    return { data: await this.technicians.submitAdminProfile(principal, organizationId, technicianId) };
+  }
+
   @Post("approve")
   async approve(
     @CurrentPrincipal() principal: AuthPrincipal,
@@ -191,6 +227,19 @@ export class AdminTechnicianProfileController {
         technicianId,
       ),
     };
+  }
+
+  @Post("photos")
+  async uploadPhoto(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string, @Body() body: unknown) {
+    const parsed = TechnicianPhotoUploadSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("照片参数无效，请确认照片授权且单张不超过512KB");
+    return { data: await this.technicians.uploadAdminPhoto(principal, organizationId, technicianId, parsed.data) };
+  }
+
+  @Get("photos/:photoId")
+  async photo(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string, @Param("photoId") photoId: string, @Res() reply: FastifyReply) {
+    const photo = await this.technicians.getAdminPhoto(principal, organizationId, technicianId, photoId);
+    return sendPhoto(reply, photo.content);
   }
 
   @Post("publish")

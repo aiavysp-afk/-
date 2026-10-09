@@ -1,3 +1,5 @@
+.own-photo-entry { margin: 18rpx 0 24rpx; border-radius: 42rpx; background: #e5fcf0; color: #007b59; font-size: 30rpx; font-weight: 600; }
+.own-photo-entry::after { border: 1rpx solid #b8ebd6; border-radius: 42rpx; }
 .detail-page {
   min-height: 100vh;
   background: linear-gradient(160deg, #f9f4e9, #eef4f1);
@@ -301,8 +303,9 @@
   color: #24463c;
 }
 .service-head view text:last-child {
-  font-size: 17rpx;
-  color: #967941;
+  font-size: 21rpx;
+  font-weight: 600;
+  color: #77602f;
   margin-top: 5rpx;
 }
 .service-head button {
@@ -311,7 +314,8 @@
   background: #1a463b;
   color: #fff;
   border-radius: 24rpx;
-  font-size: 18rpx;
+  font-size: 22rpx;
+  font-weight: 600;
   line-height: 52rpx;
 }
 .slot-row {
@@ -325,7 +329,8 @@
   border-radius: 18rpx;
   background: #edf5f1;
   color: #28564a;
-  font-size: 17rpx;
+  font-size: 21rpx;
+  font-weight: 500;
 }
 .review-empty {
   height: 150rpx;
