@@ -1,0 +1,46 @@
+# 推荐项目目录增量（2026-10-09）
+
+本次五项价格与时长由用户明确提供。目录仍由 PostgreSQL `Service` 记录统一供客户小程序、技师工作台及管理后台读取；小程序不内置报价。旧项目、原有 ID、订单快照、人员资料及排班不会被本脚本删除或重建。
+
+| 项目     | 价格 |     时长 | 首次创建的 slug    | 数据分类       |
+| -------- | ---: | -------: | ------------------ | -------------- |
+| 法式SPA  | ¥498 | 120 分钟 | french-spa-120     | SPA_RELAXATION |
+| 泰式SPA  | ¥398 | 120 分钟 | thai-spa-120       | SPA_RELAXATION |
+| 通络培元 | ¥298 |  80 分钟 | tongluo-peiyuan-80 | MASSAGE        |
+| 中式推拿 | ¥218 |  60 分钟 | chinese-tuina-60   | MASSAGE        |
+| 非遗采耳 | ¥238 |  70 分钟 | ear-care-70        | MASSAGE        |
+
+页面上的“热门推荐、调理、保健”是展示分组，不新增数据库枚举。采耳使用现有非医疗保健分类；商品名称不代表已取得非遗认证或人员资质。
+
+## 受控更新
+
+脚本 `apps/api/scripts/apply-recommended-catalog.ts` 固定组织为已有的 `org-zhongyuan-production`，要求 `NODE_ENV=production` 及回环地址的 `zhongyuan_daojia` 数据库。未加载环境文件、缺少组织、重复同名项目、稳定 ID/slug 被其他组织占用时停止。错误输出不包含连接串或凭据。
+
+部署完成并确认备份存在后，在服务器既有发布目录及已加载生产环境的受控 shell 中先查看计划：
+
+```sh
+pnpm --filter @zydj/api exec tsx scripts/apply-recommended-catalog.ts
+```
+
+该命令只读数据库，不新增或修改记录。核对输出中的五项价格、时长及原有 ID 后，执行已获授权的增量：
+
+```sh
+CONFIRM_RECOMMENDED_CATALOG=mtsc.top \
+  pnpm --filter @zydj/api exec tsx scripts/apply-recommended-catalog.ts --apply
+```
+
+规则如下：
+
+- 已有稳定 slug、稳定 ID 或同组织唯一同名记录时，复用该记录的 ID 和 slug，仅更新项目资料、用户指定价格与时长、推荐标识和上架状态。
+- 没有匹配记录时，新增五项中的对应记录。
+- 已经完全相同时，输出 `UNCHANGED`，不重复写审计或通知。
+- 一次事务写入目录、`RECOMMENDED_CATALOG_APPLIED` 审计和 `CATALOG_SERVICE_UPDATED` Outbox。失败会回滚整个增量。
+- 不修改订单项冻结的名称、时长和价格，不影响旧订单账务。不添加技师、证书、评价或排班。
+
+完成后重新运行只读命令，五项应全部为 `UNCHANGED`；再核对 `/v1/catalog/services` 和后台“服务项目”的真实价格及时长。
+
+## 当前边界与证据
+
+当前没有技师与项目技能关联表；可预约能力仍来自已有组织、真实审核资料和实际排班。本次没有为任何技师声明新技能或伪造资质。耳部护理等具体项目的技师能力需由运营核对后提供。
+
+本地专项验证 `pnpm --filter @zydj/api exec vitest run src/catalog/recommended-catalog.test.ts` 已运行，5 个测试通过，覆盖指定报价、原 ID/slug 保留、跨组织与歧义拒绝、重复应用不写、目录审计与通知、数据库目标限制。生产脚本尚未执行，真实数据库更新尚未验证。

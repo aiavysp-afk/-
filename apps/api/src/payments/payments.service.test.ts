@@ -226,6 +226,7 @@ describe("PaymentsService", () => {
       payment: paymentRecord(),
     });
     const tx = {
+      customerCoupon: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       $queryRaw: vi.fn().mockResolvedValue([]),
       order: {
         findUniqueOrThrow: vi.fn().mockResolvedValue(order),
@@ -262,6 +263,9 @@ describe("PaymentsService", () => {
       where: { id: "reservation-1", status: ReservationStatus.HOLD },
       data: { status: ReservationStatus.EXPIRED },
     });
+    expect(tx.customerCoupon.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "AVAILABLE", usedOrderId: null }),
+    }));
   });
 
   it("does not expire a real prepay created after the initial mock scan", async () => {

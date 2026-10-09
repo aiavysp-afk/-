@@ -26,6 +26,7 @@ import {
   type WechatQueryResult,
 } from "./wechat-pay.protocol.js";
 import { WechatPaymentsService } from "./wechat-payments.service.js";
+import { releaseOrderCoupon } from "../customer-center/order-coupons.js";
 
 export const RECOVERY_MAX_ATTEMPTS = 12;
 const LEASE_MS = 120_000; // Three bounded channel calls plus DB work fit within this lease.
@@ -391,6 +392,7 @@ export class WechatRecoveryService {
           where: { id: orderId },
           data: { status: OrderStatus.CANCELLED },
         });
+      await releaseOrderCoupon(tx, orderId, now);
       if (payment.order.reservationId)
         await tx.appointmentReservation.updateMany({
           where: {

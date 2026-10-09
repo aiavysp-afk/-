@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import {
   IdempotencyKeySchema,
+  CustomerCenterOrganizationQuerySchema,
   StoredValueRechargeCreateSchema,
 } from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
@@ -46,5 +47,17 @@ export class StoredValueRechargesController {
     @Param("id") rechargeId: string,
   ) {
     return { data: await this.recharges.reconcile(principal, rechargeId) };
+  }
+
+  @Post("first-recharge-reward/claim")
+  async claimReward(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const input = CustomerCenterOrganizationQuerySchema.safeParse(body);
+    if (!input.success) throw new BadRequestException("红包领取参数无效");
+    return {
+      data: await this.recharges.claimFirstRechargeReward(principal, input.data.organizationId),
+    };
   }
 }

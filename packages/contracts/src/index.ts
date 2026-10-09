@@ -177,7 +177,10 @@ export const AddressVerificationSchema = z.object({
 });
 
 export const OrderQuoteRequestSchema = z
-  .object({ reservationId: z.string().trim().min(1).max(128) })
+  .object({
+    reservationId: z.string().trim().min(1).max(128),
+    couponId: z.string().trim().min(1).max(128).nullable().optional(),
+  })
   .strict();
 
 export const OrderCreateSchema = z
@@ -185,6 +188,7 @@ export const OrderCreateSchema = z
     reservationId: z.string().trim().min(1).max(128),
     address: ServiceAddressSchema,
     addressVerificationId: z.string().trim().min(1).max(128).optional(),
+    couponId: z.string().trim().min(1).max(128).nullable().optional(),
   })
   .strict();
 
@@ -211,6 +215,7 @@ export const TechnicianReviewStatusSchema = z.enum([
 
 export const OrderQuoteSchema = z.object({
   reservationId: z.string(),
+  couponId: z.string().nullable().optional(),
   serviceAmountFen: MoneyFenSchema,
   travelFeeFen: MoneyFenSchema,
   discountFen: MoneyFenSchema,
@@ -1043,6 +1048,15 @@ export const CustomerCouponSchema = z.object({
   usedAt: IsoDateTimeSchema.nullable(),
 });
 
+export const NewcomerCouponOfferSchema = z.object({
+  organizationId: z.string(),
+  eligible: z.boolean(),
+  claimed: z.boolean(),
+  reason: z.string(),
+  coupons: z.array(CustomerCouponSchema),
+  idempotentReplay: z.boolean().optional(),
+});
+
 export const StoredValueCardStatusSchema = z.enum(["AVAILABLE", "UNAVAILABLE"]);
 export const StoredValueCardTypeSchema = z.enum([
   "PHYSICAL",
@@ -1078,6 +1092,9 @@ export const CustomerWalletSchema = z.object({
     firstRechargeReward: z.object({
       enabled: z.boolean(),
       reason: z.string(),
+      amountFen: MoneyFenSchema,
+      status: z.enum(["LOCKED", "CLAIMABLE", "CLAIMED", "INELIGIBLE"]),
+      claimedAt: IsoDateTimeSchema.nullable(),
     }),
   }),
   withdrawal: z.object({
@@ -1097,6 +1114,7 @@ export const StoredValueRechargeCreateSchema = z
   .object({
     organizationId: z.string().trim().min(1).max(128).optional(),
     amountFen: z.union([
+      z.literal(28_800),
       z.literal(59_900),
       z.literal(88_800),
       z.literal(119_800),
@@ -1111,6 +1129,12 @@ export const StoredValueRechargeIntentSchema = z.object({
   expiresAt: IsoDateTimeSchema,
   prepayState: z.enum(["NONE", "DISPATCHING", "READY", "UNKNOWN"]),
   wechatPayParameters: WechatPayParametersSchema.optional(),
+});
+export const FirstRechargeRewardClaimSchema = z.object({
+  organizationId: z.string(),
+  amountFen: MoneyFenSchema,
+  balanceFen: MoneyFenSchema,
+  claimedAt: IsoDateTimeSchema,
 });
 export const StoredValueTransactionSchema = z.object({
   id: z.string(),
@@ -1319,9 +1343,7 @@ export type TechnicianInvitationCreate = z.infer<
 export type TechnicianInvitationClaim = z.infer<
   typeof TechnicianInvitationClaimSchema
 >;
-export type TechnicianInvitation = z.infer<
-  typeof TechnicianInvitationSchema
->;
+export type TechnicianInvitation = z.infer<typeof TechnicianInvitationSchema>;
 export type TechnicianInvitationCreated = z.infer<
   typeof TechnicianInvitationCreatedSchema
 >;
@@ -1417,6 +1439,7 @@ export type CustomerCenterOverview = z.infer<
 >;
 export type CustomerCouponStatus = z.infer<typeof CustomerCouponStatusSchema>;
 export type CustomerCoupon = z.infer<typeof CustomerCouponSchema>;
+export type NewcomerCouponOffer = z.infer<typeof NewcomerCouponOfferSchema>;
 export type StoredValueCardStatus = z.infer<typeof StoredValueCardStatusSchema>;
 export type StoredValueCardType = z.infer<typeof StoredValueCardTypeSchema>;
 export type StoredValueCard = z.infer<typeof StoredValueCardSchema>;
@@ -1426,6 +1449,9 @@ export type StoredValueRechargeCreate = z.infer<
 >;
 export type StoredValueRechargeIntent = z.infer<
   typeof StoredValueRechargeIntentSchema
+>;
+export type FirstRechargeRewardClaim = z.infer<
+  typeof FirstRechargeRewardClaimSchema
 >;
 export type StoredValueTransaction = z.infer<
   typeof StoredValueTransactionSchema

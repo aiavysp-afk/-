@@ -217,12 +217,31 @@ export class CustomerCenterService {
         },
       },
       include: {
+        firstRechargeReward: true,
+        recharges: {
+          where: { status: "SUCCEEDED" },
+          orderBy: [
+            { succeededAt: "asc" },
+            { createdAt: "asc" },
+            { id: "asc" },
+          ],
+          select: { id: true, amountFen: true },
+          take: 1,
+        },
         cards: {
           where: cardWhere,
           orderBy: [{ status: "asc" }, { createdAt: "desc" }],
         },
       },
     });
+    const firstRecharge = account?.recharges[0];
+    const reward = account?.firstRechargeReward;
+    const rewardClaimable = Boolean(
+      reward &&
+        !reward.claimedAt &&
+        firstRecharge?.id === reward.rechargeId &&
+        firstRecharge.amountFen === 28_800n,
+    );
     return {
       organizationId,
       balanceFen: this.safeMoney(account?.balanceFen ?? 0n),
@@ -246,13 +265,30 @@ export class CustomerCenterService {
           "true"
             ? "充值金额将在微信支付成功通知验签后入账"
             : "储值充值通道维护中，请稍后再试",
-        plans: [599_00, 888_00, 1_198_00, 2_888_00].map((amountFen) => ({
-          amountFen,
-          label: `充值 ${amountFen / 100} 元`,
-        })),
+        plans: [288_00, 599_00, 888_00, 1_198_00, 2_888_00].map(
+          (amountFen) => ({
+            amountFen,
+            label: `充值 ${amountFen / 100} 元`,
+          }),
+        ),
         firstRechargeReward: {
-          enabled: false,
-          reason: "首充红包须在真实支付回调成功后发放，当前未开放",
+          enabled: rewardClaimable,
+          amountFen: 8_800,
+          status: reward?.claimedAt
+            ? "CLAIMED"
+            : rewardClaimable
+              ? "CLAIMABLE"
+              : firstRecharge
+                ? "INELIGIBLE"
+                : "LOCKED",
+          claimedAt: reward?.claimedAt?.toISOString() ?? null,
+          reason: reward?.claimedAt
+            ? "88 元红包已到账，可在账单明细中查看"
+            : rewardClaimable
+              ? "点击核验首充记录并领取 88 元现金红包到账户余额"
+              : firstRecharge
+                ? "此活动限首次成功充值 288 元的客户参加"
+                : "首次成功充值 288 元后，可手动领取 88 元现金红包到账户余额",
         },
       },
       withdrawal: {

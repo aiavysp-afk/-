@@ -270,24 +270,29 @@ model CustomerCoupon {
   expiresAt           DateTime
   status              CustomerCouponStatus @default(AVAILABLE)
   usedAt              DateTime?
+  sourceCode          String?
+  usedOrderId         String?              @unique
+  usedOrder           Order?               @relation(fields: [usedOrderId], references: [id], onDelete: Restrict)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
+  @@unique([organizationId, customerId, sourceCode])
   @@index([organizationId, customerId, status, expiresAt])
 }
 
 model StoredValueAccount {
-  id             String                   @id @default(cuid())
-  organizationId String
-  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  customerId     String
-  customer       User                     @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  balanceFen     BigInt                   @default(0)
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
-  cards          StoredValueCard[]
-  transactions   StoredValueTransaction[]
-  recharges      StoredValueRecharge[]
+  id                  String                          @id @default(cuid())
+  organizationId      String
+  organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId          String
+  customer            User                            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  balanceFen          BigInt                          @default(0)
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+  cards               StoredValueCard[]
+  transactions        StoredValueTransaction[]
+  recharges           StoredValueRecharge[]
+  firstRechargeReward StoredValueFirstRechargeReward?
 
   @@unique([organizationId, customerId])
   @@index([organizationId, updatedAt])
@@ -309,34 +314,36 @@ model StoredValueCard {
 }
 
 model StoredValueTransaction {
-  id              String               @id @default(cuid())
+  id              String                          @id @default(cuid())
   accountId       String
-  account         StoredValueAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account         StoredValueAccount              @relation(fields: [accountId], references: [id], onDelete: Restrict)
   type            String
   changeFen       BigInt
   balanceAfterFen BigInt
   description     String
-  occurredAt      DateTime             @default(now())
-  rechargeId      String?              @unique
-  recharge        StoredValueRecharge? @relation(fields: [rechargeId], references: [id], onDelete: Restrict)
+  occurredAt      DateTime                        @default(now())
+  rechargeId      String?                         @unique
+  recharge        StoredValueRecharge?            @relation(fields: [rechargeId], references: [id], onDelete: Restrict)
+  rewardId        String?                         @unique
+  reward          StoredValueFirstRechargeReward? @relation(fields: [rewardId], references: [id], onDelete: Restrict)
 
   @@index([accountId, occurredAt])
 }
 
 model StoredValueRecharge {
-  id                    String                    @id @default(cuid())
+  id                    String                          @id @default(cuid())
   organizationId        String
-  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization          Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   customerId            String
-  customer              User                      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer              User                            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   accountId             String
-  account               StoredValueAccount        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account               StoredValueAccount              @relation(fields: [accountId], references: [id], onDelete: Restrict)
   amountFen             BigInt
-  status                StoredValueRechargeStatus @default(PENDING)
-  merchantPaymentNo     String                    @unique
+  status                StoredValueRechargeStatus       @default(PENDING)
+  merchantPaymentNo     String                          @unique
   providerReference     String?
-  providerTransactionId String?                   @unique
-  prepayState           WechatPrepayState         @default(NONE)
+  providerTransactionId String?                         @unique
+  prepayState           WechatPrepayState               @default(NONE)
   prepayRequestedAt     DateTime?
   prepayReadyAt         DateTime?
   prepayFailureCode     String?
@@ -344,13 +351,26 @@ model StoredValueRecharge {
   requestFingerprint    String
   expiresAt             DateTime
   succeededAt           DateTime?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  createdAt             DateTime                        @default(now())
+  updatedAt             DateTime                        @updatedAt
   transaction           StoredValueTransaction?
+  firstRechargeReward   StoredValueFirstRechargeReward?
 
   @@unique([customerId, idempotencyKey])
   @@index([organizationId, status, createdAt])
   @@index([customerId, status, createdAt])
+}
+
+model StoredValueFirstRechargeReward {
+  id          String                  @id @default(cuid())
+  accountId   String                  @unique
+  account     StoredValueAccount      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  rechargeId  String                  @unique
+  recharge    StoredValueRecharge     @relation(fields: [rechargeId], references: [id], onDelete: Restrict)
+  amountFen   BigInt                  @default(8800)
+  claimedAt   DateTime?
+  createdAt   DateTime                @default(now())
+  transaction StoredValueTransaction?
 }
 
 model CustomerFeedback {
@@ -666,6 +686,7 @@ model Order {
   requestFingerprint      String
   safetyIncidents         SafetyIncident[]
   technicianReview        TechnicianReview?
+  appliedCoupon           CustomerCoupon?
 
   @@unique([customerId, idempotencyKey])
   @@index([organizationId, status, appointmentStart])

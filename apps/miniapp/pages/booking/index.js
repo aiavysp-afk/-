@@ -48,6 +48,7 @@ Page({
         reservationId: "",
         orderKey: "",
         quoteDetails: null,
+        quoteCouponId: undefined,
         loggedIn: false,
         phoneVerified: false,
         loginBusy: false,
@@ -512,7 +513,10 @@ Page({
             });
             if (quote.travelFeeFen !== 0)
                 throw new Error("平台承诺技师免出行费，当前报价异常，已阻止提交");
-            this.setData({ quoteDetails: (0, booking_1.quoteDisplay)(quote) });
+            this.setData({
+                quoteDetails: (0, booking_1.quoteDisplay)(quote),
+                quoteCouponId: quote.couponId,
+            });
             wx.showToast({ title: "价格已由服务器核定", icon: "success" });
         }
         catch (error) {
@@ -551,6 +555,7 @@ Page({
             this.setData({ orderSubmissionAttempted: true });
             const order = await (0, api_1.api)("/orders", "POST", {
                 reservationId: this.data.reservationId,
+                couponId: this.data.quoteCouponId,
                 address: {
                     contactName: this.data.contactName.trim(),
                     phone: this.data.phone,

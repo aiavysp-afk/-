@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
@@ -17,6 +18,7 @@ import {
 import type {
   StoredValueRechargeCreate,
   StoredValueRechargeIntent,
+  FirstRechargeRewardClaim,
 } from "@zydj/contracts";
 import { createHash, randomBytes } from "node:crypto";
 import type { AuthPrincipal } from "../auth/auth.types.js";
@@ -25,13 +27,25 @@ import { PrismaService } from "../database/prisma.service.js";
 import { PaymentGatewayService } from "./payment-gateway.service.js";
 import { WechatPayClient } from "./wechat-pay.client.js";
 import {
+  parseWechatQueryTransaction,
   parseWechatTransaction,
   type WechatTransaction,
 } from "./wechat-pay.protocol.js";
 import { WechatPrepayService } from "./wechat-prepay.service.js";
 
 const RECHARGE_WINDOW_MS = 15 * 60 * 1_000;
-const RECHARGE_AMOUNTS = new Set([59_900, 88_800, 119_800, 288_800]);
+const RECHARGE_AMOUNTS = new Set([28_800, 59_900, 88_800, 119_800, 288_800]);
+const FIRST_RECHARGE_AMOUNT_FEN = 28_800n;
+const FIRST_RECHARGE_REWARD_FEN = 8_800n;
+const SUCCESS_ORDER: Prisma.StoredValueRechargeOrderByWithRelationInput[] = [
+  { succeededAt: "asc" },
+  { createdAt: "asc" },
+  { id: "asc" },
+];
+const UNRESOLVED_STATUSES: StoredValueRechargeStatus[] = [
+  StoredValueRechargeStatus.PENDING,
+  StoredValueRechargeStatus.UNKNOWN,
+];
 
 @Injectable()
 export class StoredValueRechargesService {
@@ -92,6 +106,10 @@ export class StoredValueRechargesService {
           create: { organizationId, customerId: principal.userId },
           update: {},
         });
+        await tx.$queryRaw`SELECT "id" FROM "StoredValueAccount" WHERE "id" = ${account.id} FOR UPDATE`;
+        // PostgreSQL CURRENT_TIMESTAMP is the transaction start, which may
+        // predate a claim while waiting for this lock. Stamp only after locking.
+        const createdAt = new Date();
         const created = await tx.storedValueRecharge.create({
           data: {
             organizationId,
@@ -104,6 +122,7 @@ export class StoredValueRechargesService {
             idempotencyKey,
             requestFingerprint: fingerprint,
             expiresAt,
+            createdAt,
           },
         });
         await tx.auditLog.create({
@@ -143,6 +162,7 @@ export class StoredValueRechargesService {
       await this.prisma.storedValueRecharge.updateMany({
         where: {
           id: recharge.id,
+          status: { in: UNRESOLVED_STATUSES },
           prepayState: WechatPrepayState.DISPATCHING,
         },
         data: {
@@ -199,6 +219,138 @@ export class StoredValueRechargesService {
     );
   }
 
+  async claimFirstRechargeReward(
+    principal: AuthPrincipal,
+    requestedOrganizationId?: string,
+  ): Promise<FirstRechargeRewardClaim> {
+    const organizationId = await this.resolveOrganizationId(
+      principal.userId,
+      requestedOrganizationId,
+    );
+    const initial = await this.prisma.storedValueAccount.findUnique({
+      where: {
+        organizationId_customerId: {
+          organizationId,
+          customerId: principal.userId,
+        },
+      },
+    });
+    if (!initial)
+      throw new ConflictException("首次充值 288 元成功后可领取红包");
+
+    // Never hold wallet locks across provider calls. Resolve earlier attempts
+    // before the final locked eligibility check so callback delivery order
+    // cannot turn a later payment into the first payment.
+    const initialReward =
+      await this.prisma.storedValueFirstRechargeReward.findUnique({
+        where: { accountId: initial.id },
+        include: { recharge: true },
+      });
+    if (!initialReward)
+      throw new ConflictException("首次充值 288 元成功后可领取红包");
+    if (!initialReward.claimedAt) {
+      if (!initialReward.recharge.succeededAt)
+        throw new ConflictException("充值支付确认中，请稍后再领取红包");
+      await this.refreshEarlierPendingRecharges(
+        initial.id,
+        this.pendingSuccessCutoff(initialReward.recharge.succeededAt),
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "StoredValueAccount" WHERE "id" = ${initial.id} FOR UPDATE`;
+      const account = await tx.storedValueAccount.findUniqueOrThrow({
+        where: { id: initial.id },
+      });
+      const reward = await tx.storedValueFirstRechargeReward.findUnique({
+        where: { accountId: account.id },
+        include: { recharge: true },
+      });
+      if (
+        account.customerId !== principal.userId ||
+        account.organizationId !== organizationId ||
+        !reward ||
+        reward.amountFen !== FIRST_RECHARGE_REWARD_FEN ||
+        reward.recharge.status !== StoredValueRechargeStatus.SUCCEEDED ||
+        reward.recharge.amountFen !== FIRST_RECHARGE_AMOUNT_FEN ||
+        reward.recharge.accountId !== account.id
+      )
+        throw new ConflictException("首次充值 288 元成功后可领取红包");
+      if (reward.claimedAt) {
+        return {
+          organizationId,
+          amountFen: this.safeMoney(reward.amountFen),
+          balanceFen: this.safeMoney(account.balanceFen),
+          claimedAt: reward.claimedAt.toISOString(),
+        };
+      }
+      const first = await tx.storedValueRecharge.findFirst({
+        where: {
+          accountId: account.id,
+          status: StoredValueRechargeStatus.SUCCEEDED,
+        },
+        orderBy: SUCCESS_ORDER,
+      });
+      if (
+        !first?.succeededAt ||
+        first.id !== reward.rechargeId ||
+        first.amountFen !== FIRST_RECHARGE_AMOUNT_FEN
+      )
+        throw new ConflictException("此活动限首次成功充值 288 元的客户参加");
+      const unresolved = await tx.storedValueRecharge.count({
+        where: {
+          accountId: account.id,
+          status: { in: UNRESOLVED_STATUSES },
+          createdAt: { lte: this.pendingSuccessCutoff(first.succeededAt) },
+        },
+      });
+      if (unresolved)
+        throw new ConflictException("充值支付确认中，请稍后再领取红包");
+      const claimedAt = new Date();
+      const balanceFen = account.balanceFen + reward.amountFen;
+      this.safeMoney(account.balanceFen);
+      this.safeMoney(balanceFen);
+      await tx.storedValueFirstRechargeReward.update({
+        where: { id: reward.id },
+        data: { claimedAt },
+      });
+      await tx.storedValueAccount.update({
+        where: { id: account.id },
+        data: { balanceFen },
+      });
+      await tx.storedValueTransaction.create({
+        data: {
+          accountId: account.id,
+          rewardId: reward.id,
+          type: "FIRST_RECHARGE_REWARD",
+          changeFen: reward.amountFen,
+          balanceAfterFen: balanceFen,
+          description: "首充 288 元现金红包领取",
+          occurredAt: claimedAt,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: principal.userId,
+          organizationId,
+          action: "FIRST_RECHARGE_REWARD_CLAIMED",
+          resourceType: "StoredValueFirstRechargeReward",
+          resourceId: reward.id,
+          metadata: {
+            amountFen: Number(reward.amountFen),
+            rechargeId: reward.rechargeId,
+          },
+        },
+      });
+      return {
+        organizationId,
+        amountFen: this.safeMoney(reward.amountFen),
+        balanceFen: this.safeMoney(balanceFen),
+        claimedAt: claimedAt.toISOString(),
+      };
+    });
+  }
+
   async applyIfPresent(
     transaction: WechatTransaction,
     source: "NOTIFICATION" | "QUERY",
@@ -227,6 +379,8 @@ export class StoredValueRechargesService {
       throw new BadRequestException("微信充值成功时间无效");
 
     await this.prisma.$transaction(async (tx) => {
+      // All wallet writes lock the account before any recharge/reward row.
+      await tx.$queryRaw`SELECT "id" FROM "StoredValueAccount" WHERE "id" = ${initial.accountId} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "StoredValueRecharge" WHERE "id" = ${initial.id} FOR UPDATE`;
       const current = await tx.storedValueRecharge.findUniqueOrThrow({
         where: { id: initial.id },
@@ -243,11 +397,19 @@ export class StoredValueRechargesService {
         ]).has(current.status)
       )
         throw new ConflictException("当前充值状态不能入账");
-      await tx.$queryRaw`SELECT "id" FROM "StoredValueAccount" WHERE "id" = ${current.accountId} FOR UPDATE`;
       const account = await tx.storedValueAccount.findUniqueOrThrow({
         where: { id: current.accountId },
       });
+      if (
+        current.accountId !== initial.accountId ||
+        current.amountFen !== initial.amountFen ||
+        account.customerId !== current.customerId ||
+        account.organizationId !== current.organizationId
+      )
+        throw new ConflictException("充值账户与本地记录不一致");
       const balanceAfterFen = account.balanceFen + current.amountFen;
+      this.safeMoney(account.balanceFen);
+      this.safeMoney(balanceAfterFen);
       await tx.storedValueRecharge.update({
         where: { id: current.id },
         data: {
@@ -272,6 +434,33 @@ export class StoredValueRechargesService {
           occurredAt: succeededAt,
         },
       });
+      const first = await tx.storedValueRecharge.findFirst({
+        where: {
+          accountId: account.id,
+          status: StoredValueRechargeStatus.SUCCEEDED,
+        },
+        orderBy: SUCCESS_ORDER,
+      });
+      if (first?.succeededAt && first.amountFen === FIRST_RECHARGE_AMOUNT_FEN) {
+        const reward = await tx.storedValueFirstRechargeReward.findUnique({
+          where: { accountId: account.id },
+        });
+        if (!reward) {
+          await tx.storedValueFirstRechargeReward.create({
+            data: {
+              accountId: account.id,
+              rechargeId: first.id,
+              amountFen: FIRST_RECHARGE_REWARD_FEN,
+            },
+          });
+        } else if (!reward.claimedAt && reward.rechargeId !== first.id) {
+          // An earlier successful 288 payment may be delivered later.
+          await tx.storedValueFirstRechargeReward.update({
+            where: { id: reward.id },
+            data: { rechargeId: first.id },
+          });
+        }
+      }
       await tx.auditLog.create({
         data: {
           actorId: current.customerId,
@@ -302,19 +491,14 @@ export class StoredValueRechargesService {
     this.client.assertPrepayEnabled();
   }
 
-  private replay(
-    recharge: StoredValueRecharge,
-    requestFingerprint: string,
-  ) {
+  private replay(recharge: StoredValueRecharge, requestFingerprint: string) {
     if (recharge.requestFingerprint !== requestFingerprint)
       throw new ConflictException("幂等键已用于其他充值请求");
     return this.toIntent(recharge);
   }
 
-  private toIntent(
-    recharge: StoredValueRecharge,
-  ): StoredValueRechargeIntent {
-    const amountFen = Number(recharge.amountFen);
+  private toIntent(recharge: StoredValueRecharge): StoredValueRechargeIntent {
+    const amountFen = this.safeMoney(recharge.amountFen);
     const ready =
       recharge.status === StoredValueRechargeStatus.PENDING &&
       recharge.prepayState === WechatPrepayState.READY &&
@@ -336,6 +520,93 @@ export class StoredValueRechargesService {
           }
         : {}),
     };
+  }
+
+  private safeMoney(value: bigint) {
+    const amount = Number(value);
+    if (value < 0n || !Number.isSafeInteger(amount))
+      throw new InternalServerErrorException("账户金额超出可处理范围");
+    return amount;
+  }
+
+  private pendingSuccessCutoff(succeededAt: Date) {
+    // Provider success times normally have second precision. Include the
+    // represented second so an earlier attempt created within that second
+    // cannot be skipped merely because local creation time has milliseconds.
+    return new Date(succeededAt.getTime() + 999);
+  }
+
+  private async refreshEarlierPendingRecharges(
+    accountId: string,
+    cutoff: Date,
+  ) {
+    const pending = await this.prisma.storedValueRecharge.findMany({
+      where: {
+        accountId,
+        status: { in: UNRESOLVED_STATUSES },
+        createdAt: { lte: cutoff },
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 20,
+    });
+    for (const recharge of pending) {
+      try {
+        const transaction = parseWechatQueryTransaction(
+          await this.client.queryTransaction(recharge.merchantPaymentNo),
+          this.client.verifierConfig(),
+        );
+        if (
+          transaction.out_trade_no !== recharge.merchantPaymentNo ||
+          (transaction.amount?.total !== undefined &&
+            BigInt(transaction.amount.total) !== recharge.amountFen)
+        )
+          throw new ConflictException("微信查单结果与充值记录不一致");
+        if (transaction.trade_state === "SUCCESS") {
+          await this.applyIfPresent(
+            parseWechatTransaction(transaction, this.client.verifierConfig()),
+            "QUERY",
+          );
+        } else if (transaction.trade_state === "CLOSED") {
+          // This is a verified read result, never a provider close request.
+          await this.prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT "id" FROM "StoredValueAccount" WHERE "id" = ${accountId} FOR UPDATE`;
+            await tx.$queryRaw`SELECT "id" FROM "StoredValueRecharge" WHERE "id" = ${recharge.id} FOR UPDATE`;
+            const current = await tx.storedValueRecharge.findUniqueOrThrow({
+              where: { id: recharge.id },
+            });
+            if (
+              current.accountId !== accountId ||
+              current.merchantPaymentNo !== transaction.out_trade_no
+            )
+              throw new ConflictException("充值查单记录不一致");
+            if (current.status === StoredValueRechargeStatus.SUCCEEDED)
+              throw new ConflictException("充值查单结果尚未一致");
+            if (UNRESOLVED_STATUSES.includes(current.status)) {
+              await tx.storedValueRecharge.update({
+                where: { id: current.id },
+                data: {
+                  status: StoredValueRechargeStatus.CLOSED,
+                  prepayFailureCode: "QUERY_VERIFIED_CLOSED",
+                },
+              });
+              await tx.auditLog.create({
+                data: {
+                  organizationId: current.organizationId,
+                  action: "STORED_VALUE_RECHARGE_CLOSED_VERIFIED",
+                  resourceType: "StoredValueRecharge",
+                  resourceId: current.id,
+                  metadata: { source: "QUERY" },
+                },
+              });
+            }
+          });
+        } else {
+          throw new ConflictException("充值支付确认中，请稍后再领取红包");
+        }
+      } catch {
+        throw new ConflictException("充值支付确认中，请稍后再领取红包");
+      }
+    }
   }
 
   private async resolveOrganizationId(

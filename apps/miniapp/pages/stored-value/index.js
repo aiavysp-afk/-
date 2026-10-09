@@ -32,6 +32,9 @@ Page({
         rechargeBusy: false,
         selectedRecharge: 0,
         firstRechargeReason: "",
+        firstRechargeStatus: "LOCKED",
+        firstRechargeClaimable: false,
+        firstRechargeBusy: false,
         withdrawalReason: "",
         withdrawalEnabled: false,
         withdrawalRule: "提现金额须为 1000 元的整数倍",
@@ -70,6 +73,8 @@ Page({
                     amount: (0, api_1.money)(plan.amountFen),
                 })),
                 firstRechargeReason: wallet.recharge.firstRechargeReward.reason,
+                firstRechargeStatus: wallet.recharge.firstRechargeReward.status,
+                firstRechargeClaimable: wallet.recharge.firstRechargeReward.enabled,
                 withdrawalReason: wallet.withdrawal.reason,
                 withdrawalEnabled: wallet.withdrawal.enabled,
                 withdrawalRule: `最低 ¥${(0, api_1.money)(wallet.withdrawal.minimumFen)}，且须按 ¥${(0, api_1.money)(wallet.withdrawal.stepFen)} 的整数倍申请；${wallet.withdrawal.reviewRequired ? "需要人工复核" : "无需人工复核"}`,
@@ -117,10 +122,37 @@ Page({
         }
         this.setData({ rechargeOpen: true });
     },
+    rechargeFirst() {
+        const selectedRecharge = this.data.rechargePlans.findIndex((plan) => plan.amountFen === 28800);
+        if (selectedRecharge >= 0)
+            this.setData({ selectedRecharge });
+        this.recharge();
+    },
     closeRecharge() {
         this.setData({ rechargeOpen: false });
     },
     keepRechargeOpen() { },
+    async claimFirstRechargeReward() {
+        if (this.data.firstRechargeBusy || !this.data.firstRechargeClaimable)
+            return;
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
+        this.setData({ firstRechargeBusy: true });
+        try {
+            await (0, api_1.api)("/customer-center/wallet/first-recharge-reward/claim", "POST", { organizationId: (0, customer_center_1.getCustomerCenterOrganizationId)() });
+            await this.load();
+            wx.showToast({ title: "88 元红包已到账", icon: "success" });
+        }
+        catch (error) {
+            wx.showToast({
+                title: error instanceof Error ? error.message : "红包领取失败，请重试",
+                icon: "none",
+            });
+        }
+        finally {
+            this.setData({ firstRechargeBusy: false });
+        }
+    },
     selectRecharge(event) {
         this.setData({
             selectedRecharge: Number(event.currentTarget.dataset.index),

@@ -514,3 +514,438 @@
   color: #477164;
   font-size: 16rpx;
 }
+
+.city-line,
+.city-line > view,
+.newcomer-heading,
+.newcomer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.city-line {
+  margin: 0 2rpx 24rpx;
+  color: #426d5e;
+  font-size: 20rpx;
+  min-height: 54rpx;
+}
+.city-line > view {
+  justify-content: flex-start;
+  max-width: 470rpx;
+  gap: 8rpx;
+}
+.city-line > view > text:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.city-pin {
+  color: #0bad71;
+  font-size: 32rpx;
+}
+.newcomer-panel {
+  border: 2rpx solid #fff;
+  padding: 26rpx 22rpx 22rpx;
+  border-radius: 32rpx;
+  background: linear-gradient(125deg, #0fad74, #13c587 62%, #33dbaa);
+  box-shadow: 0 16rpx 38rpx #12a86e22;
+  color: #fff;
+  animation: home-enter 300ms ease-out;
+}
+.newcomer-heading {
+  align-items: flex-end;
+  margin-bottom: 24rpx;
+}
+.newcomer-heading view text {
+  display: block;
+}
+.newcomer-eyebrow {
+  font-size: 14rpx;
+  letter-spacing: 2rpx;
+  color: #c8fdea;
+  margin-bottom: 7rpx;
+}
+.newcomer-title {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.newcomer-more {
+  flex: none;
+  color: #e8fff7;
+  font-size: 20rpx;
+  padding: 8rpx 0 8rpx 8rpx;
+}
+.coupon-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+}
+.newcomer-coupon {
+  display: flex;
+  align-items: center;
+  gap: 13rpx;
+  min-height: 135rpx;
+  padding: 0 14rpx;
+  border-radius: 18rpx;
+  background: linear-gradient(120deg, #fff, #edfff6);
+  color: #128958;
+  position: relative;
+  box-sizing: border-box;
+}
+.newcomer-coupon:before,
+.newcomer-coupon:after {
+  content: "";
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  position: absolute;
+  left: -8rpx;
+  top: calc(50% - 8rpx);
+  background: #11ba7d;
+}
+.newcomer-coupon:after {
+  left: auto;
+  right: -8rpx;
+  background: #1aca90;
+}
+.coupon-value {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  border-right: 2rpx dashed #b5e3cf;
+  padding-right: 13rpx;
+}
+.coupon-value text:first-child {
+  font-size: 22rpx;
+}
+.coupon-value text:last-child {
+  font-size: 54rpx;
+  line-height: 1.2;
+  font-weight: 800;
+}
+.coupon-description {
+  min-width: 0;
+}
+.coupon-description text {
+  display: block;
+  font-size: 18rpx;
+  line-height: 1.6;
+}
+.coupon-description text:first-child {
+  color: #18513d;
+  font-size: 24rpx;
+  font-weight: 600;
+  margin-bottom: 7rpx;
+}
+.newcomer-footer {
+  gap: 12rpx;
+  margin-top: 22rpx;
+}
+.newcomer-footer > view {
+  flex: 1;
+  min-width: 0;
+}
+.newcomer-footer > view > text {
+  display: block;
+  color: #e0fff2;
+  font-size: 20rpx;
+  line-height: 1.6;
+}
+.newcomer-footer > view > text:last-child {
+  color: #c7fae8;
+  font-size: 18rpx;
+}
+.newcomer-footer button {
+  flex: none;
+  border-radius: 30rpx;
+  color: #079365;
+  background: #fff;
+  font-weight: 700;
+  font-size: 22rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+  margin: 0;
+  box-shadow: 0 8rpx 16rpx #07794f25;
+}
+.newcomer-footer button[disabled] {
+  color: #6d9784;
+  background: #dcf4e9;
+}
+.category-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 30rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  padding: 24rpx 10rpx 0;
+}
+.category-tab {
+  text-align: center;
+  color: #7b8b83;
+  position: relative;
+  padding-bottom: 22rpx;
+}
+.category-tab text {
+  display: block;
+  font-size: 18rpx;
+  line-height: 1.6;
+}
+.category-tab text:first-child {
+  color: #345146;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.category-tab.active text:first-child {
+  color: #079d67;
+  font-weight: 700;
+}
+.category-underline {
+  position: absolute;
+  bottom: 0;
+  left: calc(50% - 26rpx);
+  width: 52rpx;
+  height: 7rpx;
+  border-radius: 9rpx;
+  background: transparent;
+  transition: background 180ms ease;
+}
+.category-tab.active .category-underline {
+  background: #0dc382;
+}
+.therapist-section {
+  padding-top: 32rpx;
+}
+.therapist-scroll {
+  width: 100%;
+}
+.therapist-stream {
+  display: flex;
+  gap: 18rpx;
+  padding-bottom: 10rpx;
+}
+.therapist-card {
+  width: 228rpx;
+  flex: none;
+  background: #fff;
+  border-radius: 26rpx;
+  overflow: hidden;
+  box-shadow: 0 8rpx 18rpx #1e694910;
+  transition: transform 160ms ease;
+}
+.therapist-card:active,
+.service-card:active {
+  transform: scale(0.985);
+}
+.therapist-portrait {
+  height: 240rpx;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(130deg, #e2f6ee, #f6fcf8);
+}
+.therapist-portrait image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.therapist-status {
+  position: absolute;
+  left: 10rpx;
+  bottom: 10rpx;
+  font-size: 18rpx;
+  background: #11b77ee8;
+  border-radius: 18rpx;
+  padding: 5rpx 12rpx;
+  color: #fff;
+}
+.portrait-placeholder {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+.portrait-head {
+  position: absolute;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 50%;
+  background: #c6e9dc;
+  top: 48rpx;
+  left: calc(50% - 38rpx);
+}
+.portrait-body {
+  position: absolute;
+  width: 146rpx;
+  height: 118rpx;
+  border-radius: 75rpx 75rpx 0 0;
+  background: #c6e9dc;
+  left: calc(50% - 73rpx);
+  bottom: -8rpx;
+}
+.therapist-copy {
+  padding: 18rpx 14rpx 14rpx;
+}
+.therapist-name,
+.therapist-rating,
+.therapist-next {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.therapist-name {
+  font-weight: 700;
+  font-size: 28rpx;
+  color: #23473b;
+}
+.therapist-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6rpx;
+  margin: 12rpx 0;
+}
+.therapist-tags text {
+  border-radius: 9rpx;
+  background: #e4fbef;
+  color: #159568;
+  padding: 4rpx 7rpx;
+  font-size: 16rpx;
+}
+.therapist-tags .express-tag {
+  color: #bc7a28;
+  background: #fff3df;
+}
+.therapist-rating {
+  color: #687e71;
+  font-size: 20rpx;
+  margin-bottom: 7rpx;
+}
+.therapist-next {
+  color: #809588;
+  font-size: 18rpx;
+}
+.therapist-action {
+  background: #effaf4;
+  border-radius: 18rpx;
+  padding: 13rpx;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14rpx;
+  color: #098b5e;
+  font-size: 20rpx;
+}
+.empty-state {
+  padding: 30rpx 20rpx;
+  background: #ffffffb8;
+  border: 2rpx solid #fff;
+  border-radius: 28rpx;
+  text-align: center;
+  color: #526e61;
+}
+.empty-state > text {
+  display: block;
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+.empty-state > text:last-child {
+  font-size: 20rpx;
+  color: #7f9689;
+  margin-top: 6rpx;
+}
+.empty-calendar {
+  position: relative;
+  width: 90rpx;
+  height: 77rpx;
+  border: 4rpx solid #c3e3d4;
+  border-radius: 14rpx;
+  margin: 10rpx auto 26rpx;
+  background: #eaf7f0;
+  box-shadow: 8rpx 8rpx 0 #f1faf5;
+}
+.empty-calendar view {
+  position: absolute;
+  width: 6rpx;
+  height: 20rpx;
+  border-radius: 5rpx;
+  left: 22rpx;
+  top: -12rpx;
+  background: #a3d4be;
+}
+.empty-calendar view:nth-child(2) {
+  left: auto;
+  right: 22rpx;
+}
+.empty-calendar text {
+  color: #aacdba;
+  font-size: 42rpx;
+  line-height: 82rpx;
+}
+.service-card {
+  transition: transform 160ms ease;
+}
+.service-visual > .visual-caption {
+  top: auto;
+  bottom: 11rpx;
+  left: 14rpx;
+  background: transparent;
+  padding: 0;
+  color: #226647;
+  font-size: 12rpx;
+  letter-spacing: 1rpx;
+}
+.visual-leaf {
+  position: absolute;
+  width: 66rpx;
+  height: 29rpx;
+  border: 2rpx solid #fff9;
+  border-radius: 100% 0 100% 0;
+  right: 11rpx;
+  top: 76rpx;
+  transform: rotate(-18deg);
+}
+.service-visual.care .visual-stone {
+  width: 85rpx;
+  height: 90rpx;
+  border-radius: 50% 50% 38% 42%;
+  right: 53rpx;
+  bottom: 37rpx;
+  background: #fff9;
+  box-shadow: inset -13rpx -10rpx 0 #2f806540;
+}
+.service-action {
+  flex: none;
+  color: #fff;
+  background: #11be7e;
+  padding: 0 22rpx;
+  font-size: 20rpx;
+  line-height: 62rpx;
+  border-radius: 32rpx;
+}
+.service-action.muted {
+  background: #eaf5ef;
+  color: #7b9387;
+}
+.awaiting-schedule .service-heading text:last-child {
+  color: #789385;
+  background: #edf4f0;
+}
+.quick-grid {
+  margin: 28rpx 0 22rpx;
+}
+.assurance view {
+  font-size: 19rpx;
+}
+.boundary view text {
+  font-size: 22rpx;
+}
+.boundary view text:first-child {
+  font-size: 25rpx;
+}
+@keyframes home-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

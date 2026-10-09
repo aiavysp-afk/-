@@ -33,7 +33,7 @@ export class OrdersController {
     const parsed = OrderQuoteRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException("报价参数无效");
     return {
-      data: await this.orders.quote(principal, parsed.data.reservationId),
+      data: await this.orders.quote(principal, parsed.data.reservationId, parsed.data.couponId),
     };
   }
 

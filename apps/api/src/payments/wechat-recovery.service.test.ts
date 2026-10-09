@@ -49,6 +49,7 @@ function fixture(expired = true) {
     return { ...payment };
   });
   const tx = {
+    customerCoupon: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     $queryRaw: vi.fn(async () => []),
     payment: { findUniqueOrThrow: vi.fn(async () => ({ ...payment })), update },
     order: {
@@ -199,6 +200,10 @@ describe("original-order query/close/recheck recovery", () => {
     expect(f.payment.closeState).toBe("CONFIRMED");
     expect(f.order.status).toBe("CANCELLED");
     expect(f.order.reservation.status).toBe("EXPIRED");
+    expect(f.tx.customerCoupon.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ usedOrderId: "order", status: "USED" }),
+      data: expect.objectContaining({ status: "AVAILABLE", usedOrderId: null }),
+    }));
     expect(f.payment.recoveryLeaseToken).toBeNull();
     expect(f.tx.outboxEvent.create).toHaveBeenCalledOnce();
     await f.service.recover("payment");

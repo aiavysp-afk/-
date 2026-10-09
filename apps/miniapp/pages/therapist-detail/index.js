@@ -7,8 +7,11 @@ Page({
         error: "",
         loading: true,
         therapist: null,
+        selectedServiceSlug: "",
+        selectedServiceName: "",
     },
     async onLoad(options) {
+        var _a, _b;
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
         if (!options.id) {
@@ -17,7 +20,26 @@ Page({
         }
         try {
             const therapist = await (0, therapists_1.loadPublicTherapist)(options.id);
-            this.setData({ therapist });
+            const selected = options.slug
+                ? therapist.services.find((service) => service.slug === options.slug)
+                : undefined;
+            if (options.slug && !selected) {
+                wx.showToast({ title: "所选项目当前暂无可约时间", icon: "none" });
+            }
+            this.setData({
+                therapist: {
+                    ...therapist,
+                    // Keep the selected real service first without removing other services.
+                    services: selected
+                        ? [
+                            selected,
+                            ...therapist.services.filter((service) => service.slug !== selected.slug),
+                        ]
+                        : therapist.services,
+                },
+                selectedServiceSlug: (_a = selected === null || selected === void 0 ? void 0 : selected.slug) !== null && _a !== void 0 ? _a : "",
+                selectedServiceName: (_b = selected === null || selected === void 0 ? void 0 : selected.name) !== null && _b !== void 0 ? _b : "",
+            });
         }
         catch (error) {
             this.setData({
@@ -33,8 +55,13 @@ Page({
     },
     book(event) {
         const therapist = this.data.therapist;
-        if (!therapist)
+        if (!therapist || !(0, auth_1.requireVerifiedCustomerAccess)())
             return;
+        const service = therapist.services.find((item) => item.slug === event.currentTarget.dataset.slug);
+        if (!(service === null || service === void 0 ? void 0 : service.slots.length)) {
+            wx.showToast({ title: "该项目当前暂无可约时间", icon: "none" });
+            return;
+        }
         wx.navigateTo({
             url: `/pages/booking/index?slug=${encodeURIComponent(event.currentTarget.dataset.slug)}&therapistId=${encodeURIComponent(therapist.id)}`,
         });

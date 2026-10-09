@@ -48,7 +48,9 @@ test("personal center reads synchronized data without inventing money", () => {
   assert.match(profile, /maskedBalance:\s*"\*\*\*\*"/);
   assert.match(storedValue, /customer-center\/wallet/);
   assert.match(storedValue, /wallet\.recharge\.reason/);
-  assert.match(storedValue, /请勿向个人账户转账/);
+  assert.match(storedValue, /wx\.requestPayment/);
+  assert.match(storedValue, /reconciled\.status === "SUCCEEDED"/);
+  assert.match(storedValue, /balance: money\(wallet\.balanceFen\)/);
   assert.doesNotMatch(storedValue, /balance:\s*"0\.00"/);
   assert.match(coupons, /customer-center\/coupons/);
 });

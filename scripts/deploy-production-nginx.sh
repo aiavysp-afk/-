@@ -78,7 +78,8 @@ for marker in \
   'server_name api.mtsc.top;' \
   'server_name admin.mtsc.top;' \
   'location ~ ^/v1/customer-center' \
-  'location ~ ^/v1/customer-center/wallet/recharges' \
+  'first-recharge-reward/claim' \
+  'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'if ($zydj_admin_request_denied) { return 403; }' \
   'return 503 maintenance;'; do
@@ -141,6 +142,13 @@ customer_status=$(curl --silent --show-error --output /dev/null --write-out '%{h
   --resolve api.mtsc.top:443:127.0.0.1 \
   https://api.mtsc.top/v1/customer-center)
 [[ $api_status == 200 && $admin_status == 503 && $customer_status == 401 ]]
+for benefit_route in newcomer-coupons wallet/first-recharge-reward/claim; do
+  benefit_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --resolve api.mtsc.top:443:127.0.0.1 --request POST \
+    --header 'Content-Type: application/json' --data '{}' \
+    "https://api.mtsc.top/v1/customer-center/$benefit_route")
+  [[ $benefit_status == 401 ]]
+done
 curl --silent --show-error --head \
   --resolve api.mtsc.top:443:127.0.0.1 \
   https://api.mtsc.top/v1/health |

@@ -223,7 +223,10 @@ test("production nginx exposes technician invitations without broadening technic
     ["POST", "OPTIONS"],
   );
 
-  assert.doesNotMatch(config, /location\s+\/?v1\/technician-invitations\/?\s*\{/);
+  assert.doesNotMatch(
+    config,
+    /location\s+\/?v1\/technician-invitations\/?\s*\{/,
+  );
   assert.doesNotMatch(config, /technician-invitations\/\.\*/);
 });
 
@@ -252,12 +255,16 @@ test("production nginx exposes exact authenticated admin profile and review mode
 });
 
 test("production nginx exposes only the required customer-center client routes and methods", () => {
+  assertAllowedMethods("= /v1/customer-center/newcomer-coupons", [
+    "GET",
+    "POST",
+  ]);
   assertAllowedMethods(
     "~ ^/v1/customer-center(?:/(?:coupons|wallet(?:/ledger)?|settings))?$",
     ["GET"],
   );
   assertAllowedMethods(
-    "~ ^/v1/customer-center/wallet/recharges(?:/[^/]+/reconcile)?$",
+    "~ ^/v1/customer-center/wallet/(?:recharges(?:/[^/]+/reconcile)?|first-recharge-reward/claim)$",
     ["POST"],
   );
   assertAllowedMethods("= /v1/customer-center/addresses", ["GET", "POST"]);

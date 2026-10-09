@@ -408,3 +408,50 @@
   line-height: 72rpx;
   font-size: 21rpx;
 }
+.first-recharge-reward {
+  margin: 24rpx 0;
+  padding: 26rpx;
+  background: linear-gradient(120deg, #fff6df, #e5fff2);
+  border: 1rpx solid #d5eddf;
+  border-radius: 26rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+.first-recharge-reward > view {
+  flex: 1;
+}
+.reward-kicker {
+  display: block;
+  font-size: 24rpx;
+  color: #466b5a;
+}
+.reward-value {
+  display: block;
+  font-size: 48rpx;
+  color: #f17a3c;
+  font-weight: 700;
+  margin: 8rpx 0;
+}
+.reward-value text {
+  font-size: 25rpx;
+}
+.reward-note {
+  display: block;
+  font-size: 23rpx;
+  line-height: 1.6;
+  color: #63776e;
+}
+.first-recharge-reward button {
+  flex: none;
+  margin: 0;
+  background: #13bd80;
+  color: white;
+  font-size: 23rpx;
+  border-radius: 32rpx;
+  padding: 0 22rpx;
+}
+.reward-status {
+  color: #718279;
+  font-size: 24rpx;
+}

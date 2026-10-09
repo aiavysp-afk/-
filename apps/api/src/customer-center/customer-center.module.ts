@@ -5,11 +5,12 @@ import {
   CustomerCenterController,
 } from "./customer-center.controller.js";
 import { CustomerCenterService } from "./customer-center.service.js";
+import { CustomerCouponsService } from "./customer-coupons.service.js";
 
 @Module({
   imports: [AuthModule],
   controllers: [CustomerCenterController, AdminCustomerCenterController],
-  providers: [CustomerCenterService],
+  providers: [CustomerCenterService, CustomerCouponsService],
   exports: [CustomerCenterService],
 })
 export class CustomerCenterModule {}

@@ -28,6 +28,7 @@ import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { LocationsService } from "../locations/locations.service.js";
 import { OrderStateMachine } from "./order-state-machine.js";
+import { occupyOrderCoupon, releaseOrderCoupon, selectOrderCoupon } from "../customer-center/order-coupons.js";
 
 const PAYMENT_WINDOW_MS = 15 * 60 * 1_000;
 const POLICY_VERSION = "2026-10-03.dev-v1";
@@ -48,6 +49,7 @@ export class OrdersService {
   async quote(
     principal: AuthPrincipal,
     reservationId: string,
+    couponId?: string | null,
   ): Promise<OrderQuote> {
     const reservation = await this.prisma.appointmentReservation.findUnique({
       where: { id: reservationId },
@@ -64,12 +66,23 @@ export class OrdersService {
       throw new ConflictException("预约占位已过期");
     }
     const serviceAmountFen = this.safeMoney(reservation.serviceAmountFen);
+    const coupon = await selectOrderCoupon(
+      this.prisma,
+      reservation.organizationId,
+      principal.userId,
+      reservation.serviceAmountFen,
+      couponId,
+    );
+    const discountFen = coupon
+      ? this.safeMoney(coupon.amountFen < reservation.serviceAmountFen ? coupon.amountFen : reservation.serviceAmountFen)
+      : 0;
     return {
       reservationId: reservation.id,
       serviceAmountFen,
       travelFeeFen: 0,
-      discountFen: 0,
-      payableFen: serviceAmountFen,
+      discountFen,
+      payableFen: serviceAmountFen - discountFen,
+      couponId: coupon?.id ?? null,
       currency: "CNY",
       moneyUnit: "fen",
     };
@@ -145,7 +158,17 @@ export class OrdersService {
 
         const serviceAmountFen = reservation.serviceAmountFen;
         const travelFeeFen = 0n;
-        const discountFen = 0n;
+        const coupon = await selectOrderCoupon(
+          tx,
+          reservation.organizationId,
+          principal.userId,
+          serviceAmountFen,
+          input.couponId,
+          now,
+        );
+        const discountFen = coupon
+          ? (coupon.amountFen < serviceAmountFen ? coupon.amountFen : serviceAmountFen)
+          : 0n;
         const payableFen = serviceAmountFen + travelFeeFen - discountFen;
         const order = await tx.order.create({
           data: {
@@ -181,12 +204,13 @@ export class OrdersService {
               create: {
                 type: "ORDER_CREATED",
                 actorId: principal.userId,
-                payload: { reservationId: reservation.id },
+                payload: { reservationId: reservation.id, couponId: coupon?.id ?? null },
               },
             },
           },
           include: { items: true },
         });
+        if (coupon) await occupyOrderCoupon(tx, coupon.id, order.id, now);
         await tx.auditLog.create({
           data: {
             actorId: principal.userId,
@@ -194,7 +218,7 @@ export class OrdersService {
             action: "ORDER_CREATED",
             resourceType: "Order",
             resourceId: order.id,
-            metadata: { orderNo: order.orderNo },
+            metadata: { orderNo: order.orderNo, couponId: coupon?.id ?? null, discountFen: Number(discountFen) },
           },
         });
         await tx.outboxEvent.create({
@@ -338,6 +362,9 @@ export class OrdersService {
         data: { status: next },
       });
       if (result.count !== 1) throw new ConflictException("订单状态已变化");
+      if (current.status === OrderStatus.PENDING_PAYMENT) {
+        await releaseOrderCoupon(tx, id);
+      }
       if (current.reservationId) {
         await tx.appointmentReservation.updateMany({
           where: { id: current.reservationId, status: ReservationStatus.HOLD },

@@ -23,6 +23,7 @@ import { OrderStateMachine } from "../orders/order-state-machine.js";
 import { PaymentGatewayService } from "./payment-gateway.service.js";
 import { WechatPrepayService } from "./wechat-prepay.service.js";
 import { Optional } from "@nestjs/common";
+import { releaseOrderCoupon } from "../customer-center/order-coupons.js";
 
 @Injectable()
 export class PaymentsService {
@@ -286,6 +287,7 @@ export class PaymentsService {
           data: { status: next },
         });
         if (result.count !== 1) return false;
+        await releaseOrderCoupon(tx, order.id, now);
         if (order.reservationId) {
           await tx.appointmentReservation.updateMany({
             where: { id: order.reservationId, status: ReservationStatus.HOLD },

@@ -9,8 +9,10 @@ Page({
     error: "",
     loading: true,
     therapist: null as PublicTherapistDetailView | null,
+    selectedServiceSlug: "",
+    selectedServiceName: "",
   },
-  async onLoad(options: { id?: string }) {
+  async onLoad(options: { id?: string; slug?: string }) {
     if (!requireVerifiedCustomerAccess()) return;
     if (!options.id) {
       this.setData({ error: "缺少技师参数", loading: false });
@@ -18,7 +20,28 @@ Page({
     }
     try {
       const therapist = await loadPublicTherapist(options.id);
-      this.setData({ therapist });
+      const selected = options.slug
+        ? therapist.services.find((service) => service.slug === options.slug)
+        : undefined;
+      if (options.slug && !selected) {
+        wx.showToast({ title: "所选项目当前暂无可约时间", icon: "none" });
+      }
+      this.setData({
+        therapist: {
+          ...therapist,
+          // Keep the selected real service first without removing other services.
+          services: selected
+            ? [
+                selected,
+                ...therapist.services.filter(
+                  (service) => service.slug !== selected.slug,
+                ),
+              ]
+            : therapist.services,
+        },
+        selectedServiceSlug: selected?.slug ?? "",
+        selectedServiceName: selected?.name ?? "",
+      });
     } catch (error) {
       this.setData({
         error: error instanceof Error ? error.message : "技师资料读取失败",
@@ -32,7 +55,14 @@ Page({
   },
   book(event: { currentTarget: { dataset: { slug: string } } }) {
     const therapist = this.data.therapist;
-    if (!therapist) return;
+    if (!therapist || !requireVerifiedCustomerAccess()) return;
+    const service = therapist.services.find(
+      (item) => item.slug === event.currentTarget.dataset.slug,
+    );
+    if (!service?.slots.length) {
+      wx.showToast({ title: "该项目当前暂无可约时间", icon: "none" });
+      return;
+    }
     wx.navigateTo({
       url: `/pages/booking/index?slug=${encodeURIComponent(event.currentTarget.dataset.slug)}&therapistId=${encodeURIComponent(therapist.id)}`,
     });
