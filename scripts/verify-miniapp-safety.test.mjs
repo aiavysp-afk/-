@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const source = readFileSync("apps/miniapp/pages/orders/index.ts", "utf8");
 const compiled = readFileSync("apps/miniapp/pages/orders/index.js", "utf8");
@@ -60,6 +62,7 @@ function fixture({ selected = 0, confirm = true, postFails = false } = {}) {
       definition = value;
     },
     require(name) {
+      if (name === "../../utils/friend-payment") return require("../apps/miniapp/utils/friend-payment.js");
       if (name === "../../utils/api")
         return {
           api,

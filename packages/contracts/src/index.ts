@@ -459,7 +459,15 @@ export const TechnicianInvitationStatusSchema = z.enum([
 
 export const TechnicianInvitationCreateSchema = z
   .object({
-    publicName: z.string().trim().max(40).refine((value) => value === "" || value.length >= 2, "公开称呼可留空，填写时至少2个字").default(""),
+    publicName: z
+      .string()
+      .trim()
+      .max(40)
+      .refine(
+        (value) => value === "" || value.length >= 2,
+        "公开称呼可留空，填写时至少2个字",
+      )
+      .default(""),
     expiresInHours: z.number().int().min(1).max(168).default(72),
   })
   .strict();
@@ -511,8 +519,19 @@ const PublicHttpsUrlSchema = z
 export const TechnicianProfileUpdateSchema = z
   .object({
     // Public presentation is separate from the staff account's verified identity.
-    publicName: z.string().trim().max(40).refine((value) => value === "" || value.length >= 2, "公开称呼可留空，填写时至少2个字").optional(),
-    ageRange: z.enum(["18-23岁", "24-29岁", "30-39岁", "40岁及以上"]).nullable().optional(),
+    publicName: z
+      .string()
+      .trim()
+      .max(40)
+      .refine(
+        (value) => value === "" || value.length >= 2,
+        "公开称呼可留空，填写时至少2个字",
+      )
+      .optional(),
+    ageRange: z
+      .enum(["18-23岁", "24-29岁", "30-39岁", "40岁及以上"])
+      .nullable()
+      .optional(),
     avatarUrl: PublicHttpsUrlSchema.nullable().optional(),
     galleryUrls: z.array(PublicHttpsUrlSchema).max(12).optional(),
     introduction: z.string().trim().max(2_000).optional(),
@@ -555,7 +574,10 @@ export const TechnicianProfileSchema = z.object({
   technicianId: z.string(),
   displayName: z.string(),
   publicName: z.string(),
-  ageRange: z.enum(["18-23岁", "24-29岁", "30-39岁", "40岁及以上"]).nullable().optional(),
+  ageRange: z
+    .enum(["18-23岁", "24-29岁", "30-39岁", "40岁及以上"])
+    .nullable()
+    .optional(),
   avatarUrl: PublicHttpsUrlSchema.nullable(),
   galleryUrls: z.array(PublicHttpsUrlSchema),
   introduction: z.string(),
@@ -571,12 +593,18 @@ export const TechnicianProfileSchema = z.object({
   updatedAt: IsoDateTimeSchema,
 });
 
-export const TechnicianPhotoUploadSchema = z.object({
-  kind: z.enum(["AVATAR", "GALLERY"]),
-  // The default Fastify 1MiB body limit remains unchanged. Decode before trusting size.
-  base64: z.string().min(4).max(699_052).regex(/^[A-Za-z0-9+/]+={0,2}$/),
-  authorized: z.literal(true),
-}).strict();
+export const TechnicianPhotoUploadSchema = z
+  .object({
+    kind: z.enum(["AVATAR", "GALLERY"]),
+    // The default Fastify 1MiB body limit remains unchanged. Decode before trusting size.
+    base64: z
+      .string()
+      .min(4)
+      .max(699_052)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    authorized: z.literal(true),
+  })
+  .strict();
 
 export const TechnicianPhotoUploadResultSchema = z.object({
   photoId: z.string(),
@@ -585,7 +613,9 @@ export const TechnicianPhotoUploadResultSchema = z.object({
 });
 
 export type TechnicianPhotoUpload = z.infer<typeof TechnicianPhotoUploadSchema>;
-export type TechnicianPhotoUploadResult = z.infer<typeof TechnicianPhotoUploadResultSchema>;
+export type TechnicianPhotoUploadResult = z.infer<
+  typeof TechnicianPhotoUploadResultSchema
+>;
 
 export const OrderHideResultSchema = z.object({
   orderId: z.string(),
@@ -682,6 +712,69 @@ export const PaymentIntentSchema = z.object({
   mockConfirmationAvailable: z.boolean(),
   prepayState: z.enum(["NONE", "DISPATCHING", "READY", "UNKNOWN"]).optional(),
   wechatPayParameters: WechatPayParametersSchema.optional(),
+});
+
+export const PaymentKindSchema = z.enum(["SELF", "FRIEND"]);
+export const FriendPaymentShareSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  miniappPath: z
+    .string()
+    .regex(/^\/pages\/friend-payment\/index\?token=[A-Za-z0-9_-]{43}$/),
+  amountFen: MoneyFenSchema,
+  expiresAt: IsoDateTimeSchema,
+});
+export const FriendPaymentSummarySchema = z.object({
+  state: z.enum([
+    "PENDING_PAYMENT",
+    "PAID",
+    "CANCELLED",
+    "EXPIRED",
+    "PAYMENT_IN_PROGRESS",
+    "UNAVAILABLE",
+  ]),
+  serviceItems: z.array(
+    z.object({
+      serviceName: z.string(),
+      durationMinutes: z.number().int().positive(),
+      quantity: z.number().int().positive(),
+    }),
+  ),
+  serviceProviderName: z.string(),
+  appointmentAt: IsoDateTimeSchema,
+  amountFen: MoneyFenSchema,
+  expiresAt: IsoDateTimeSchema,
+  isOrderOwner: z.boolean(),
+  canPay: z.boolean(),
+  paymentClaimedByYou: z.boolean(),
+  rightsNotice: z.string(),
+});
+export const PaymentNotificationSchema = z.object({
+  id: z.string(),
+  orderId: z.string(),
+  title: z.string(),
+  body: z.string(),
+  createdAt: IsoDateTimeSchema,
+});
+export const PaymentReconcileResultSchema = z.object({
+  id: z.string(),
+  status: PaymentStatusSchema,
+  providerState: z.string(),
+  fulfillmentReviewRequired: z.boolean(),
+});
+export const AdminPaymentViewSchema = z.object({
+  id: z.string(),
+  orderId: z.string(),
+  orderNo: z.string(),
+  orderStatus: OrderStatusSchema,
+  status: PaymentStatusSchema,
+  provider: PaymentProviderSchema,
+  amountFen: MoneyFenSchema,
+  reservedFen: MoneyFenSchema,
+  refundedFen: MoneyFenSchema,
+  availableFen: MoneyFenSchema,
+  kind: PaymentKindSchema,
+  payer: z.object({ userId: z.string(), displayName: z.string() }).nullable(),
+  succeededAt: IsoDateTimeSchema.nullable(),
 });
 
 export const WecomCustomerServiceUrlSchema = z
@@ -1392,6 +1485,14 @@ export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 export type PaymentProvider = z.infer<typeof PaymentProviderSchema>;
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type PaymentIntent = z.infer<typeof PaymentIntentSchema>;
+export type PaymentKind = z.infer<typeof PaymentKindSchema>;
+export type FriendPaymentShare = z.infer<typeof FriendPaymentShareSchema>;
+export type FriendPaymentSummary = z.infer<typeof FriendPaymentSummarySchema>;
+export type PaymentNotification = z.infer<typeof PaymentNotificationSchema>;
+export type PaymentReconcileResult = z.infer<
+  typeof PaymentReconcileResultSchema
+>;
+export type AdminPaymentView = z.infer<typeof AdminPaymentViewSchema>;
 export type WechatPayParameters = z.infer<typeof WechatPayParametersSchema>;
 export type RefundRequest = z.infer<typeof RefundRequestSchema>;
 export type RefundReview = z.infer<typeof RefundReviewSchema>;

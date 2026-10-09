@@ -1,4 +1,4 @@
-import type { OrderStatus, OrderView } from "@zydj/contracts";
+import type { OrderStatus, OrderView, PaymentNotification } from "@zydj/contracts";
 import { api, shanghaiTime } from "../../utils/api";
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
 import { loadCustomerCenterOverview } from "../../utils/customer-center";
@@ -51,9 +51,22 @@ Page({
   async loadOrders() {
     this.setData({ loading: true, error: "" });
     try {
-      const orders = await api<OrderView[]>("/orders");
+      const [orders, notifications] = await Promise.all([
+        api<OrderView[]>("/orders"),
+        api<PaymentNotification[]>("/payments/notifications"),
+      ]);
       this.setData({
-        messages: orders.slice(0, 20).map((order) => ({
+        // These payment notices are durable, owner-only server events, not
+        // native SDK success or fabricated WeChat subscription pushes.
+        messages: [
+          ...notifications.map((notification) => ({
+            id: notification.id,
+            title: notification.title,
+            detail: notification.body,
+            time: shanghaiTime(notification.createdAt),
+            statusLabel: "好友代付通知",
+          })),
+          ...orders.slice(0, 20).map((order) => ({
           id: order.id,
           title: `${order.serviceName} · ${statusLabels[order.status]}`,
           detail: `订单 ${order.orderNo} · 预约 ${shanghaiTime(
@@ -61,7 +74,8 @@ Page({
           )}`,
           time: shanghaiTime(order.createdAt),
           statusLabel: statusLabels[order.status],
-        })),
+          })),
+        ].sort((left, right) => right.time.localeCompare(left.time)).slice(0, 40),
       });
     } catch (error) {
       this.setData({

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AuthUser, RefundRequest, RefundView } from "@zydj/contracts";
+import {
+  AdminPaymentViewSchema,
+  type AdminPaymentView,
+  type AuthUser,
+  type RefundRequest,
+  type RefundView,
+} from "@zydj/contracts";
+import {
+  paymentHasSucceeded,
+  paymentOriginLabel,
+  paymentPayerLabel,
+} from "./payment-origin";
 
 const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
-type Payment = {
-  id: string;
-  orderNo: string;
-  orderStatus: string;
-  provider: string;
-  status: string;
-  amountFen: number;
-  reservedFen: number;
-  refundedFen: number;
-  availableFen: number;
-};
 type RecordView = RefundView & {
   requestedById: string;
   reviewedById: string | null;
@@ -39,7 +39,7 @@ export function RefundWorkspace({
 }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [organizationId, setOrganizationId] = useState("");
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<AdminPaymentView[]>([]);
   const [paymentId, setPaymentId] = useState("");
   const [refunds, setRefunds] = useState<RecordView[]>([]);
   const [reason, setReason] =
@@ -96,11 +96,11 @@ export function RefundWorkspace({
   }, [token, request]);
   const loadPayments = useCallback(async () => {
     if (!organizationId || !token) return;
-    const result = await request<Payment[]>(
-      `/admin/organizations/${organizationId}/payments`,
+    const result = await request<unknown>(
+      `/admin/organizations/${encodeURIComponent(organizationId)}/payments`,
     );
     if (currentContext.current.startsWith(`${token}:${organizationId}:`))
-      setPayments(result);
+      setPayments(AdminPaymentViewSchema.array().parse(result));
   }, [organizationId, request, token]);
   const loadRefunds = useCallback(async () => {
     if (!paymentId || !organizationId) return;
@@ -234,7 +234,8 @@ export function RefundWorkspace({
               <option value="">选择支付记录</option>
               {payments.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.orderNo} · {item.status} · {money(item.amountFen)}
+                  {item.orderNo} · {paymentOriginLabel(item)} · {item.status} ·{" "}
+                  {money(item.amountFen)}
                 </option>
               ))}
             </select>
@@ -248,8 +249,21 @@ export function RefundWorkspace({
             支付 {payment.id} · {payment.provider} · 订单 {payment.orderStatus}
           </p>
           <p>
-            实付 {money(payment.amountFen)} / 已退 {money(payment.refundedFen)}{" "}
-            / 已占用 {money(payment.reservedFen)} / 额度余额{" "}
+            支付方式：<strong>{paymentOriginLabel(payment)}</strong>
+          </p>
+          <p>{paymentPayerLabel(payment)}</p>
+          <p>支付成功时间：{payment.succeededAt ?? "尚无成功付款记录"}</p>
+          {payment.kind === "FRIEND" && (
+            <p className="notice">
+              代付成功后资金进入平台，订单权益归下单用户。代付人不能发起退款，
+              仅下单用户可按规则申请；退款按原支付渠道退回代付人。
+              财务复核与渠道提交仍按现有权限及流程执行。
+            </p>
+          )}
+          <p>
+            {paymentHasSucceeded(payment) ? "实付" : "支付单金额（未确认成功）"}{" "}
+            {money(payment.amountFen)} / 已退 {money(payment.refundedFen)} /
+            已占用 {money(payment.reservedFen)} / 额度余额{" "}
             {money(payment.availableFen)}
           </p>
           <p>额度余额不代表当前履约状态允许自动退款，提交时服务端重新校验。</p>

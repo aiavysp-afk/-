@@ -24,10 +24,13 @@ export function api<T>(
   method: "GET" | "POST" | "PATCH" | "DELETE" = "GET",
   data?: unknown,
   key?: string,
+  authReturnPath?: string,
 ): Promise<T> {
   const app = getApp<{ globalData: { apiBaseUrl: string } }>();
   const session = getStoredSession();
   const hasData = data !== undefined;
+  // Never retain the secret share token in generic error objects.
+  const diagnosticPath = path.replace(/(\/friend-payments\/)[^/?]+/g, "$1[redacted]");
   return new Promise((resolve, reject) =>
     wx.request<{ data?: T; message?: string }>({
       url: `${app.globalData.apiBaseUrl}${path}`,
@@ -42,7 +45,7 @@ export function api<T>(
       success: (result) => {
         if (result.statusCode === 401) {
           clearStoredSession();
-          redirectToCustomerLogin();
+          redirectToCustomerLogin(authReturnPath);
         }
         if (
           result.statusCode >= 200 &&
@@ -55,7 +58,7 @@ export function api<T>(
             new ApiError(
               result.data.message || `请求失败（${result.statusCode}）`,
               result.statusCode,
-              path,
+              diagnosticPath,
               method,
             ),
           );

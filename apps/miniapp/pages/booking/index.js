@@ -5,6 +5,7 @@ const auth_1 = require("../../utils/auth");
 const amap_1 = require("../../utils/amap");
 const booking_1 = require("../../utils/booking");
 const customer_center_1 = require("../../utils/customer-center");
+const friend_payment_1 = require("../../utils/friend-payment");
 const categoryNames = {
     MASSAGE: "按摩舒缓",
     SPA_RELAXATION: "SPA 放松",
@@ -99,6 +100,7 @@ Page({
         serviceReviews: [],
         reviewsLoading: false,
         reviewsError: "",
+        paymentMode: "WECHAT",
     },
     async onLoad(options) {
         var _a;
@@ -822,6 +824,10 @@ Page({
                 quoteFingerprint: "",
                 orderSubmissionAttempted: false,
             });
+            if (this.data.paymentMode === "FRIEND") {
+                await this.shareCreatedOrder(order);
+                return;
+            }
             await this.payCreatedOrder(order);
             wx.redirectTo({ url: "/pages/orders/index" });
         }
@@ -846,6 +852,33 @@ Page({
         }
         finally {
             this.setData({ busy: false });
+        }
+    },
+    choosePaymentMode(event) {
+        if (this.data.busy || this.data.orderSubmissionAttempted)
+            return;
+        const mode = event.currentTarget.dataset.mode;
+        if (mode === "WECHAT" || mode === "FRIEND")
+            this.setData({ paymentMode: mode });
+    },
+    async shareCreatedOrder(order) {
+        if (order.status !== "PENDING_PAYMENT") {
+            wx.redirectTo({ url: "/pages/orders/index" });
+            return;
+        }
+        try {
+            // Do not create the owner's prepay first. The server chooses and locks
+            // exactly one real payer before creating a WeChat payment intent.
+            const share = (0, friend_payment_1.assertFriendPaymentShare)(await (0, api_1.api)(`/orders/${order.id}/friend-payment`, "POST", {}), order.payableFen);
+            wx.redirectTo({ url: share.miniappPath });
+        }
+        catch (error) {
+            wx.showModal({
+                title: "订单已保留",
+                content: `${error instanceof Error ? error.message : "代付分享暂不可用"}。可在订单页继续操作，请勿重复下单。`,
+                showCancel: false,
+            });
+            wx.redirectTo({ url: "/pages/orders/index" });
         }
     },
     async payCreatedOrder(order) {

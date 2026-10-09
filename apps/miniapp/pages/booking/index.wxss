@@ -791,3 +791,8 @@ checkbox {
   from { transform: translateY(28rpx); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+.payment-options { display: flex; gap: 18rpx; margin: 20rpx 0; }
+.payment-options button { flex: 1; padding: 24rpx 12rpx; border: 2rpx solid #dce8e2; border-radius: 20rpx; background: #f6fbf8; color: #285145; line-height: 1.6; }
+.payment-options button.selected { border-color: #16a873; background: #ddf8e9; }
+.payment-options text { display: block; font-size: 26rpx; font-weight: 550; }
+.payment-options text:first-child { font-size: 30rpx; font-weight: 650; }

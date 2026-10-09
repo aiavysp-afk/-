@@ -42,15 +42,29 @@ Page({
     async loadOrders() {
         this.setData({ loading: true, error: "" });
         try {
-            const orders = await (0, api_1.api)("/orders");
+            const [orders, notifications] = await Promise.all([
+                (0, api_1.api)("/orders"),
+                (0, api_1.api)("/payments/notifications"),
+            ]);
             this.setData({
-                messages: orders.slice(0, 20).map((order) => ({
-                    id: order.id,
-                    title: `${order.serviceName} · ${statusLabels[order.status]}`,
-                    detail: `订单 ${order.orderNo} · 预约 ${(0, api_1.shanghaiTime)(order.appointmentStart)}`,
-                    time: (0, api_1.shanghaiTime)(order.createdAt),
-                    statusLabel: statusLabels[order.status],
-                })),
+                // These payment notices are durable, owner-only server events, not
+                // native SDK success or fabricated WeChat subscription pushes.
+                messages: [
+                    ...notifications.map((notification) => ({
+                        id: notification.id,
+                        title: notification.title,
+                        detail: notification.body,
+                        time: (0, api_1.shanghaiTime)(notification.createdAt),
+                        statusLabel: "好友代付通知",
+                    })),
+                    ...orders.slice(0, 20).map((order) => ({
+                        id: order.id,
+                        title: `${order.serviceName} · ${statusLabels[order.status]}`,
+                        detail: `订单 ${order.orderNo} · 预约 ${(0, api_1.shanghaiTime)(order.appointmentStart)}`,
+                        time: (0, api_1.shanghaiTime)(order.createdAt),
+                        statusLabel: statusLabels[order.status],
+                    })),
+                ].sort((left, right) => right.time.localeCompare(left.time)).slice(0, 40),
             });
         }
         catch (error) {

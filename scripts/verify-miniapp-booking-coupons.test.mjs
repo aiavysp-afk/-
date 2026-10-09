@@ -55,6 +55,7 @@ function fixture(handler = () => undefined) {
     },
     require(name) {
       if (name === "../../utils/booking") return booking;
+      if (name === "../../utils/friend-payment") return require("../apps/miniapp/utils/friend-payment.js");
       if (name === "../../utils/api") return { ApiError, api, money: (amount) => (amount / 100).toFixed(2), shanghaiTime: (value) => value, newKey: () => nextKey++ === 1 ? "fixture-order-key" : `fixture-order-key-${nextKey - 1}` };
       if (name === "../../utils/auth") return {
         getStoredSession: () => ({ user: { phoneVerified: true } }), needsPhoneVerification: () => false,

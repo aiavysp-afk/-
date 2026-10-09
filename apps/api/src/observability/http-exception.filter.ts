@@ -6,6 +6,7 @@ import {
   type ExceptionFilter,
 } from "@nestjs/common";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { safeTelemetryPath } from "./safe-request-log.js";
 
 @Catch()
 export class HttpExceptionTelemetryFilter implements ExceptionFilter {
@@ -24,7 +25,7 @@ export class HttpExceptionTelemetryFilter implements ExceptionFilter {
         event: "http_exception",
         requestId: request.id,
         method: request.method,
-        path: request.url.split("?", 1)[0],
+        path: safeTelemetryPath(request.url),
         statusCode,
         errorName:
           exception instanceof Error ? exception.name : "UnknownException",

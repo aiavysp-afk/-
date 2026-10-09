@@ -6,6 +6,7 @@ import {
   requestSmsPhoneVerification,
   verifyWechatPhone,
 } from "../../utils/auth";
+import { safeFriendPaymentReturnPath } from "../../utils/friend-payment";
 
 type LoginMode = "" | "WECHAT" | "WECHAT_PHONE" | "SMS";
 
@@ -26,14 +27,17 @@ Page({
     smsRequested: false,
     wechatReady: false,
     requiredEntry: false,
+    friendPaymentReturn: false,
   },
+  returnPath: "",
   countdownTimer: undefined as number | undefined,
-  onLoad(options: { required?: string }) {
-    this.setData({ requiredEntry: options.required === "1" });
+  onLoad(options: { required?: string; returnPath?: string }) {
+    this.returnPath = safeFriendPaymentReturnPath(options.returnPath);
+    this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean(this.returnPath) });
     const session = getStoredSession();
-    if (session && !needsPhoneVerification(session)) {
+    if (!this.returnPath && session && !needsPhoneVerification(session)) {
       this.setData({ completed: true, wechatReady: true });
-    } else if (session) {
+    } else if (!this.returnPath && session) {
       this.setData({ wechatReady: true });
     }
   },
@@ -54,8 +58,11 @@ Page({
       loginMode: "WECHAT",
     });
     try {
-      const session = getStoredSession() ?? (await loginWithWechat());
-      if (!needsPhoneVerification(session)) {
+      const session = this.returnPath ? await loginWithWechat()
+        : getStoredSession() ?? (await loginWithWechat());
+      // Paying for a friend needs this app's real WeChat identity, not their
+      // phone number. All original booking/customer phone guards stay intact.
+      if (this.returnPath || !needsPhoneVerification(session)) {
         this.setData({ completed: true, wechatReady: true });
         wx.showToast({ title: "账号已登录", icon: "success" });
         return;
@@ -288,9 +295,19 @@ Page({
     }
   },
   enterHome() {
+    if (this.returnPath) {
+      if (!this.data.completed || !getStoredSession()) return;
+      wx.redirectTo({ url: this.returnPath });
+      return;
+    }
     wx.switchTab({ url: "/pages/home/index" });
   },
   finish() {
+    if (this.returnPath) {
+      if (!this.data.completed || !getStoredSession()) return;
+      wx.redirectTo({ url: this.returnPath });
+      return;
+    }
     if (this.data.requiredEntry) return;
     wx.navigateBack({ delta: 1 });
   },

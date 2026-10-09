@@ -1,0 +1,30 @@
+<view class="page">
+  <view class="sub-nav"><text bindtap="openHome">‹</text><text>好友代付</text><text/></view>
+  <view class="hero"><view class="hero-mark">友</view><text>微信好友代付</text><text>一笔订单，一位付款人，权益归下单人</text></view>
+  <view wx:if="{{!loggedIn}}" class="panel login-panel"><text class="panel-title">先确认你的微信身份</text><text>好友代付仅支持本人微信支付，无需填写下单人的地址或手机号。</text><button class="primary" bindtap="login">微信登录，继续查看代付</button></view>
+  <text wx:if="{{loading}}" class="status">正在读取服务器订单状态…</text>
+  <text wx:if="{{error}}" class="error">{{error}}</text>
+  <view wx:if="{{fulfillmentReviewRequired}}" class="panel fulfillment-review"><text class="panel-title">{{fulfillmentReviewNotice}}</text><text>已付款不代表原预约自动恢复，请由下单人联系平台核实服务安排或原路退款。</text></view>
+  <button wx:if="{{loggedIn || error}}" class="secondary" bindtap="relogin" disabled="{{busy || loading}}" loading="{{busy}}">重新微信登录</button>
+  <view wx:if="{{summary}}">
+    <view class="panel order-panel">
+      <view class="panel-head"><text class="panel-title">{{summary.isOrderOwner?'我的代付订单':'好友的服务订单'}}</text><text class="badge">{{summary.state==='PAID'?'已支付':summary.state==='PENDING_PAYMENT'?'待支付':'不可支付'}}</text></view>
+      <view wx:for="{{summary.serviceItems}}" wx:key="serviceName" class="service-item"><view class="service-icon">✦</view><view><text>{{item.serviceName}}</text><text>{{item.durationMinutes}} 分钟 · {{item.quantity}} 项</text></view></view>
+      <view class="info-row"><text>服务商户</text><text>{{summary.serviceProviderName}}</text></view>
+      <view class="info-row"><text>预约时间</text><text>{{appointmentLabel}}</text></view>
+      <view class="info-row"><text>分享有效期至</text><text>{{expiresLabel}}</text></view>
+      <view class="amount-row"><text>服务器确认应付</text><text>¥{{amount}}</text></view>
+      <text class="privacy-note">为保护下单人隐私，不展示姓名、联系电话或详细服务地址。</text>
+    </view>
+    <view class="panel state-panel"><text class="panel-title">{{summary.state==='PAID'?'付款已确认':'当前状态'}}</text><text>{{statusText}}</text><text wx:if="{{summary.isOrderOwner && summary.state==='PAID'}}">订单付款已确认，后续服务安排以原订单状态及平台通知为准；如由好友代付，结果可在消息页查看。</text><text wx:if="{{summary.isOrderOwner && shareAllowed}}">点击下方按钮，选择一位微信好友发送分享卡片。好友只可通过自己的微信账户付款。</text><text wx:if="{{queryOnly}}">已发起过支付，只查询原支付结果，不会重复创建支付。微信确认后会自动更新。</text></view>
+    <view class="panel rights-panel"><text class="panel-title">代付与退款须知</text><text>{{rightsNotice}}</text><text>本服务为正规保健放松服务，非医疗服务。请勿通过个人转账或其他支付渠道代付。</text></view>
+    <button wx:if="{{shareAllowed}}" class="primary" open-type="share" disabled="{{busy || loading}}">分享给微信好友代付</button>
+    <button wx:if="{{canPay || canResumeOriginal}}" class="primary" bindtap="pay" disabled="{{busy || loading}}" loading="{{busy}}">{{canResumeOriginal?'继续原微信支付 · ¥'+amount:'微信支付 · ¥'+amount}}</button>
+    <button class="secondary" bindtap="queryPayment" disabled="{{busy || loading}}">{{busy?'正在查询…':'刷新 / 查询原支付结果'}}</button>
+    <button wx:if="{{summary.isOrderOwner}}" class="secondary" bindtap="openOrders">返回我的订单</button>
+    <button wx:else class="secondary" bindtap="openHome">返回首页</button>
+    <text class="status">状态以微信通知和服务器核验为准。页面最多自动查询 1 分钟，离开页面后停止查询；仍待确认可手动刷新。</text>
+  </view>
+  <view wx:if="{{loggedIn && !summary && !loading}}"><button class="secondary" bindtap="queryPayment">重新读取代付状态</button><button class="secondary" bindtap="openHome">返回首页</button></view>
+  <view class="safe-bottom" />
+</view>

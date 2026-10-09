@@ -15,10 +15,12 @@ class ApiError extends Error {
     }
 }
 exports.ApiError = ApiError;
-function api(path, method = "GET", data, key) {
+function api(path, method = "GET", data, key, authReturnPath) {
     const app = getApp();
     const session = (0, auth_1.getStoredSession)();
     const hasData = data !== undefined;
+    // Never retain the secret share token in generic error objects.
+    const diagnosticPath = path.replace(/(\/friend-payments\/)[^/?]+/g, "$1[redacted]");
     return new Promise((resolve, reject) => wx.request({
         url: `${app.globalData.apiBaseUrl}${path}`,
         method,
@@ -32,14 +34,14 @@ function api(path, method = "GET", data, key) {
         success: (result) => {
             if (result.statusCode === 401) {
                 (0, auth_1.clearStoredSession)();
-                (0, auth_1.redirectToCustomerLogin)();
+                (0, auth_1.redirectToCustomerLogin)(authReturnPath);
             }
             if (result.statusCode >= 200 &&
                 result.statusCode < 300 &&
                 result.data.data !== undefined)
                 resolve(result.data.data);
             else
-                reject(new ApiError(result.data.message || `请求失败（${result.statusCode}）`, result.statusCode, path, method));
+                reject(new ApiError(result.data.message || `请求失败（${result.statusCode}）`, result.statusCode, diagnosticPath, method));
         },
         fail: () => reject(new Error("网络连接失败，请保留当前页面后重试")),
     }));

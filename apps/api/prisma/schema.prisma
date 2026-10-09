@@ -87,6 +87,11 @@ enum PaymentProvider {
   WECHAT
 }
 
+enum PaymentKind {
+  SELF
+  FRIEND
+}
+
 enum PaymentStatus {
   PENDING
   SUCCEEDED
@@ -209,6 +214,7 @@ model User {
   memberships                  StaffMembership[]
   mfaCredential                MfaCredential?
   customerOrders               Order[]                      @relation("CustomerOrders")
+  payerPayments                Payment[]                    @relation("PaymentPayer")
   therapistOrders              Order[]                      @relation("TherapistOrders")
   therapistShifts              TherapistShift[]             @relation("TherapistShifts")
   customerReservations         AppointmentReservation[]     @relation("CustomerReservations")
@@ -682,6 +688,7 @@ model Order {
   items                   OrderItem[]
   events                  OrderEvent[]
   payment                 Payment?
+  friendPaymentShares     FriendPaymentShare[]
   idempotencyKey          String
   requestFingerprint      String
   safetyIncidents         SafetyIncident[]
@@ -882,6 +889,10 @@ model Payment {
   orderId               String            @unique
   order                 Order             @relation(fields: [orderId], references: [id])
   provider              PaymentProvider
+  kind                  PaymentKind       @default(SELF)
+  payerUserId           String?
+  payer                 User?             @relation("PaymentPayer", fields: [payerUserId], references: [id], onDelete: Restrict)
+  payerOpenIdHash       String?
   status                PaymentStatus     @default(PENDING)
   merchantPaymentNo     String            @unique
   amountFen             BigInt
@@ -917,6 +928,19 @@ model Payment {
 
   @@index([status, createdAt])
   @@index([provider, status, recoveryNextCheckAt])
+  @@index([payerUserId, createdAt])
+}
+
+// The bearer share capability is never persisted in plaintext. Ownership stays with Order.customerId.
+model FriendPaymentShare {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([orderId, expiresAt])
 }
 
 model PaymentEvent {

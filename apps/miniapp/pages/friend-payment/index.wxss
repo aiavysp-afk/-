@@ -1,0 +1,32 @@
+.page { min-height: 100vh; padding: 0 28rpx 36rpx; background: linear-gradient(#e4f9ef, #f5f8f6 480rpx); color: #203d32; }
+.sub-nav { padding-top: 108rpx; height: 88rpx; display: flex; justify-content: space-between; align-items: center; font-size: 34rpx; font-weight: 650; }
+.sub-nav text:first-child { width: 80rpx; font-size: 54rpx; }
+.sub-nav text:last-child { width: 80rpx; }
+.hero { display: flex; flex-direction: column; align-items: center; gap: 16rpx; padding: 30rpx 0; }
+.hero-mark { width: 100rpx; height: 100rpx; background: #0ebc7f; color: white; border-radius: 30rpx; text-align: center; line-height: 100rpx; font-size: 48rpx; font-weight: 700; }
+.hero > text { font-size: 36rpx; font-weight: 700; }
+.hero > text:last-child { font-size: 26rpx; font-weight: 550; color: #526b61; }
+.panel { margin: 22rpx 0; padding: 30rpx; background: white; border-radius: 28rpx; box-shadow: 0 8rpx 26rpx rgba(36,91,77,.04); }
+.panel-title { display: block; font-size: 31rpx; font-weight: 700; margin-bottom: 18rpx; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; }
+.badge { padding: 8rpx 16rpx; border-radius: 18rpx; color: #168c62; background: #e4fbef; font-size: 26rpx; font-weight: 600; }
+.service-item { display: flex; gap: 22rpx; align-items: center; padding: 22rpx 0; border-bottom: 1rpx solid #ecf1ee; }
+.service-icon { width: 84rpx; height: 84rpx; background: #daf9eb; border-radius: 22rpx; color: #0cab71; line-height: 84rpx; text-align: center; font-size: 36rpx; }
+.service-item text { display: block; font-size: 31rpx; font-weight: 650; line-height: 1.6; }
+.service-item text:last-child { color: #526b61; font-size: 28rpx; font-weight: 550; }
+.info-row { display: flex; justify-content: space-between; gap: 20rpx; margin-top: 24rpx; font-size: 27rpx; font-weight: 550; line-height: 1.6; }
+.info-row text:last-child { text-align: right; }
+.amount-row { display: flex; align-items: center; justify-content: space-between; margin-top: 30rpx; padding-top: 25rpx; border-top: 1rpx solid #ecf1ee; font-size: 28rpx; font-weight: 650; }
+.amount-row text:last-child { color: #069563; font-size: 44rpx; font-weight: 750; }
+.state-panel > text:not(.panel-title), .rights-panel > text:not(.panel-title), .login-panel > text:not(.panel-title) { display: block; margin-top: 15rpx; font-size: 28rpx; font-weight: 550; line-height: 1.75; }
+.rights-panel { background: #edfaf4; }
+.fulfillment-review { color: #825821; background: #fff5df; }
+.fulfillment-review > text:last-child { display: block; font-size: 28rpx; font-weight: 550; line-height: 1.75; }
+.privacy-note { display: block; font-size: 25rpx; font-weight: 500; color: #61746b; line-height: 1.7; margin-top: 20rpx; }
+button { margin: 20rpx 0 0; padding: 8rpx 16rpx; border-radius: 24rpx; font-size: 30rpx; font-weight: 650; }
+button::after { border: none; }
+.primary { color: white; background: #0bb878; }
+.secondary { color: #285d48; background: white; }
+.status { display: block; padding: 22rpx 8rpx; color: #63756d; font-size: 26rpx; font-weight: 550; line-height: 1.7; }
+.error { display: block; padding: 24rpx; color: #b9443d; background: #fff2ef; border-radius: 20rpx; font-size: 28rpx; font-weight: 550; line-height: 1.6; }
+.safe-bottom { height: 40rpx; padding-bottom: env(safe-area-inset-bottom); }

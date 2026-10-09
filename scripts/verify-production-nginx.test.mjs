@@ -193,11 +193,50 @@ test("production nginx exposes only the three authenticated customer address rou
 });
 
 test("production nginx exposes exact payment creation and callback routes", () => {
-  assert.ok(config.includes("/v1/orders/[^/]+/payment-intent"));
+  assertAllowedMethods("~ ^/v1/orders/[^/]+/(?:payment-intent|friend-payment)$", ["POST"]);
   assert.ok(config.includes("/v1/payments/wechat/(?:notify|refund-notify)"));
   assert.ok(config.includes("orders/[^/]+/close"));
   assert.ok(config.includes("[^/]+/reconcile"));
   assert.match(config, /limit_except POST \{ deny all; \}/);
+});
+
+test("friend invitations use exact authenticated routes, restricted methods and no capability access log", () => {
+  for (const [route, methods] of [
+    ['~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}$"', ["GET"]],
+    ['~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/payment-intent$"', ["GET", "POST"]],
+    ['~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/reconcile$"', ["POST"]],
+  ]) {
+    const block = assertAllowedMethods(route, methods);
+    assert.ok(block.includes("access_log off;"));
+    assert.ok(block.includes("error_log /dev/null;"));
+    assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
+    assert.doesNotMatch(block, /Origin|Authorization|satisfy any|auth_request off/);
+  }
+  assertAllowedMethods("= /v1/payments/notifications", ["GET"]);
+  assert.doesNotMatch(config, /location (?:\^~ )?\/v1\/friend-payments\/? \{/);
+});
+
+test("gateway deployment checks every friend-payment boundary without creating a payment", () => {
+  const deploy = readFileSync(new URL("./deploy-production-nginx.sh", import.meta.url), "utf8");
+  for (const marker of ["payment-intent|friend-payment", "/v1/friend-payments/", "location = /v1/payments/notifications", "orders/probe/friend-payment", "friend-payments/$friend_probe_token/payment-intent", "friend-payments/$friend_probe_token/reconcile"]) {
+    assert.ok(deploy.includes(marker));
+  }
+  assert.ok(deploy.includes('[[ $friend_status == 401 ]]'));
+});
+
+test("malformed capability paths are unlogged deny-only fallbacks, never broad API exposure", () => {
+  const declaration = "location ~* ^/v1/friend-payments(?:/|$)";
+  const blocks = config.split(declaration).slice(1).map((rest) => rest.slice(0, rest.indexOf("}") + 1));
+  assert.equal(blocks.length, 2, "HTTP and TLS each need a deny-only fallback");
+  for (const block of blocks) {
+    assert.ok(block.includes("access_log off;"));
+    assert.ok(block.includes("error_log /dev/null;"));
+    assert.ok(block.includes("return 404;"));
+    assert.doesNotMatch(block, /proxy_pass|rewrite|301/);
+  }
+  const tls = config.slice(config.indexOf("server_name api.mtsc.top;"));
+  assert.ok(tls.indexOf('location ~ "^/v1/friend-payments/[A-Za-z0-9_-]{43}/reconcile$"') < tls.indexOf(declaration));
+  assert.equal((config.match(/error_log \/dev\/null;/g) ?? []).length, 5, "log suppression is limited to capability routes");
 });
 
 test("production nginx exposes the exact customer refund and safety incident methods", () => {

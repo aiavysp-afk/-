@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
+const friend_payment_1 = require("../../utils/friend-payment");
 Page({
     data: {
         accepted: true,
@@ -18,15 +19,18 @@ Page({
         smsRequested: false,
         wechatReady: false,
         requiredEntry: false,
+        friendPaymentReturn: false,
     },
+    returnPath: "",
     countdownTimer: undefined,
     onLoad(options) {
-        this.setData({ requiredEntry: options.required === "1" });
+        this.returnPath = (0, friend_payment_1.safeFriendPaymentReturnPath)(options.returnPath);
+        this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean(this.returnPath) });
         const session = (0, auth_1.getStoredSession)();
-        if (session && !(0, auth_1.needsPhoneVerification)(session)) {
+        if (!this.returnPath && session && !(0, auth_1.needsPhoneVerification)(session)) {
             this.setData({ completed: true, wechatReady: true });
         }
-        else if (session) {
+        else if (!this.returnPath && session) {
             this.setData({ wechatReady: true });
         }
     },
@@ -51,8 +55,11 @@ Page({
             loginMode: "WECHAT",
         });
         try {
-            const session = (_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (await (0, auth_1.loginWithWechat)());
-            if (!(0, auth_1.needsPhoneVerification)(session)) {
+            const session = this.returnPath ? await (0, auth_1.loginWithWechat)()
+                : (_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (await (0, auth_1.loginWithWechat)());
+            // Paying for a friend needs this app's real WeChat identity, not their
+            // phone number. All original booking/customer phone guards stay intact.
+            if (this.returnPath || !(0, auth_1.needsPhoneVerification)(session)) {
                 this.setData({ completed: true, wechatReady: true });
                 wx.showToast({ title: "账号已登录", icon: "success" });
                 return;
@@ -289,9 +296,21 @@ Page({
         }
     },
     enterHome() {
+        if (this.returnPath) {
+            if (!this.data.completed || !(0, auth_1.getStoredSession)())
+                return;
+            wx.redirectTo({ url: this.returnPath });
+            return;
+        }
         wx.switchTab({ url: "/pages/home/index" });
     },
     finish() {
+        if (this.returnPath) {
+            if (!this.data.completed || !(0, auth_1.getStoredSession)())
+                return;
+            wx.redirectTo({ url: this.returnPath });
+            return;
+        }
         if (this.data.requiredEntry)
             return;
         wx.navigateBack({ delta: 1 });

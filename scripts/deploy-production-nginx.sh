@@ -79,6 +79,9 @@ for marker in \
   'server_name admin.mtsc.top;' \
   'location ~ ^/v1/customer-center' \
   'first-recharge-reward/claim' \
+  'payment-intent|friend-payment' \
+  '/v1/friend-payments/' \
+  'location = /v1/payments/notifications' \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'if ($zydj_admin_request_denied) { return 403; }' \
@@ -208,6 +211,19 @@ for benefit_route in newcomer-coupons wallet/first-recharge-reward/claim; do
     --header 'Content-Type: application/json' --data '{}' \
     "https://api.mtsc.top/v1/customer-center/$benefit_route")
   [[ $benefit_status == 401 ]]
+done
+# Invitations never bypass login; no live transaction is created by these probes.
+friend_probe_token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+for route in "friend-payments/$friend_probe_token" "friend-payments/$friend_probe_token/payment-intent" payments/notifications; do
+  friend_status=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
+    --resolve api.mtsc.top:443:127.0.0.1 "https://api.mtsc.top/v1/$route")
+  [[ $friend_status == 401 ]]
+done
+for route in "orders/probe/friend-payment" "friend-payments/$friend_probe_token/payment-intent" "friend-payments/$friend_probe_token/reconcile"; do
+  friend_status=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
+    --resolve api.mtsc.top:443:127.0.0.1 --request POST \
+    --header 'Content-Type: application/json' --data '{}' "https://api.mtsc.top/v1/$route")
+  [[ $friend_status == 401 ]]
 done
 curl --silent --show-error --head \
   --resolve api.mtsc.top:443:127.0.0.1 \

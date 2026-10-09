@@ -11,6 +11,8 @@ declare function setTimeout(handler: () => void, timeout?: number): number;
 
 declare function clearTimeout(handle: number): void;
 declare const wx: {
+  showShareMenu?(options: { menus: ("shareAppMessage" | "shareTimeline")[] }): void;
+  hideShareMenu?(options: { menus: ("shareAppMessage" | "shareTimeline")[] }): void;
   chooseMedia(options: {
     count: number; mediaType: ["image"]; sourceType: ("album" | "camera")[]; sizeType: ("compressed" | "original")[];
     success(result: { tempFiles: { tempFilePath: string; size: number }[] }): void;

@@ -112,7 +112,7 @@ describe("Wechat Pay signed and encrypted protocol", () => {
         parseWechatQueryTransaction({ ...transaction, ...change }, config),
       ).toThrow(BadRequestException);
   });
-  it("verifies original bytes, decrypts and strips sensitive payer fields", () => {
+  it("verifies original bytes and retains only payer openid for binding verification, not bank fields", () => {
     const raw = notification();
     const result = decodeWechatNotification(raw, signed(raw), config, now);
     expect(result).toMatchObject({
@@ -122,7 +122,8 @@ describe("Wechat Pay signed and encrypted protocol", () => {
         transaction_id: "transaction-1",
       },
     });
-    expect(result.transaction).not.toHaveProperty("payer");
+    expect(result.transaction.payer).toEqual({ openid: "must-not-persist" });
+    expect(result.transaction).not.toHaveProperty("bank_type");
   });
   it("rejects changes to body whitespace even if parsed JSON is identical", () => {
     const raw = notification();

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
+const friend_payment_1 = require("../../utils/friend-payment");
 const filterTitles = {
     ALL: "全部订单",
     PENDING_PAYMENT: "待付款订单",
@@ -337,7 +338,14 @@ Page({
         const { id, action } = e.currentTarget.dataset;
         this.setData({ busy: id, error: "" });
         try {
-            if (action === "pay") {
+            if (action === "friend-pay") {
+                const order = this.data.orders.find((row) => row.id === id);
+                if (!order || order.status !== "PENDING_PAYMENT")
+                    throw new Error("只有待付款订单可找人代付，请刷新订单");
+                const share = (0, friend_payment_1.assertFriendPaymentShare)(await (0, api_1.api)(`/orders/${id}/friend-payment`, "POST", {}), order.payableFen);
+                wx.navigateTo({ url: share.miniappPath });
+            }
+            else if (action === "pay") {
                 const order = this.data.orders.find((row) => row.id === id);
                 if (!order || order.status !== "PENDING_PAYMENT")
                     throw new Error("请刷新订单，确认仍待支付后再操作");

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import vm from "node:vm";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const order = {
   id: "fixture-order",
@@ -141,6 +143,7 @@ async function fixture({
         definition = input;
       },
       require(name) {
+        if (name === "../../utils/friend-payment") return require("../apps/miniapp/utils/friend-payment.js");
         if (name === "../../utils/api")
           return {
             api,

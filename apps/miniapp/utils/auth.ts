@@ -3,6 +3,7 @@ import type {
   SmsPhoneVerificationRequestResult,
   WechatPhoneVerificationResult,
 } from "@zydj/contracts";
+import { safeFriendPaymentReturnPath } from "./friend-payment";
 
 const STORAGE_KEY = "zydj.auth.session";
 const CUSTOMER_LOGIN_URL = "/pages/phone-verification/index?required=1";
@@ -48,11 +49,12 @@ export const needsPhoneVerification = (session = getStoredSession()) =>
 export const hasVerifiedCustomerSession = () =>
   getStoredSession()?.user.phoneVerified === true;
 
-export const redirectToCustomerLogin = () => {
+export const redirectToCustomerLogin = (returnPath?: string) => {
   if (customerLoginRedirecting) return;
   customerLoginRedirecting = true;
   wx.reLaunch({
-    url: CUSTOMER_LOGIN_URL,
+    url: CUSTOMER_LOGIN_URL + (safeFriendPaymentReturnPath(returnPath)
+      ? `&returnPath=${encodeURIComponent(safeFriendPaymentReturnPath(returnPath))}` : ""),
     complete: () => {
       customerLoginRedirecting = false;
     },

@@ -22,7 +22,7 @@
     <text class="slogan">安心上门 · 悦享松弛</text>
   </view>
 
-  <view wx:if="{{!completed}}" class="step-bar">
+  <view wx:if="{{!completed && !friendPaymentReturn}}" class="step-bar">
     <view class="step {{wechatReady?'done':'active'}}"><text>{{wechatReady?'✓':'1'}}</text><view><text>微信授权</text><text>{{wechatReady?'已完成':'当前步骤'}}</text></view></view>
     <view class="step-line {{wechatReady?'active':''}}" />
     <view class="step {{wechatReady?'active':''}}"><text>2</text><view><text>手机验证</text><text>{{wechatReady?'当前步骤':'下一步骤'}}</text></view></view>
@@ -31,8 +31,8 @@
   <view wx:if="{{completed}}" class="login-card success-card">
     <view class="success-mark">✓</view>
     <text class="login-title">登录成功</text>
-    <text class="login-subtitle">{{maskedPhone || '微信账号与手机号均已完成验证'}}</text>
-    <button class="primary-button" bindtap="enterHome">进入中原到家</button>
+    <text class="login-subtitle">{{friendPaymentReturn?'微信身份已确认，可继续好友代付':maskedPhone || '微信账号与手机号均已完成验证'}}</text>
+    <button class="primary-button" bindtap="enterHome">{{friendPaymentReturn?'返回好友代付':'进入中原到家'}}</button>
   </view>
 
   <view wx:elif="{{!wechatReady}}" class="login-card wechat-card">
@@ -45,7 +45,7 @@
       loading="{{busy && loginMode === 'WECHAT'}}"
       disabled="{{busy}}"
     >微信授权登录</button>
-    <view class="flow-note"><text>1</text><text>完成授权后，页面会自动进入手机号短信验证，无需重复返回。</text></view>
+    <view class="flow-note"><text>1</text><text>{{friendPaymentReturn?'重新确认当前小程序的微信身份后，可直接返回好友代付，无需授权手机号。':'完成授权后，页面会自动进入手机号短信验证，无需重复返回。'}}</text></view>
     <text wx:if="{{error}}" class="error-message">{{error}}</text>
   </view>
 

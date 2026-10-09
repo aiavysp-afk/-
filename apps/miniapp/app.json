@@ -17,6 +17,7 @@
     "pages/therapist-detail/index",
     "pages/orders/index",
     "pages/booking/index",
+    "pages/friend-payment/index",
     "pages/phone-verification/index",
     "pages/agreement/index",
     "pages/admin-login/index",

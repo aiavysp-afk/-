@@ -20,6 +20,8 @@ export const WechatTransactionSchema = z.object({
     "ACCEPTED",
   ]),
   success_time: z.iso.datetime({ offset: true }).optional(),
+  // Optional only for legacy SELF payments. FRIEND/new SELF settlement verifies it against a stored hash.
+  payer: z.object({ openid: Identifier }).optional(),
   amount: z.object({
     total: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     currency: z.literal("CNY"),

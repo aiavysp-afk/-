@@ -86,6 +86,15 @@
       <text wx:if="{{couponsError}}" class="coupon-error">{{couponsError}}</text>
     </view>
 
+    <view class="panel payment-panel">
+      <text class="panel-title">支付方式</text>
+      <view class="payment-options">
+        <button class="{{paymentMode==='WECHAT'?'selected':''}}" data-mode="WECHAT" bindtap="choosePaymentMode" disabled="{{busy || orderSubmissionAttempted}}"><text>微信支付</text><text>本人微信账户付款</text></button>
+        <button class="{{paymentMode==='FRIEND'?'selected':''}}" data-mode="FRIEND" bindtap="choosePaymentMode" disabled="{{busy || orderSubmissionAttempted}}"><text>好友代付</text><text>分享给微信好友付款</text></button>
+      </view>
+      <text class="panel-note">好友代付仅支持微信支付，不自动发送消息；你可在订单生成后自主分享。</text>
+    </view>
+
     <view class="panel boundary-panel">
       <text class="panel-title">服务说明</text>
       <view class="boundary-list"><text wx:for="{{service.boundaries}}" wx:key="*this">✓ {{item}}</text></view>
@@ -104,8 +113,8 @@
 
     <text class="error" wx:if="{{error}}">{{error}}</text>
     <button wx:if="{{!quoteDetails}}" class="primary action" bindtap="prepareOrder" loading="{{busy || quoteLoading}}" disabled="{{busy || quoteLoading || !slots.length}}">{{reservationId?'重新获取服务器报价':'核对订单与价格'}}</button>
-    <button wx:else class="primary action" bindtap="create" loading="{{busy}}" disabled="{{busy || quoteLoading}}">{{orderSubmissionAttempted?'使用原幂等键重试提交':'提交订单并支付 · ¥'+quoteDetails.payable}}</button>
-    <text class="payment-note">提交成功后将立即打开微信支付；支付结果只以微信支付通知和服务器原单查询为准。</text>
+    <button wx:else class="primary action" bindtap="create" loading="{{busy}}" disabled="{{busy || quoteLoading}}">{{orderSubmissionAttempted?'使用原幂等键重试提交':paymentMode==='FRIEND'?'提交订单并找人代付 · ¥'+quoteDetails.payable:'提交订单并支付 · ¥'+quoteDetails.payable}}</button>
+    <text class="payment-note">{{paymentMode==='FRIEND'?'提交成功后生成好友代付分享卡片；仅服务器确认付款后订单才会变为已支付。':'提交成功后将立即打开微信支付；支付结果只以微信支付通知和服务器原单查询为准。'}}</text>
     <navigator class="help-link" url="/pages/profile/index" open-type="switchTab">需要帮助？前往“我的”联系客服 ›</navigator>
     <view class="safe-bottom" />
   </view>

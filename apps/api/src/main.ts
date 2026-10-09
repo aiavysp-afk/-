@@ -9,11 +9,15 @@ import {
 import { AppModule } from "./app.module.js";
 import type { AppEnv } from "./config/env.js";
 import { HttpExceptionTelemetryFilter } from "./observability/http-exception.filter.js";
+import { safeRequestLog } from "./observability/safe-request-log.js";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true, trustProxy: true }),
+    new FastifyAdapter({
+      logger: { serializers: { req: safeRequestLog } },
+      trustProxy: true,
+    }),
     { rawBody: true },
   );
   const config = app.get<ConfigService<AppEnv, true>>(ConfigService);

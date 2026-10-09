@@ -60,6 +60,9 @@ export class PaymentsService {
       throw new ConflictException("订单支付时间已过期");
     }
     if (order.payment)
+      if (order.payment.kind === "FRIEND")
+        throw new ConflictException("订单已绑定好友代付，请等待原支付结果");
+    if (order.payment)
       return this.toIntent(order.payment, order.paymentExpiresAt);
 
     const merchantPaymentNo = this.createMerchantPaymentNo();
@@ -114,6 +117,8 @@ export class PaymentsService {
       const existing = await this.prisma.payment.findUnique({
         where: { orderId: order.id },
       });
+      if (existing?.kind === "FRIEND")
+        throw new ConflictException("订单已绑定好友代付，请等待原支付结果");
       if (existing) return this.toIntent(existing, order.paymentExpiresAt);
       throw error;
     }

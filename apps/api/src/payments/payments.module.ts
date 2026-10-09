@@ -18,6 +18,8 @@ import { WechatRecoveryService } from "./wechat-recovery.service.js";
 import { WechatRecoveryWorker } from "./wechat-recovery.worker.js";
 import { StoredValueRechargesController } from "./stored-value-recharges.controller.js";
 import { StoredValueRechargesService } from "./stored-value-recharges.service.js";
+import { FriendPaymentsController } from "./friend-payments.controller.js";
+import { FriendPaymentsService } from "./friend-payments.service.js";
 
 @Module({
   imports: [AuthModule, OrdersModule],
@@ -27,6 +29,7 @@ import { StoredValueRechargesService } from "./stored-value-recharges.service.js
     PaymentReconciliationController,
     RefundsController,
     StoredValueRechargesController,
+    FriendPaymentsController,
   ],
   providers: [
     PaymentsService,
@@ -41,6 +44,7 @@ import { StoredValueRechargesService } from "./stored-value-recharges.service.js
     RefundsService,
     RefundReconciliationWorker,
     StoredValueRechargesService,
+    FriendPaymentsService,
   ],
   exports: [PaymentsService, PaymentGatewayService],
 })

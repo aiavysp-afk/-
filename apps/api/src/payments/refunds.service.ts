@@ -18,6 +18,7 @@ import {
 } from "@prisma/client";
 import {
   IdempotencyKeySchema,
+  type AdminPaymentView,
   type RefundRequest,
   type RefundReview,
   type RefundView,
@@ -651,7 +652,10 @@ export class RefundsService {
     }));
   }
 
-  async listPayments(principal: AuthPrincipal, organizationId: string) {
+  async listPayments(
+    principal: AuthPrincipal,
+    organizationId: string,
+  ): Promise<AdminPaymentView[]> {
     if (
       !this.access.hasPermission(principal, "finance.request", organizationId)
     )
@@ -662,7 +666,19 @@ export class RefundsService {
       );
     const rows = await this.prisma.payment.findMany({
       where: { order: { organizationId } },
-      include: { order: { select: { orderNo: true, status: true } } },
+      select: {
+        id: true,
+        orderId: true,
+        order: { select: { orderNo: true, status: true } },
+        status: true,
+        provider: true,
+        kind: true,
+        payer: { select: { id: true, displayName: true } },
+        succeededAt: true,
+        amountFen: true,
+        refundReservedFen: true,
+        refundedFen: true,
+      },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -673,6 +689,11 @@ export class RefundsService {
       orderStatus: row.order.status,
       status: row.status,
       provider: row.provider,
+      kind: row.kind ?? "SELF",
+      payer: row.payer
+        ? { userId: row.payer.id, displayName: row.payer.displayName }
+        : null,
+      succeededAt: row.succeededAt?.toISOString() ?? null,
       amountFen: this.money(row.amountFen),
       reservedFen: this.money(row.refundReservedFen),
       refundedFen: this.money(row.refundedFen),

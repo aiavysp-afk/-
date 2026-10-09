@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WechatPaymentsService } from "./wechat-payments.service.js";
+import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { WechatTransaction } from "./wechat-pay.protocol.js";
 
 const transaction: WechatTransaction = {
@@ -29,6 +30,7 @@ const principal = {
 function setup(
   overrides: Record<string, unknown> = {},
   previous: unknown = null,
+  crypto?: Pick<AuthCryptoService, "hashIdentity">,
 ) {
   const order = {
     id: "order-1",
@@ -93,11 +95,13 @@ function setup(
       prisma as never,
       client as never,
       storedValueRecharges as never,
+      crypto as never,
     ),
     tx,
     client,
     prisma,
     order,
+    payment,
   };
 }
 
@@ -231,5 +235,174 @@ describe("WechatPaymentsService", () => {
     ).resolves.toMatchObject({ status: "PENDING", providerState: "NOTPAY" });
     expect(tx.payment.update).not.toHaveBeenCalled();
     expect(tx.order.update).not.toHaveBeenCalled();
+  });
+  it("commits a durable friend-success customer notification with PAID and no plaintext payer data", async () => {
+    const crypto = { hashIdentity: vi.fn(() => "payer-hash") };
+    const f = setup(
+      { kind: "FRIEND", payerUserId: "friend", payerOpenIdHash: "payer-hash" },
+      null,
+      crypto,
+    );
+    await f.service.applyTransaction(
+      { ...transaction, payer: { openid: "actual-friend-openid" } },
+      "friend-event",
+      "NOTIFICATION",
+    );
+    expect(f.tx.order.update).toHaveBeenCalledWith({
+      where: { id: "order-1" },
+      data: { status: "PAID" },
+    });
+    expect(f.tx.orderEvent.create).toHaveBeenCalledWith({
+      data: {
+        orderId: "order-1",
+        type: "FRIEND_PAYMENT_SUCCEEDED",
+        payload: { paymentId: "payment-1" },
+      },
+    });
+    expect(f.tx.orderEvent.create).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(f.tx.paymentEvent.create.mock.calls)).not.toContain(
+      "actual-friend-openid",
+    );
+    expect(JSON.stringify(f.tx.auditLog.create.mock.calls)).not.toContain(
+      "actual-friend-openid",
+    );
+    expect(crypto.hashIdentity).toHaveBeenCalledWith(
+      "app-1",
+      "actual-friend-openid",
+    );
+  });
+  it.each([
+    "missing_payer",
+    "wrong_payer",
+    "missing_hash",
+    "missing_user",
+    "missing_crypto",
+  ])("rejects %s FRIEND settlement before any writes", async (kind) => {
+    const crypto =
+      kind === "missing_crypto"
+        ? undefined
+        : {
+            hashIdentity: vi.fn(() =>
+              kind === "wrong_payer" ? "wrong-hash" : "payer-hash",
+            ),
+          };
+    const f = setup(
+      {
+        kind: "FRIEND",
+        payerUserId: kind === "missing_user" ? null : "friend",
+        payerOpenIdHash: kind === "missing_hash" ? null : "payer-hash",
+      },
+      null,
+      crypto,
+    );
+    await expect(
+      f.service.applyTransaction(
+        {
+          ...transaction,
+          ...(kind === "missing_payer"
+            ? {}
+            : { payer: { openid: "actual-friend-openid" } }),
+        },
+        "friend-event",
+        "NOTIFICATION",
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(f.tx.payment.update).not.toHaveBeenCalled();
+    expect(f.tx.orderEvent.create).not.toHaveBeenCalled();
+  });
+  it("also validates payer hash on new SELF rows while historical SELF rows remain compatible", async () => {
+    const f = setup(
+      { kind: "SELF", payerUserId: "customer-1", payerOpenIdHash: "hash" },
+      null,
+      { hashIdentity: vi.fn(() => "hash") },
+    );
+    await expect(
+      f.service.applyTransaction(transaction, "self-event", "NOTIFICATION"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await f.service.applyTransaction(
+      { ...transaction, payer: { openid: "self-openid" } },
+      "self-event",
+      "NOTIFICATION",
+    );
+    expect(f.tx.payment.update).toHaveBeenCalledOnce();
+  });
+  it("does not duplicate a friend-success notification after replay or later refund", async () => {
+    const f = setup(
+      {
+        kind: "FRIEND",
+        payerUserId: "friend",
+        payerOpenIdHash: "payer-hash",
+        status: "REFUNDING",
+        providerTransactionId: "wx-txn-1",
+      },
+      null,
+      { hashIdentity: vi.fn(() => "payer-hash") },
+    );
+    await expect(
+      f.service.applyTransaction(
+        { ...transaction, payer: { openid: "openid" } },
+        "replay-event",
+        "NOTIFICATION",
+      ),
+    ).resolves.toEqual({ duplicate: true });
+    expect(f.tx.orderEvent.create).not.toHaveBeenCalled();
+    expect(f.tx.payment.update).not.toHaveBeenCalled();
+  });
+  it("records a late friend payment for review without inventing a PAID service confirmation", async () => {
+    const f = setup(
+      {
+        kind: "FRIEND",
+        payerUserId: "friend",
+        payerOpenIdHash: "payer-hash",
+        status: "CLOSED",
+      },
+      null,
+      { hashIdentity: vi.fn(() => "payer-hash") },
+    );
+    f.order.status = "CANCELLED" as "PENDING_PAYMENT";
+    await f.service.applyTransaction(
+      { ...transaction, payer: { openid: "openid" } },
+      "late-friend-event",
+      "NOTIFICATION",
+    );
+    expect(f.tx.order.update).not.toHaveBeenCalled();
+    expect(f.tx.orderEvent.create).toHaveBeenCalledWith({
+      data: {
+        orderId: "order-1",
+        type: "FRIEND_PAYMENT_FULFILLMENT_REVIEW_REQUIRED",
+        payload: { paymentId: "payment-1" },
+      },
+    });
+  });
+  it("only the bound FRIEND payer can use friend reconciliation, even though the owner still has ordinary order rights", async () => {
+    const f = setup(
+      { kind: "FRIEND", payerUserId: "friend", payerOpenIdHash: "hash" },
+      null,
+      { hashIdentity: vi.fn(() => "hash") },
+    );
+    await expect(
+      f.service.reconcileFriend(principal, "payment-1"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      f.service.reconcileFriend(
+        { ...principal, userId: "other-friend" },
+        "payment-1",
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(f.client.queryTransaction).not.toHaveBeenCalled();
+    f.client.queryTransaction.mockResolvedValue({
+      ...transaction,
+      payer: { openid: "friend-openid" },
+    });
+    await f.service.reconcileFriend(
+      { ...principal, userId: "friend" },
+      "payment-1",
+    );
+    expect(f.client.queryTransaction).toHaveBeenCalledOnce();
+    expect(f.tx.orderEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ type: "FRIEND_PAYMENT_SUCCEEDED" }),
+      }),
+    );
   });
 });

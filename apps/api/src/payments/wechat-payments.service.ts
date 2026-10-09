@@ -4,9 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import {
   OrderStatus,
+  PaymentKind,
   PaymentProvider,
   PaymentStatus,
   ReservationStatus,
@@ -20,6 +22,7 @@ import type {
 } from "./wechat-pay.protocol.js";
 import { parseWechatTransaction } from "./wechat-pay.protocol.js";
 import { StoredValueRechargesService } from "./stored-value-recharges.service.js";
+import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 
 @Injectable()
 export class WechatPaymentsService {
@@ -27,6 +30,7 @@ export class WechatPaymentsService {
     private readonly prisma: PrismaService,
     private readonly client: WechatPayClient,
     private readonly storedValueRecharges: StoredValueRechargesService,
+    @Optional() private readonly crypto?: AuthCryptoService,
   ) {}
 
   async notify(rawBody: Buffer, headers: WechatHeaders) {
@@ -45,12 +49,29 @@ export class WechatPaymentsService {
   }
 
   async reconcile(principal: AuthPrincipal, paymentId: string) {
+    return this.reconcileBound(principal, paymentId, false);
+  }
+
+  async reconcileFriend(principal: AuthPrincipal, paymentId: string) {
+    return this.reconcileBound(principal, paymentId, true);
+  }
+
+  private async reconcileBound(
+    principal: AuthPrincipal,
+    paymentId: string,
+    friend: boolean,
+  ) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
       include: { order: true },
     });
     if (!payment) throw new NotFoundException("支付记录不存在");
-    if (payment.order.customerId !== principal.userId)
+    if (
+      friend
+        ? payment.kind !== PaymentKind.FRIEND ||
+          payment.payerUserId !== principal.userId
+        : payment.order.customerId !== principal.userId
+    )
       throw new ForbiddenException("不能查询其他用户的支付");
     if (payment.provider !== PaymentProvider.WECHAT)
       throw new ConflictException("该支付不是微信支付");
@@ -125,6 +146,22 @@ export class WechatPaymentsService {
           transaction.amount.currency !== "CNY"
         )
           throw new ConflictException("微信支付金额与订单不一致");
+        // Legacy SELF rows have no payer hash; all new claims and every FRIEND row must match the signed payer.
+        if (
+          payment.kind === PaymentKind.FRIEND &&
+          (!payment.payerUserId || !payment.payerOpenIdHash)
+        )
+          throw new ConflictException("代付人绑定信息缺失，不能确认支付");
+        if (
+          payment.payerOpenIdHash &&
+          (!this.crypto ||
+            !transaction.payer?.openid ||
+            this.crypto.hashIdentity(
+              identity.appId,
+              transaction.payer.openid,
+            ) !== payment.payerOpenIdHash)
+        )
+          throw new ConflictException("微信付款人与预下单身份不一致");
         const previous = await tx.paymentEvent.findUnique({
           where: { providerEventId: eventId },
         });
@@ -218,6 +255,16 @@ export class WechatPaymentsService {
         await tx.orderEvent.create({
           data: { orderId: order.id, type, payload: { paymentId: payment.id } },
         });
+        if (payment.kind === PaymentKind.FRIEND) {
+          // A durable inbox event commits atomically with PAID/reservation confirmation. No sender data is exposed to the customer.
+          await tx.orderEvent.create({
+            data: {
+              orderId: order.id,
+              type: `FRIEND_${type}`,
+              payload: { paymentId: payment.id },
+            },
+          });
+        }
         await tx.auditLog.create({
           data: {
             organizationId: order.organizationId,

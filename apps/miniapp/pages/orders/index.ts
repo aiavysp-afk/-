@@ -3,6 +3,7 @@ import type {
   CustomerTechnicianLocation,
   OrderView,
   PaymentIntent,
+  FriendPaymentShare,
   RefundView,
   SafetyIncidentCreate,
   SafetyIncidentCustomerView,
@@ -17,6 +18,7 @@ import {
   needsPhoneVerification,
   requireVerifiedCustomerAccess,
 } from "../../utils/auth";
+import { assertFriendPaymentShare } from "../../utils/friend-payment";
 type Row = OrderView & {
   price: string;
   time: string;
@@ -401,7 +403,15 @@ Page({
     const { id, action } = e.currentTarget.dataset;
     this.setData({ busy: id, error: "" });
     try {
-      if (action === "pay") {
+      if (action === "friend-pay") {
+        const order = this.data.orders.find((row: Row) => row.id === id);
+        if (!order || order.status !== "PENDING_PAYMENT")
+          throw new Error("只有待付款订单可找人代付，请刷新订单");
+        const share = assertFriendPaymentShare(await api<FriendPaymentShare>(
+          `/orders/${id}/friend-payment`, "POST", {},
+        ), order.payableFen);
+        wx.navigateTo({ url: share.miniappPath });
+      } else if (action === "pay") {
         const order = this.data.orders.find((row: Row) => row.id === id);
         if (!order || order.status !== "PENDING_PAYMENT")
           throw new Error("请刷新订单，确认仍待支付后再操作");

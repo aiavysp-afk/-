@@ -6,6 +6,7 @@ import type {
   OrderQuote,
   OrderView,
   PaymentIntent,
+  FriendPaymentShare,
   AddressSuggestion,
   AddressVerification,
   GeocodedAddress,
@@ -35,6 +36,7 @@ import {
   shanghaiDate,
 } from "../../utils/booking";
 import { customerCenterPath } from "../../utils/customer-center";
+import { assertFriendPaymentShare } from "../../utils/friend-payment";
 
 type QuoteDisplay = ReturnType<typeof quoteDisplay>;
 type ReviewView = TechnicianReview & {
@@ -143,6 +145,7 @@ Page({
     serviceReviews: [] as ReviewView[],
     reviewsLoading: false,
     reviewsError: "",
+    paymentMode: "WECHAT" as "WECHAT" | "FRIEND",
   },
   async onLoad(options: { slug?: string; therapistId?: string }) {
     this.pageClosed = false;
@@ -851,6 +854,10 @@ Page({
         quoteFingerprint: "",
         orderSubmissionAttempted: false,
       });
+      if (this.data.paymentMode === "FRIEND") {
+        await this.shareCreatedOrder(order);
+        return;
+      }
       await this.payCreatedOrder(order);
       wx.redirectTo({ url: "/pages/orders/index" });
     } catch (error) {
@@ -873,6 +880,32 @@ Page({
       this.fail(error);
     } finally {
       this.setData({ busy: false });
+    }
+  },
+  choosePaymentMode(event: { currentTarget: { dataset: { mode: string } } }) {
+    if (this.data.busy || this.data.orderSubmissionAttempted) return;
+    const mode = event.currentTarget.dataset.mode;
+    if (mode === "WECHAT" || mode === "FRIEND") this.setData({ paymentMode: mode });
+  },
+  async shareCreatedOrder(order: OrderView) {
+    if (order.status !== "PENDING_PAYMENT") {
+      wx.redirectTo({ url: "/pages/orders/index" });
+      return;
+    }
+    try {
+      // Do not create the owner's prepay first. The server chooses and locks
+      // exactly one real payer before creating a WeChat payment intent.
+      const share = assertFriendPaymentShare(await api<FriendPaymentShare>(
+        `/orders/${order.id}/friend-payment`, "POST", {},
+      ), order.payableFen);
+      wx.redirectTo({ url: share.miniappPath });
+    } catch (error) {
+      wx.showModal({
+        title: "订单已保留",
+        content: `${error instanceof Error ? error.message : "代付分享暂不可用"}。可在订单页继续操作，请勿重复下单。`,
+        showCancel: false,
+      });
+      wx.redirectTo({ url: "/pages/orders/index" });
     }
   },
   async payCreatedOrder(order: OrderView) {

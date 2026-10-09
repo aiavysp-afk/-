@@ -10,6 +10,7 @@ import { ConfigService } from "@nestjs/config";
 import {
   IdentityProvider,
   OrderStatus,
+  PaymentKind,
   PaymentProvider,
   PaymentStatus,
   ReservationStatus,
@@ -39,14 +40,89 @@ export class WechatPrepayService {
     principal: AuthPrincipal,
     orderId: string,
   ): Promise<PaymentIntent> {
+    return this.createBoundIntent(principal, orderId, PaymentKind.SELF);
+  }
+
+  async createFriendIntent(
+    principal: AuthPrincipal,
+    orderId: string,
+    shareId: string,
+  ): Promise<PaymentIntent> {
+    return this.createBoundIntent(
+      principal,
+      orderId,
+      PaymentKind.FRIEND,
+      shareId,
+    );
+  }
+
+  async readFriendIntent(
+    principal: AuthPrincipal,
+    orderId: string,
+    shareId: string,
+  ): Promise<PaymentIntent> {
+    this.client.assertPrepayEnabled();
+    const openId = await this.payerOpenId(principal.userId);
+    const expectedHash = this.crypto.hashIdentity(
+      this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true }),
+      openId,
+    );
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+      const share = await tx.friendPaymentShare.findUnique({
+        where: { id: shareId },
+      });
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { reservation: true, payment: true },
+      });
+      const payment = order.payment;
+      if (
+        !share ||
+        share.orderId !== orderId ||
+        share.expiresAt.getTime() <= Date.now()
+      )
+        throw new ConflictException("代付邀请已失效，请联系下单人");
+      if (
+        order.customerId === principal.userId ||
+        !payment ||
+        payment.kind !== PaymentKind.FRIEND ||
+        payment.payerUserId !== principal.userId ||
+        payment.payerOpenIdHash !== expectedHash
+      )
+        throw new ForbiddenException("只有该订单已绑定的代付人可以继续原支付");
+      this.assertPayable(order);
+      if (
+        payment.provider !== PaymentProvider.WECHAT ||
+        payment.status !== PaymentStatus.PENDING ||
+        payment.closeRequestedAt ||
+        payment.amountFen !== order.payableFen
+      )
+        throw new ConflictException("原支付状态已变化，请查询原订单");
+      return this.toIntent(payment, order.paymentExpiresAt!);
+    });
+  }
+
+  private async createBoundIntent(
+    principal: AuthPrincipal,
+    orderId: string,
+    kind: PaymentKind,
+    shareId?: string,
+  ): Promise<PaymentIntent> {
     const initial = await this.prisma.order.findUnique({
       where: { id: orderId },
     });
     if (!initial) throw new NotFoundException("订单不存在");
-    if (initial.customerId !== principal.userId)
+    if (kind === PaymentKind.SELF && initial.customerId !== principal.userId)
       throw new ForbiddenException("不能支付其他用户的订单");
+    if (kind === PaymentKind.FRIEND && initial.customerId === principal.userId)
+      throw new ForbiddenException("下单人请使用本人微信支付");
     this.client.assertPrepayEnabled();
     const openId = await this.payerOpenId(principal.userId);
+    const payerOpenIdHash = this.crypto.hashIdentity(
+      this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true }),
+      openId,
+    );
 
     // Persist the only dispatch claim before external I/O. A crash/timeout never permits a second POST.
     const prepared = await this.prisma.$transaction(async (tx) => {
@@ -55,10 +131,38 @@ export class WechatPrepayService {
         where: { id: orderId },
         include: { payment: true, reservation: true, items: true },
       });
-      this.assertPayable(order, principal.userId);
+      this.assertPayable(
+        order,
+        kind === PaymentKind.SELF ? principal.userId : undefined,
+      );
+      if (kind === PaymentKind.FRIEND) {
+        const share = shareId
+          ? await tx.friendPaymentShare.findUnique({ where: { id: shareId } })
+          : null;
+        if (
+          !share ||
+          share.orderId !== orderId ||
+          share.expiresAt.getTime() <= Date.now()
+        )
+          throw new ConflictException("代付邀请已失效，请联系下单人");
+      }
       const expiresAt = order.paymentExpiresAt!;
       const existing = order.payment;
       if (existing) {
+        if (
+          (existing.kind ?? PaymentKind.SELF) !== kind ||
+          (kind === PaymentKind.FRIEND &&
+            (existing.payerUserId !== principal.userId ||
+              existing.payerOpenIdHash !== payerOpenIdHash)) ||
+          (kind === PaymentKind.SELF &&
+            existing.payerUserId &&
+            existing.payerUserId !== principal.userId) ||
+          (existing.payerOpenIdHash &&
+            existing.payerOpenIdHash !== payerOpenIdHash)
+        )
+          throw new ConflictException(
+            "订单已绑定其他支付方式或代付人，请等待原支付结果",
+          );
         if (
           existing.provider !== PaymentProvider.WECHAT ||
           existing.status !== PaymentStatus.PENDING ||
@@ -96,6 +200,9 @@ export class WechatPrepayService {
         data: {
           orderId,
           provider: PaymentProvider.WECHAT,
+          kind,
+          payerUserId: principal.userId,
+          payerOpenIdHash,
           merchantPaymentNo,
           amountFen: order.payableFen,
           prepayState: WechatPrepayState.DISPATCHING,
@@ -106,7 +213,7 @@ export class WechatPrepayService {
         data: {
           paymentId: payment.id,
           type: "WECHAT_PREPAY_DISPATCH_CLAIMED",
-          payload: {},
+          payload: { kind },
         },
       });
       await tx.auditLog.create({
@@ -116,7 +223,7 @@ export class WechatPrepayService {
           action: "WECHAT_PREPAY_DISPATCH_CLAIMED",
           resourceType: "Payment",
           resourceId: payment.id,
-          metadata: {},
+          metadata: { kind },
         },
       });
       return { payment, expiresAt, request };
@@ -186,7 +293,10 @@ export class WechatPrepayService {
       return { payment, order };
     });
     // Persist the response even if a cancellation/notification won the race, but never expose usable SDK parameters.
-    this.assertPayable(current.order, principal.userId);
+    this.assertPayable(
+      current.order,
+      kind === PaymentKind.SELF ? principal.userId : undefined,
+    );
     if (
       current.payment.status !== PaymentStatus.PENDING ||
       current.payment.closeRequestedAt
@@ -230,9 +340,9 @@ export class WechatPrepayService {
       paymentExpiresAt: Date | null;
       reservation: { status: ReservationStatus; expiresAt: Date } | null;
     },
-    customerId: string,
+    customerId?: string,
   ) {
-    if (order.customerId !== customerId)
+    if (customerId && order.customerId !== customerId)
       throw new ForbiddenException("不能支付其他用户的订单");
     if (
       order.status !== OrderStatus.PENDING_PAYMENT ||
