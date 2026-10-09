@@ -1,0 +1,32 @@
+<view class="page">
+  <view class="hero">
+    <text class="eyebrow">INVITED TECHNICIAN</text>
+    <text class="title">受邀技师认证</text>
+    <text class="subtitle">仅限已获得中原到家后台一次性邀请码的本人操作</text>
+  </view>
+
+  <view wx:if="{{!result}}" class="card">
+    <text class="card-title">输入邀请码</text>
+    <input maxlength="12" value="{{code}}" placeholder="12位字母或数字" disabled="{{busy}}" bindinput="onCodeInput" />
+    <button loading="{{busy}}" disabled="{{busy}}" bindtap="claim">{{busy ? '正在核验…' : '认领技师身份'}}</button>
+    <text wx:if="{{error}}" class="error">{{error}}</text>
+  </view>
+
+  <view wx:else class="card success-card">
+    <text class="success-icon">✓</text>
+    <text class="card-title">身份认领成功</text>
+    <text>{{result.organizationName}} · {{result.publicName}}</text>
+    <text class="note">当前资料仍是草稿，不会向客户公开。请进入技师端，使用同一微信账号登录并填写本人头像、介绍和资质；后台审核通过并单独发布后才会展示。</text>
+    <button bindtap="copyWorkbenchAddress">复制技师端地址</button>
+    <button class="secondary" bindtap="openStaffLoginConfirmation">技师端已显示配对码，前往确认登录</button>
+  </view>
+
+  <view class="rules">
+    <text>认证规则</text>
+    <text>· 必须先完成本人微信登录和手机号验证</text>
+    <text>· 邀请码一次性使用，过期或撤销后不能认领</text>
+    <text>· 禁止代认领、借用照片或填写虚假资质</text>
+    <text>· 客户端只展示本人填报且后台审核发布的资料</text>
+    <button class="text-action" bindtap="openStaffLoginConfirmation">已是技师？前往工作人员登录确认</button>
+  </view>
+</view>

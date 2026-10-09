@@ -1794,3 +1794,126 @@ h1 {
     max-width: 340px;
   }
 }
+
+.technician-invite-card {
+  background: linear-gradient(135deg, #f7fbf8, #eef8f3);
+  border: 1px solid #d7e8df;
+  border-radius: 18px;
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 20px;
+}
+.technician-invite-copy h3 {
+  color: #24483c;
+  font-family: "Noto Serif SC";
+  font-size: 17px;
+  margin: 5px 0;
+}
+.technician-invite-copy p {
+  color: #718079;
+  font-size: 9px;
+  line-height: 1.7;
+  margin: 0;
+}
+.technician-invite-create {
+  display: flex;
+  gap: 10px;
+}
+.technician-invite-create input {
+  background: #fff;
+  border: 1px solid #d1e0d9;
+  border-radius: 10px;
+  color: #29483e;
+  flex: 1;
+  font: 500 11px "Noto Sans SC";
+  min-width: 160px;
+  padding: 10px 12px;
+}
+.technician-invite-secret {
+  align-items: center;
+  background: #fff8e8;
+  border: 1px solid #eadbb4;
+  border-radius: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 13px;
+}
+.technician-invite-secret > div {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 240px;
+}
+.technician-invite-secret small,
+.technician-invite-secret span {
+  color: #7e7154;
+  font-size: 8px;
+}
+.technician-invite-secret code {
+  color: #3b5d50;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+.technician-invite-list {
+  display: grid;
+  gap: 7px;
+}
+.technician-invite-list > div {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 11px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr auto auto;
+  padding: 10px 12px;
+}
+.technician-invite-list span,
+.technician-invite-list strong,
+.technician-invite-list small {
+  display: block;
+}
+.technician-invite-list strong {
+  color: #304b42;
+  font-size: 10px;
+}
+.technician-invite-list small,
+.technician-invite-list > p {
+  color: #83908a;
+  font-size: 8px;
+  margin: 3px 0 0;
+}
+.technician-invite-list em {
+  border-radius: 999px;
+  color: #6d7974;
+  font-size: 8px;
+  font-style: normal;
+  padding: 5px 8px;
+}
+.technician-invite-list em[data-status="PENDING"] {
+  background: #e2f6ec;
+  color: #247359;
+}
+.technician-invite-list em[data-status="CLAIMED"] {
+  background: #e8f0ff;
+  color: #46689c;
+}
+.technician-invite-list em[data-status="REVOKED"],
+.technician-invite-list em[data-status="EXPIRED"] {
+  background: #f1f2f1;
+}
+@media (max-width: 760px) {
+  .technician-invite-create,
+  .technician-invite-secret {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .technician-invite-list > div {
+    grid-template-columns: 1fr auto;
+  }
+  .technician-invite-list > div > button {
+    grid-column: 1 / -1;
+  }
+}

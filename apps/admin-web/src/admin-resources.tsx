@@ -17,6 +17,8 @@ import type {
   AdminTechnicianBoard,
   AdminTechnicianReview,
   AuditLogEntry,
+  TechnicianInvitation,
+  TechnicianInvitationCreated,
   TechnicianProfile,
   TechnicianProfileUpdate,
 } from "@zydj/contracts";
@@ -126,17 +128,28 @@ export function TechniciansWorkspace({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedTechnicianId, setSelectedTechnicianId] = useState("");
+  const [invitations, setInvitations] = useState<TechnicianInvitation[]>([]);
+  const [inviteName, setInviteName] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [createdInvite, setCreatedInvite] =
+    useState<TechnicianInvitationCreated | null>(null);
   const load = useCallback(async () => {
     if (!token || !organizationId) return;
     setLoading(true);
     setError("");
     try {
-      setBoard(
-        await request<AdminTechnicianBoard>(
+      const [boardValue, invitationRows] = await Promise.all([
+        request<AdminTechnicianBoard>(
           `/admin/organizations/${organizationId}/technicians`,
           token,
         ),
-      );
+        request<TechnicianInvitation[]>(
+          `/admin/organizations/${organizationId}/technician-invitations`,
+          token,
+        ),
+      ]);
+      setBoard(boardValue);
+      setInvitations(invitationRows);
     } catch (caught) {
       setBoard(null);
       setError(caught instanceof Error ? caught.message : "技师列表加载失败");
@@ -163,6 +176,65 @@ export function TechniciansWorkspace({
     OFF_DUTY: "今日无班",
   } as const;
 
+  async function createInvitation() {
+    const publicName = inviteName.trim();
+    if (publicName.length < 2 || inviteBusy) {
+      setError("请填写2至40字的客户端公开称呼");
+      return;
+    }
+    setInviteBusy(true);
+    setError("");
+    try {
+      const result = await request<TechnicianInvitationCreated>(
+        `/admin/organizations/${organizationId}/technician-invitations`,
+        token,
+        { publicName, expiresInHours: 72 },
+      );
+      setCreatedInvite(result);
+      setInviteName("");
+      setInvitations((current) => [
+        result.invitation,
+        ...current.filter((item) => item.id !== result.invitation.id),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "技师邀请创建失败");
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function revokeInvitation(invitation: TechnicianInvitation) {
+    if (!window.confirm(`确认撤销“${invitation.publicName}”的一次性邀请？`)) {
+      return;
+    }
+    setInviteBusy(true);
+    setError("");
+    try {
+      const updated = await request<TechnicianInvitation>(
+        `/admin/organizations/${organizationId}/technician-invitations/${invitation.id}/revoke`,
+        token,
+        {},
+      );
+      setInvitations((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (createdInvite?.invitation.id === updated.id) setCreatedInvite(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "技师邀请撤销失败");
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function copyInvitation(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      window.alert(`${label}已复制`);
+    } catch {
+      setError(`无法自动复制，请手动复制：${value}`);
+    }
+  }
+
   return (
     <section className="catalog-workspace resource-workspace">
       <div className="catalog-heading">
@@ -181,6 +253,87 @@ export function TechniciansWorkspace({
         </button>
       </div>
       {error && <div className="catalog-error">{error}</div>}
+      <section className="technician-invite-card">
+        <div className="technician-invite-copy">
+          <span className="eyebrow">ONE-TIME ONBOARDING</span>
+          <h3>真实技师入驻邀请</h3>
+          <p>
+            邀请码72小时内仅可由一个已完成微信及手机号验证的本人账号认领；认领后资料保持草稿，仍需填报、审核和发布。
+          </p>
+        </div>
+        <div className="technician-invite-create">
+          <input
+            maxLength={40}
+            value={inviteName}
+            placeholder="填写客户端公开称呼"
+            onChange={(event) => setInviteName(event.target.value)}
+          />
+          <button
+            className="primary-action"
+            disabled={inviteBusy}
+            onClick={() => void createInvitation()}
+          >
+            {inviteBusy ? "处理中…" : "生成一次性邀请"}
+          </button>
+        </div>
+        {createdInvite && (
+          <div className="technician-invite-secret">
+            <div>
+              <small>仅本次显示，请交给技师本人</small>
+              <code>{createdInvite.code}</code>
+              <span>{createdInvite.miniappPath}</span>
+            </div>
+            <button
+              className="ghost-action"
+              onClick={() => void copyInvitation(createdInvite.code, "邀请码")}
+            >
+              复制邀请码
+            </button>
+            <button
+              className="ghost-action"
+              onClick={() =>
+                void copyInvitation(createdInvite.miniappPath, "小程序路径")
+              }
+            >
+              复制小程序路径
+            </button>
+          </div>
+        )}
+        <div className="technician-invite-list">
+          {invitations.slice(0, 12).map((invitation) => (
+            <div key={invitation.id}>
+              <span>
+                <strong>{invitation.publicName}</strong>
+                <small>
+                  {invitation.status === "CLAIMED"
+                    ? `已由 ${invitation.claimedDisplayName ?? "已验证账号"} 认领`
+                    : `有效期至 ${formatDateTime(invitation.expiresAt)}`}
+                </small>
+              </span>
+              <em data-status={invitation.status}>
+                {{
+                  PENDING: "待认领",
+                  CLAIMED: "已认领",
+                  REVOKED: "已撤销",
+                  EXPIRED: "已过期",
+                }[invitation.status]}
+              </em>
+              {invitation.status === "PENDING" && (
+                <button
+                  className="ghost-action"
+                  disabled={inviteBusy}
+                  onClick={() => void revokeInvitation(invitation)}
+                >
+                  撤销
+                </button>
+              )}
+            </div>
+          ))}
+          {!loading && invitations.length === 0 && (
+            <p>尚未生成真实技师邀请。</p>
+          )}
+        </div>
+      </section>
       <div className="resource-grid">
         {rows.map((technician) => (
           <article className="resource-card" key={technician.id}>

@@ -12,6 +12,9 @@
   <view class="menu-card single">
     <view bindtap="openSecurity"><text>账号与安全</text><text>›</text></view>
   </view>
+  <view class="menu-card single">
+    <view bindtap="openTechnicianOnboarding"><text>受邀技师认证</text><text>仅限持邀请码本人 ›</text></view>
+  </view>
   <view class="menu-card">
     <view data-kind="about" bindtap="openRecord"><text>关于我们</text><text>›</text></view>
     <view data-kind="feedback" bindtap="openRecord"><text>意见反馈</text><text>›</text></view>

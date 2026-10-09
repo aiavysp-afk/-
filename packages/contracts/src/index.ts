@@ -445,6 +445,57 @@ export const TechnicianProfileStatusSchema = z.enum([
   "REJECTED",
 ]);
 
+export const TechnicianInvitationStatusSchema = z.enum([
+  "PENDING",
+  "CLAIMED",
+  "REVOKED",
+  "EXPIRED",
+]);
+
+export const TechnicianInvitationCreateSchema = z
+  .object({
+    publicName: z.string().trim().min(2).max(40),
+    expiresInHours: z.number().int().min(1).max(168).default(72),
+  })
+  .strict();
+
+export const TechnicianInvitationClaimSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z0-9_-]{12}$/),
+  })
+  .strict();
+
+export const TechnicianInvitationSchema = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  organizationName: z.string(),
+  publicName: z.string(),
+  status: TechnicianInvitationStatusSchema,
+  expiresAt: IsoDateTimeSchema,
+  createdAt: IsoDateTimeSchema,
+  claimedAt: IsoDateTimeSchema.nullable(),
+  claimedDisplayName: z.string().nullable(),
+});
+
+export const TechnicianInvitationCreatedSchema = z.object({
+  invitation: TechnicianInvitationSchema,
+  code: z.string().regex(/^[A-Z0-9_-]{12}$/),
+  miniappPath: z.string(),
+});
+
+export const TechnicianInvitationClaimedSchema = z.object({
+  invitationId: z.string(),
+  organizationId: z.string(),
+  organizationName: z.string(),
+  publicName: z.string(),
+  profileStatus: z.literal("DRAFT"),
+  claimedAt: IsoDateTimeSchema,
+});
+
 const PublicHttpsUrlSchema = z
   .string()
   .trim()
@@ -1239,6 +1290,24 @@ export type AdminTechnician = z.infer<typeof AdminTechnicianSchema>;
 export type AdminTechnicianBoard = z.infer<typeof AdminTechnicianBoardSchema>;
 export type TechnicianProfileStatus = z.infer<
   typeof TechnicianProfileStatusSchema
+>;
+export type TechnicianInvitationStatus = z.infer<
+  typeof TechnicianInvitationStatusSchema
+>;
+export type TechnicianInvitationCreate = z.infer<
+  typeof TechnicianInvitationCreateSchema
+>;
+export type TechnicianInvitationClaim = z.infer<
+  typeof TechnicianInvitationClaimSchema
+>;
+export type TechnicianInvitation = z.infer<
+  typeof TechnicianInvitationSchema
+>;
+export type TechnicianInvitationCreated = z.infer<
+  typeof TechnicianInvitationCreatedSchema
+>;
+export type TechnicianInvitationClaimed = z.infer<
+  typeof TechnicianInvitationClaimedSchema
 >;
 export type TechnicianProfileUpdate = z.infer<
   typeof TechnicianProfileUpdateSchema

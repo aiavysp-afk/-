@@ -127,6 +127,12 @@ enum TechnicianReviewStatus {
   HIDDEN
 }
 
+enum TechnicianInvitationStatus {
+  PENDING
+  CLAIMED
+  REVOKED
+}
+
 enum CustomerCouponStatus {
   AVAILABLE
   USED
@@ -170,6 +176,7 @@ model Organization {
   safetyIncidents         SafetyIncident[]
   technicianProfiles      TechnicianProfile[]
   technicianReviews       TechnicianReview[]
+  technicianInvitations   TechnicianInvitation[]
   customerCenterConfig    CustomerCenterConfig?
   customerCoupons         CustomerCoupon[]
   storedValueAccounts     StoredValueAccount[]
@@ -179,47 +186,49 @@ model Organization {
 }
 
 model User {
-  id                          String                       @id @default(cuid())
-  organizationId              String?
-  organization                Organization?                @relation(fields: [organizationId], references: [id])
-  role                        UserRole
-  displayName                 String
-  phoneEncrypted              String?
-  phoneVerifiedAt             DateTime?
-  status                      String                       @default("ACTIVE")
-  createdAt                   DateTime                     @default(now())
-  updatedAt                   DateTime                     @updatedAt
-  identities                  ExternalIdentity[]
-  sessions                    Session[]
-  memberships                 StaffMembership[]
-  mfaCredential               MfaCredential?
-  customerOrders              Order[]                      @relation("CustomerOrders")
-  therapistOrders             Order[]                      @relation("TherapistOrders")
-  therapistShifts             TherapistShift[]             @relation("TherapistShifts")
-  customerReservations        AppointmentReservation[]     @relation("CustomerReservations")
-  therapistReservations       AppointmentReservation[]     @relation("TherapistReservations")
-  requestedMfaRecoveries      MfaRecoveryRequest[]         @relation("MfaRecoveryTarget")
-  reviewedMfaRecoveries       MfaRecoveryRequest[]         @relation("MfaRecoveryReviewer")
-  createdSafetyRosters        SafetyDutyRoster[]           @relation("SafetyRosterCreator")
-  primarySafetyRosters        SafetyDutyRoster[]           @relation("SafetyRosterPrimary")
-  backupSafetyRosters         SafetyDutyRoster[]           @relation("SafetyRosterBackup")
-  reportedSafetyIncidents     SafetyIncident[]             @relation("SafetyIncidentReporter")
-  primarySafetyIncidents      SafetyIncident[]             @relation("SafetyIncidentPrimary")
-  backupSafetyIncidents       SafetyIncident[]             @relation("SafetyIncidentBackup")
-  acknowledgedIncidents       SafetyIncident[]             @relation("SafetyIncidentAcknowledger")
-  closedSafetyIncidents       SafetyIncident[]             @relation("SafetyIncidentCloser")
-  addressVerifications        AddressVerification[]
-  phoneVerificationChallenges PhoneVerificationChallenge[]
-  technicianLocation          TechnicianLocation?
-  technicianProfile           TechnicianProfile?           @relation("TechnicianProfileOwner")
-  reviewedTechnicianProfiles  TechnicianProfile[]          @relation("TechnicianProfileReviewer")
-  submittedTechnicianReviews  TechnicianReview[]           @relation("TechnicianReviewCustomer")
-  receivedTechnicianReviews   TechnicianReview[]           @relation("TechnicianReviewTechnician")
-  customerCoupons             CustomerCoupon[]
-  storedValueAccounts         StoredValueAccount[]
-  customerFeedbacks           CustomerFeedback[]
-  accountDeletionRequests     AccountDeletionRequest[]
-  customerAddresses           CustomerAddress[]
+  id                           String                       @id @default(cuid())
+  organizationId               String?
+  organization                 Organization?                @relation(fields: [organizationId], references: [id])
+  role                         UserRole
+  displayName                  String
+  phoneEncrypted               String?
+  phoneVerifiedAt              DateTime?
+  status                       String                       @default("ACTIVE")
+  createdAt                    DateTime                     @default(now())
+  updatedAt                    DateTime                     @updatedAt
+  identities                   ExternalIdentity[]
+  sessions                     Session[]
+  memberships                  StaffMembership[]
+  mfaCredential                MfaCredential?
+  customerOrders               Order[]                      @relation("CustomerOrders")
+  therapistOrders              Order[]                      @relation("TherapistOrders")
+  therapistShifts              TherapistShift[]             @relation("TherapistShifts")
+  customerReservations         AppointmentReservation[]     @relation("CustomerReservations")
+  therapistReservations        AppointmentReservation[]     @relation("TherapistReservations")
+  requestedMfaRecoveries       MfaRecoveryRequest[]         @relation("MfaRecoveryTarget")
+  reviewedMfaRecoveries        MfaRecoveryRequest[]         @relation("MfaRecoveryReviewer")
+  createdSafetyRosters         SafetyDutyRoster[]           @relation("SafetyRosterCreator")
+  primarySafetyRosters         SafetyDutyRoster[]           @relation("SafetyRosterPrimary")
+  backupSafetyRosters          SafetyDutyRoster[]           @relation("SafetyRosterBackup")
+  reportedSafetyIncidents      SafetyIncident[]             @relation("SafetyIncidentReporter")
+  primarySafetyIncidents       SafetyIncident[]             @relation("SafetyIncidentPrimary")
+  backupSafetyIncidents        SafetyIncident[]             @relation("SafetyIncidentBackup")
+  acknowledgedIncidents        SafetyIncident[]             @relation("SafetyIncidentAcknowledger")
+  closedSafetyIncidents        SafetyIncident[]             @relation("SafetyIncidentCloser")
+  addressVerifications         AddressVerification[]
+  phoneVerificationChallenges  PhoneVerificationChallenge[]
+  technicianLocation           TechnicianLocation?
+  technicianProfile            TechnicianProfile?           @relation("TechnicianProfileOwner")
+  reviewedTechnicianProfiles   TechnicianProfile[]          @relation("TechnicianProfileReviewer")
+  submittedTechnicianReviews   TechnicianReview[]           @relation("TechnicianReviewCustomer")
+  receivedTechnicianReviews    TechnicianReview[]           @relation("TechnicianReviewTechnician")
+  createdTechnicianInvitations TechnicianInvitation[]       @relation("TechnicianInvitationCreator")
+  claimedTechnicianInvitations TechnicianInvitation[]       @relation("TechnicianInvitationClaimant")
+  customerCoupons              CustomerCoupon[]
+  storedValueAccounts          StoredValueAccount[]
+  customerFeedbacks            CustomerFeedback[]
+  accountDeletionRequests      AccountDeletionRequest[]
+  customerAddresses            CustomerAddress[]
 }
 
 model CustomerCenterConfig {
@@ -664,6 +673,27 @@ model TechnicianReview {
   @@index([technicianId, status, createdAt])
   @@index([organizationId, status, createdAt])
   @@index([customerId, createdAt])
+}
+
+model TechnicianInvitation {
+  id             String                     @id @default(cuid())
+  organizationId String
+  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  publicName     String
+  tokenHash      String                     @unique
+  status         TechnicianInvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  createdById    String
+  createdBy      User                       @relation("TechnicianInvitationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  claimedById    String?
+  claimedBy      User?                      @relation("TechnicianInvitationClaimant", fields: [claimedById], references: [id], onDelete: Restrict)
+  claimedAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@index([organizationId, status, expiresAt])
+  @@index([claimedById, claimedAt])
 }
 
 model TechnicianLocation {

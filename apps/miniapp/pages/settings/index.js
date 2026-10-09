@@ -47,6 +47,9 @@ Page({
     openSecurity() {
         wx.navigateTo({ url: "/pages/account-security/index" });
     },
+    openTechnicianOnboarding() {
+        wx.navigateTo({ url: "/pages/technician-onboarding/index" });
+    },
     openRecord(event) {
         wx.navigateTo({
             url: `/pages/customer-records/index?kind=${encodeURIComponent(event.currentTarget.dataset.kind)}`,

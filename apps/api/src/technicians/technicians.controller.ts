@@ -9,13 +9,83 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import {
+  TechnicianInvitationClaimSchema,
+  TechnicianInvitationCreateSchema,
   TechnicianProfileUpdateSchema,
   TechnicianReviewCreateSchema,
 } from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
+import { TechnicianInvitationsService } from "./technician-invitations.service.js";
 import { TechniciansService } from "./technicians.service.js";
+
+@Controller("technician-invitations")
+@UseGuards(SessionAuthGuard)
+export class TechnicianInvitationsController {
+  constructor(private readonly invitations: TechnicianInvitationsService) {}
+
+  @Post("claim")
+  async claim(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianInvitationClaimSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("请输入有效的12位邀请码");
+    return {
+      data: await this.invitations.claim(principal, parsed.data.code),
+    };
+  }
+}
+
+@Controller(
+  "admin/organizations/:organizationId/technician-invitations",
+)
+@UseGuards(SessionAuthGuard)
+export class AdminTechnicianInvitationsController {
+  constructor(private readonly invitations: TechnicianInvitationsService) {}
+
+  @Get()
+  async list(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+  ) {
+    const data = await this.invitations.list(principal, organizationId);
+    return { data, meta: { total: data.length } };
+  }
+
+  @Post()
+  async create(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianInvitationCreateSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("技师邀请参数无效");
+    return {
+      data: await this.invitations.create(
+        principal,
+        organizationId,
+        parsed.data,
+      ),
+    };
+  }
+
+  @Post(":invitationId/revoke")
+  async revoke(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("invitationId") invitationId: string,
+  ) {
+    return {
+      data: await this.invitations.revoke(
+        principal,
+        organizationId,
+        invitationId,
+      ),
+    };
+  }
+}
 
 @Controller("technicians")
 export class PublicTechniciansController {
