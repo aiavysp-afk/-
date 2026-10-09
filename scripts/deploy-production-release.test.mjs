@@ -140,7 +140,9 @@ test("Nginx deployment validates, reloads, probes and restores the exact active 
   assert.ok(nginxDeploy.includes("--resolve api.mtsc.top:443:127.0.0.1"));
   assert.ok(nginxDeploy.includes("admin_status == 200"));
   assert.ok(nginxDeploy.includes("public_admin_status == 503"));
-  assert.ok(nginxDeploy.includes("private_catalog_status == 401 && $private_unknown_status == 404"));
+  assert.ok(nginxDeploy.includes("private_catalog_status == 401"));
+  assert.ok(nginxDeploy.includes("private_unknown_status == 404"));
+  assert.ok(nginxDeploy.includes("wait_for_private_gateway"));
   assert.ok(nginxDeploy.includes("systemctl is-active --quiet zhongyuan-daojia-private-admin.service"));
   assert.ok(nginxDeploy.includes('admin_release="/opt/zhongyuan-daojia-admin/releases/$release_id"'));
   assert.ok(nginxDeploy.includes('$(readlink -f /opt/zhongyuan-daojia-admin/current) == "$admin_release"'));

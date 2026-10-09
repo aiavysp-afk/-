@@ -146,21 +146,49 @@ validate_nginx
 systemctl reload nginx.service
 systemctl is-active --quiet nginx.service
 
-api_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-  --resolve api.mtsc.top:443:127.0.0.1 \
-  https://api.mtsc.top/v1/health)
-admin_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-  --resolve admin.mtsc.top:443:127.0.0.1 \
-  https://admin.mtsc.top/)
-customer_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-  --resolve api.mtsc.top:443:127.0.0.1 \
-  https://api.mtsc.top/v1/customer-center)
-[[ $api_status == 200 && $admin_status == 200 && $customer_status == 401 ]]
-private_catalog_status=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
-  --resolve admin.mtsc.top:443:127.0.0.1 https://admin.mtsc.top/v1/admin/catalog/services)
-private_unknown_status=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' \
-  --resolve admin.mtsc.top:443:127.0.0.1 https://admin.mtsc.top/v1/admin/unknown)
-[[ $private_catalog_status == 401 && $private_unknown_status == 404 ]]
+# Private gateway probe helpers. Reload sends a signal; a new worker may not be
+# ready when that command returns. Bound convergence, never accept old statuses.
+private_gateway_status() {
+  local host=$1 path=$2 remaining=$((private_gateway_deadline - SECONDS))
+  if (( remaining <= 0 )); then printf '%s' deadline-expired; return 0; fi
+  local timeout=2
+  (( remaining >= timeout )) || timeout=$remaining
+  curl --silent --show-error --connect-timeout 1 --max-time "$timeout" \
+    --http1.1 --header 'Connection: close' --noproxy '*' \
+    --output /dev/null --write-out '%{http_code}' \
+    --resolve "$host:443:127.0.0.1" "https://$host$path"
+}
+
+verify_private_gateway() {
+  api_status=not-probed; admin_status=not-probed; customer_status=not-probed
+  private_catalog_status=not-probed; private_unknown_status=not-probed
+  api_status=$(private_gateway_status api.mtsc.top /v1/health) || api_status=transport-error
+  [[ $api_status == 200 ]] || return 1
+  admin_status=$(private_gateway_status admin.mtsc.top /) || admin_status=transport-error
+  [[ $admin_status == 200 ]] || return 1
+  customer_status=$(private_gateway_status api.mtsc.top /v1/customer-center) || customer_status=transport-error
+  [[ $customer_status == 401 ]] || return 1
+  private_catalog_status=$(private_gateway_status admin.mtsc.top /v1/admin/catalog/services) || private_catalog_status=transport-error
+  [[ $private_catalog_status == 401 ]] || return 1
+  private_unknown_status=$(private_gateway_status admin.mtsc.top /v1/admin/unknown) || private_unknown_status=transport-error
+  [[ $private_unknown_status == 404 ]]
+}
+
+wait_for_private_gateway() {
+  local private_gateway_deadline=$((SECONDS + 30)) attempts=0
+  while (( attempts < 10 && SECONDS < private_gateway_deadline )); do
+    attempts=$((attempts + 1))
+    if verify_private_gateway; then return 0; fi
+    if (( attempts < 10 && SECONDS < private_gateway_deadline )); then sleep 1; fi
+  done
+  printf 'Private gateway did not converge: API=%s admin=%s customer=%s catalog=%s unknown=%s\n' \
+    "$api_status" "$admin_status" "$customer_status" "$private_catalog_status" "$private_unknown_status" >&2
+  return 1
+}
+# End private gateway probe helpers.
+
+# Failure remains a top-level error, invoking the existing exact-vhost rollback.
+wait_for_private_gateway
 # An actual public source can additionally prove the maintenance gate here.
 # NAT/EIP hosts often have only private interfaces: do not mistake a private
 # request for a public proof. An independent external client must verify 503
