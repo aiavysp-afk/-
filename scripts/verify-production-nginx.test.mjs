@@ -212,6 +212,21 @@ test("production nginx keeps public technician reads separate from authenticated
   assert.doesNotMatch(config, /technician\/workbench\/profile\/\.\*/);
 });
 
+test("production nginx exposes technician invitations without broadening technician APIs", () => {
+  assertAllowedMethods("= /v1/technician-invitations/claim", ["POST"]);
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technician-invitations$",
+    ["GET", "POST", "OPTIONS"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technician-invitations/[^/]+/revoke$",
+    ["POST", "OPTIONS"],
+  );
+
+  assert.doesNotMatch(config, /location\s+\/?v1\/technician-invitations\/?\s*\{/);
+  assert.doesNotMatch(config, /technician-invitations\/\.\*/);
+});
+
 test("production nginx exposes exact authenticated admin profile and review moderation routes", () => {
   assertAllowedMethods(
     "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile$",
