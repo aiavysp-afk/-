@@ -38,7 +38,13 @@ fi
 
 node_root=/opt/zhongyuan-daojia-acceptance/runtime/node-v24.19.0-linux-x64
 pnpm_bin=/opt/zhongyuan-daojia-acceptance/tooling/node_modules/.bin/pnpm
+service_node=/usr/bin/node
 [[ -x "$node_root/bin/node" && -x "$pnpm_bin" ]] || exit 1
+# Root may use the acceptance runtime to build. The production zydj service must
+# use its existing system Node, not traverse another service's private runtime.
+# Check execution as the exact runtime identity before any release activation.
+runuser -u zydj -- /usr/bin/env -i PATH=/usr/bin:/bin "$service_node" -e \
+  'if (Number(process.versions.node.split(".")[0]) < 22) { console.error("Private admin runtime requires Node 22 or newer"); process.exit(1); }'
 export PATH="$node_root/bin:$(dirname "$pnpm_bin"):$PATH"
 export NPM_CONFIG_CACHE="$base/npm-cache"
 # Read only these non-secret deployment gates. Never source API credentials into
@@ -124,7 +130,7 @@ Group=zydj
 WorkingDirectory=$release
 Environment=NODE_ENV=production
 Environment=PRIVATE_ADMIN_ROOT=$release/dist
-ExecStart=$node_root/bin/node $release/serve-production-private-admin.mjs
+ExecStart=$service_node $release/serve-production-private-admin.mjs
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

@@ -20,6 +20,14 @@ test("frontend builds never inherit API secrets or modify the live API release",
   assert.ok(deploy.includes("VITE_API_BASE_URL=/v1"));
   assert.ok(deploy.includes("--filter '@zydj/admin-web...'"));
 });
+test("service runtime is executable by production zydj without expanding acceptance permissions", () => {
+  assert.ok(deploy.includes("service_node=/usr/bin/node"));
+  assert.ok(deploy.includes('runuser -u zydj -- /usr/bin/env -i PATH=/usr/bin:/bin "$service_node" -e'));
+  assert.ok(deploy.includes('Number(process.versions.node.split(".")[0]) < 22'));
+  assert.ok(deploy.includes("ExecStart=$service_node $release/serve-production-private-admin.mjs"));
+  assert.ok(deploy.indexOf('runuser -u zydj --') < deploy.indexOf("activated=true"));
+  assert.doesNotMatch(deploy, /ExecStart=\$node_root|usermod|gpasswd|chmod[^\n]*acceptance|chown[^\n]*acceptance/);
+});
 test("unit and artifact paths bind exact immutable releases and activation rolls back", () => {
   assert.ok(deploy.includes('release="$base/releases/$release_id"'));
   assert.ok(deploy.includes("WorkingDirectory=$release"));
