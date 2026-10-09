@@ -126,4 +126,10 @@ test("Nginx deployment validates, reloads, probes and restores the exact active 
   assert.ok(nginxDeploy.includes("--resolve api.mtsc.top:443:127.0.0.1"));
   assert.ok(nginxDeploy.includes("admin_status == 503"));
   assert.ok(nginxDeploy.includes("customer_status == 401"));
+  assert.ok(
+    nginxDeploy.includes(
+      'release_config="$base/releases/$release_id/infra/nginx.production.conf"',
+    ),
+  );
+  assert.ok(nginxDeploy.includes('cp -- "$release_config" "$candidate"'));
 });

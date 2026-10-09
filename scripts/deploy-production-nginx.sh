@@ -63,9 +63,17 @@ backup="$base/backups/nginx-$target_name-before-$release_id-$(date -u +%Y%m%dT%H
   exit 1
 }
 
-curl --fail --location --connect-timeout 10 --max-time 60 \
-  "https://raw.githubusercontent.com/aiavysp-afk/-/$release_id/infra/nginx.production.conf" \
-  --output "$candidate"
+release_config="$base/releases/$release_id/infra/nginx.production.conf"
+if [[ -f $release_config ]]; then
+  # The API deployment has already downloaded and verified this exact immutable
+  # release. Prefer it so a transient raw.githubusercontent.com outage cannot
+  # block the gateway step after the application has been activated.
+  cp -- "$release_config" "$candidate"
+else
+  curl --fail --location --connect-timeout 10 --max-time 60 \
+    "https://raw.githubusercontent.com/aiavysp-afk/-/$release_id/infra/nginx.production.conf" \
+    --output "$candidate"
+fi
 for marker in \
   'server_name api.mtsc.top;' \
   'server_name admin.mtsc.top;' \
