@@ -150,6 +150,13 @@ enum StoredValueCardType {
   DISCOUNT_90
 }
 
+enum StoredValueRechargeStatus {
+  PENDING
+  SUCCEEDED
+  UNKNOWN
+  CLOSED
+}
+
 enum CustomerFeedbackStatus {
   OPEN
   RESOLVED
@@ -180,6 +187,7 @@ model Organization {
   customerCenterConfig    CustomerCenterConfig?
   customerCoupons         CustomerCoupon[]
   storedValueAccounts     StoredValueAccount[]
+  storedValueRecharges    StoredValueRecharge[]
   customerFeedbacks       CustomerFeedback[]
   accountDeletionRequests AccountDeletionRequest[]
   customerAddresses       CustomerAddress[]
@@ -226,6 +234,7 @@ model User {
   claimedTechnicianInvitations TechnicianInvitation[]       @relation("TechnicianInvitationClaimant")
   customerCoupons              CustomerCoupon[]
   storedValueAccounts          StoredValueAccount[]
+  storedValueRecharges         StoredValueRecharge[]
   customerFeedbacks            CustomerFeedback[]
   accountDeletionRequests      AccountDeletionRequest[]
   customerAddresses            CustomerAddress[]
@@ -278,6 +287,7 @@ model StoredValueAccount {
   updatedAt      DateTime                 @updatedAt
   cards          StoredValueCard[]
   transactions   StoredValueTransaction[]
+  recharges      StoredValueRecharge[]
 
   @@unique([organizationId, customerId])
   @@index([organizationId, updatedAt])
@@ -299,16 +309,48 @@ model StoredValueCard {
 }
 
 model StoredValueTransaction {
-  id              String             @id @default(cuid())
+  id              String               @id @default(cuid())
   accountId       String
-  account         StoredValueAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account         StoredValueAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
   type            String
   changeFen       BigInt
   balanceAfterFen BigInt
   description     String
-  occurredAt      DateTime           @default(now())
+  occurredAt      DateTime             @default(now())
+  rechargeId      String?              @unique
+  recharge        StoredValueRecharge? @relation(fields: [rechargeId], references: [id], onDelete: Restrict)
 
   @@index([accountId, occurredAt])
+}
+
+model StoredValueRecharge {
+  id                    String                    @id @default(cuid())
+  organizationId        String
+  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customerId            String
+  customer              User                      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  accountId             String
+  account               StoredValueAccount        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amountFen             BigInt
+  status                StoredValueRechargeStatus @default(PENDING)
+  merchantPaymentNo     String                    @unique
+  providerReference     String?
+  providerTransactionId String?                   @unique
+  prepayState           WechatPrepayState         @default(NONE)
+  prepayRequestedAt     DateTime?
+  prepayReadyAt         DateTime?
+  prepayFailureCode     String?
+  idempotencyKey        String
+  requestFingerprint    String
+  expiresAt             DateTime
+  succeededAt           DateTime?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  transaction           StoredValueTransaction?
+
+  @@unique([customerId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([customerId, status, createdAt])
 }
 
 model CustomerFeedback {

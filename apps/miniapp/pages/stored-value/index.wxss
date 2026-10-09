@@ -42,6 +42,11 @@
   line-height: 70rpx;
   font-size: 22rpx;
 }
+.balance-card button[disabled] {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: rgba(31, 106, 85, 0.45);
+  color: rgba(255, 255, 255, 0.86);
+}
 .status-tabs {
   display: flex;
   gap: 45rpx;
@@ -351,6 +356,12 @@
 }
 .wallet-rules text:last-child {
   color: #188c67;
+}
+.wallet-rules > view.disabled {
+  background: #f1f4f3;
+}
+.wallet-rules > view.disabled text {
+  color: #8b9793;
 }
 .recharge-sheet {
   width: 100%;

@@ -195,7 +195,7 @@ export class WechatPrepayService {
     return this.toIntent(current.payment, current.order.paymentExpiresAt!);
   }
 
-  private async payerOpenId(userId: string) {
+  async payerOpenId(userId: string) {
     const identities = await this.prisma.externalIdentity.findMany({
       where: { userId, provider: IdentityProvider.WECHAT_MINIAPP },
       take: 10,

@@ -19,12 +19,14 @@ import type {
   WechatTransaction,
 } from "./wechat-pay.protocol.js";
 import { parseWechatTransaction } from "./wechat-pay.protocol.js";
+import { StoredValueRechargesService } from "./stored-value-recharges.service.js";
 
 @Injectable()
 export class WechatPaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly client: WechatPayClient,
+    private readonly storedValueRecharges: StoredValueRechargesService,
   ) {}
 
   async notify(rawBody: Buffer, headers: WechatHeaders) {
@@ -32,6 +34,13 @@ export class WechatPaymentsService {
       rawBody,
       headers,
     );
+    if (
+      await this.storedValueRecharges.applyIfPresent(
+        transaction,
+        "NOTIFICATION",
+      )
+    )
+      return { duplicate: false, storedValueRecharge: true };
     return this.applyTransaction(transaction, eventId, "NOTIFICATION");
   }
 

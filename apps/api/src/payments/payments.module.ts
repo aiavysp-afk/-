@@ -16,6 +16,8 @@ import { RefundReconciliationWorker } from "./refund-reconciliation.worker.js";
 import { WechatPrepayService } from "./wechat-prepay.service.js";
 import { WechatRecoveryService } from "./wechat-recovery.service.js";
 import { WechatRecoveryWorker } from "./wechat-recovery.worker.js";
+import { StoredValueRechargesController } from "./stored-value-recharges.controller.js";
+import { StoredValueRechargesService } from "./stored-value-recharges.service.js";
 
 @Module({
   imports: [AuthModule, OrdersModule],
@@ -24,6 +26,7 @@ import { WechatRecoveryWorker } from "./wechat-recovery.worker.js";
     WechatPaymentsController,
     PaymentReconciliationController,
     RefundsController,
+    StoredValueRechargesController,
   ],
   providers: [
     PaymentsService,
@@ -37,6 +40,7 @@ import { WechatRecoveryWorker } from "./wechat-recovery.worker.js";
     PaymentReconciliationService,
     RefundsService,
     RefundReconciliationWorker,
+    StoredValueRechargesService,
   ],
   exports: [PaymentsService, PaymentGatewayService],
 })

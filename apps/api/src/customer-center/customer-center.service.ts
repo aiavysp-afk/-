@@ -7,7 +7,9 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import {
   AccountDeletionRequestStatus,
   CustomerCouponStatus as PrismaCustomerCouponStatus,
@@ -40,6 +42,7 @@ import { AccessControlService } from "../auth/access-control.service.js";
 import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
+import type { AppEnv } from "../config/env.js";
 
 type CardQuery = z.infer<typeof StoredValueCardQuerySchema>;
 
@@ -70,6 +73,7 @@ export class CustomerCenterService {
     private readonly prisma: PrismaService,
     private readonly access: AccessControlService,
     private readonly crypto: AuthCryptoService,
+    @Optional() private readonly config?: ConfigService<AppEnv, true>,
   ) {}
 
   async overview(
@@ -231,9 +235,17 @@ export class CustomerCenterService {
         expiresAt: card.expiresAt?.toISOString() ?? null,
       })),
       recharge: {
-        enabled: false,
+        enabled:
+          this.config?.get("PAYMENT_PROVIDER", { infer: true }) === "wechat" &&
+          this.config?.get("WECHAT_PAY_PREPAY_ENABLED", { infer: true }) ===
+            "true" &&
+          this.config?.get("STORED_VALUE_RECHARGE_ENABLED", { infer: true }) ===
+            "true",
         reason:
-          "四档充值金额已配置；充值支付、微信回调与入账核对完成前不会开放扣款",
+          this.config?.get("STORED_VALUE_RECHARGE_ENABLED", { infer: true }) ===
+          "true"
+            ? "充值金额将在微信支付成功通知验签后入账"
+            : "储值充值通道维护中，请稍后再试",
         plans: [599_00, 888_00, 1_198_00, 2_888_00].map((amountFen) => ({
           amountFen,
           label: `充值 ${amountFen / 100} 元`,

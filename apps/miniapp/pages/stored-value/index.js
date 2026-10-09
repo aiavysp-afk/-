@@ -29,9 +29,11 @@ Page({
         rechargeEnabled: false,
         rechargePlans: [],
         rechargeOpen: false,
+        rechargeBusy: false,
         selectedRecharge: 0,
         firstRechargeReason: "",
         withdrawalReason: "",
+        withdrawalEnabled: false,
         withdrawalRule: "提现金额须为 1000 元的整数倍",
         checkInReason: "",
         loading: false,
@@ -69,6 +71,7 @@ Page({
                 })),
                 firstRechargeReason: wallet.recharge.firstRechargeReward.reason,
                 withdrawalReason: wallet.withdrawal.reason,
+                withdrawalEnabled: wallet.withdrawal.enabled,
                 withdrawalRule: `最低 ¥${(0, api_1.money)(wallet.withdrawal.minimumFen)}，且须按 ¥${(0, api_1.money)(wallet.withdrawal.stepFen)} 的整数倍申请；${wallet.withdrawal.reviewRequired ? "需要人工复核" : "无需人工复核"}`,
                 checkInReason: wallet.checkIn.reason,
                 cards: wallet.cards.map((card) => ({
@@ -108,6 +111,10 @@ Page({
         void this.load();
     },
     recharge() {
+        if (!this.data.rechargeEnabled) {
+            wx.showToast({ title: "充值通道维护中", icon: "none" });
+            return;
+        }
         this.setData({ rechargeOpen: true });
     },
     closeRecharge() {
@@ -119,19 +126,66 @@ Page({
             selectedRecharge: Number(event.currentTarget.dataset.index),
         });
     },
-    confirmRecharge() {
+    async confirmRecharge() {
+        if (this.data.rechargeBusy || !this.data.rechargeEnabled)
+            return;
         const plan = this.data.rechargePlans[this.data.selectedRecharge];
-        wx.showModal({
-            title: plan ? `充值 ¥${plan.amount}` : "充值暂未开放",
-            content: `${this.data.rechargeReason}\n\n${this.data.firstRechargeReason}\n\n请勿向个人账户转账；页面不会在支付回调成功前增加余额。`,
-            showCancel: false,
-        });
+        if (!plan)
+            return;
+        const confirmed = await new Promise((resolve) => wx.showModal({
+            title: `确认充值 ¥${plan.amount}`,
+            content: "确认后将打开微信支付。余额只会在微信成功通知验签后增加。",
+            confirmText: "去支付",
+            success: (result) => resolve(result.confirm === true),
+            fail: () => resolve(false),
+        }));
+        if (!confirmed)
+            return;
+        this.setData({ rechargeBusy: true });
+        try {
+            const intent = await (0, api_1.api)("/customer-center/wallet/recharges", "POST", {
+                amountFen: plan.amountFen,
+                organizationId: (0, customer_center_1.getCustomerCenterOrganizationId)(),
+            }, (0, api_1.newKey)());
+            if (intent.amountFen !== plan.amountFen ||
+                intent.status !== "PENDING" ||
+                intent.prepayState !== "READY" ||
+                !intent.wechatPayParameters)
+                throw new Error("充值预下单结果待确认，请稍后查看账单，切勿重复支付");
+            const sdkResult = await new Promise((resolve) => wx.requestPayment({
+                ...intent.wechatPayParameters,
+                success: () => resolve("success"),
+                fail: (error) => resolve(error.errMsg.includes("cancel") ? "cancel" : "failure"),
+            }));
+            if (sdkResult === "cancel") {
+                wx.showToast({ title: "已取消支付，未增加余额", icon: "none" });
+                return;
+            }
+            const reconciled = await (0, api_1.api)(`/customer-center/wallet/recharges/${encodeURIComponent(intent.id)}/reconcile`, "POST", {});
+            if (reconciled.status === "SUCCEEDED") {
+                this.setData({ rechargeOpen: false });
+                await this.load();
+                wx.showToast({ title: "充值已入账", icon: "success" });
+            }
+            else {
+                wx.showToast({ title: "支付结果确认中，请勿重复支付", icon: "none" });
+            }
+        }
+        catch (error) {
+            wx.showModal({
+                title: "充值未完成",
+                content: error instanceof Error ? error.message : "充值暂时无法发起",
+                showCancel: false,
+            });
+        }
+        finally {
+            this.setData({ rechargeBusy: false });
+        }
     },
     showWithdrawalPolicy() {
-        wx.showModal({
-            title: "提现规则",
-            content: `${this.data.withdrawalRule}\n\n${this.data.withdrawalReason}`,
-            showCancel: false,
+        wx.showToast({
+            title: this.data.withdrawalEnabled ? "请按页面指引申请" : "提现暂未开放",
+            icon: "none",
         });
     },
     showCheckInPolicy() {

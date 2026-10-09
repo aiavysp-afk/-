@@ -1093,6 +1093,25 @@ export const CustomerWalletSchema = z.object({
     reason: z.string(),
   }),
 });
+export const StoredValueRechargeCreateSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(128).optional(),
+    amountFen: z.union([
+      z.literal(59_900),
+      z.literal(88_800),
+      z.literal(119_800),
+      z.literal(288_800),
+    ]),
+  })
+  .strict();
+export const StoredValueRechargeIntentSchema = z.object({
+  id: z.string(),
+  amountFen: MoneyFenSchema,
+  status: z.enum(["PENDING", "SUCCEEDED", "UNKNOWN", "CLOSED"]),
+  expiresAt: IsoDateTimeSchema,
+  prepayState: z.enum(["NONE", "DISPATCHING", "READY", "UNKNOWN"]),
+  wechatPayParameters: WechatPayParametersSchema.optional(),
+});
 export const StoredValueTransactionSchema = z.object({
   id: z.string(),
   type: z.string(),
@@ -1402,6 +1421,12 @@ export type StoredValueCardStatus = z.infer<typeof StoredValueCardStatusSchema>;
 export type StoredValueCardType = z.infer<typeof StoredValueCardTypeSchema>;
 export type StoredValueCard = z.infer<typeof StoredValueCardSchema>;
 export type CustomerWallet = z.infer<typeof CustomerWalletSchema>;
+export type StoredValueRechargeCreate = z.infer<
+  typeof StoredValueRechargeCreateSchema
+>;
+export type StoredValueRechargeIntent = z.infer<
+  typeof StoredValueRechargeIntentSchema
+>;
 export type StoredValueTransaction = z.infer<
   typeof StoredValueTransactionSchema
 >;

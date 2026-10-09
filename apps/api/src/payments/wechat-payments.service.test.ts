@@ -85,8 +85,15 @@ function setup(
     verifierConfig: () => ({ appId: "app-1", merchantId: "merchant-1" }),
     queryTransaction: vi.fn().mockResolvedValue(transaction),
   };
+  const storedValueRecharges = {
+    applyIfPresent: vi.fn().mockResolvedValue(false),
+  };
   return {
-    service: new WechatPaymentsService(prisma as never, client as never),
+    service: new WechatPaymentsService(
+      prisma as never,
+      client as never,
+      storedValueRecharges as never,
+    ),
     tx,
     client,
     prisma,
