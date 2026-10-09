@@ -11,13 +11,15 @@ export function api<T>(
 ): Promise<T> {
   const app = getApp<{ globalData: { apiBaseUrl: string } }>();
   const session = getStoredSession();
+  const hasData = data !== undefined;
   return new Promise((resolve, reject) =>
     wx.request<{ data?: T; message?: string }>({
       url: `${app.globalData.apiBaseUrl}${path}`,
       method,
-      data,
+      ...(hasData ? { data } : {}),
       header: {
-        "content-type": "application/json",
+        // wx.request defaults to JSON; an empty JSON body is rejected by the API.
+        "content-type": hasData ? "application/json" : "text/plain",
         ...(session ? { Authorization: `Bearer ${session.accessToken}` } : {}),
         ...(key ? { "Idempotency-Key": key } : {}),
       },

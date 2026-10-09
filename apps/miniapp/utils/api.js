@@ -6,12 +6,14 @@ const auth_1 = require("./auth");
 function api(path, method = "GET", data, key) {
     const app = getApp();
     const session = (0, auth_1.getStoredSession)();
+    const hasData = data !== undefined;
     return new Promise((resolve, reject) => wx.request({
         url: `${app.globalData.apiBaseUrl}${path}`,
         method,
-        data,
+        ...(hasData ? { data } : {}),
         header: {
-            "content-type": "application/json",
+            // wx.request defaults to JSON; an empty JSON body is rejected by the API.
+            "content-type": hasData ? "application/json" : "text/plain",
             ...(session ? { Authorization: `Bearer ${session.accessToken}` } : {}),
             ...(key ? { "Idempotency-Key": key } : {}),
         },

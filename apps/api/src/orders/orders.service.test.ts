@@ -435,7 +435,94 @@ describe("OrdersService", () => {
     });
   });
 
-  it("soft-hides a cancelled order while preserving its server record", async () => {
+  it.each([OrderStatus.CANCELLED, OrderStatus.REFUNDED])(
+    "soft-hides a %s order while preserving its server record",
+    async (status) => {
+      const cancelled = orderRecord({
+        status,
+        customerHiddenAt: null,
+      });
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        order: {
+          findUnique: vi.fn().mockResolvedValue(cancelled),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        orderEvent: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx),
+        ),
+      };
+      const service = new OrdersService(
+        prisma as never,
+        {} as never,
+        new OrderStateMachine(),
+        locations as never,
+      );
+      const now = new Date("2026-10-03T01:00:00.000Z");
+
+      await expect(
+        service.hideOwn(principal, cancelled.id, now),
+      ).resolves.toEqual({
+        orderId: cancelled.id,
+        hiddenAt: now.toISOString(),
+      });
+      expect(tx.order.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: cancelled.id,
+          customerId: principal.userId,
+          customerHiddenAt: null,
+          status: { in: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+        },
+        data: { customerHiddenAt: now },
+      });
+      expect(tx.orderEvent.create).toHaveBeenCalledOnce();
+      expect(tx.auditLog.create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("refuses to hide another customer's order without changing any record", async () => {
+    const order = orderRecord({
+      customerId: "customer-2",
+      status: OrderStatus.CANCELLED,
+      customerHiddenAt: null,
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(order),
+        updateMany: vi.fn(),
+        delete: vi.fn(),
+      },
+      orderEvent: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      new OrderStateMachine(),
+      locations as never,
+    );
+
+    await expect(service.hideOwn(principal, order.id)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+    expect(tx.order.delete).not.toHaveBeenCalled();
+    expect(tx.orderEvent.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("replays a hidden order's original timestamp without duplicate events or audits", async () => {
+    const now = new Date("2026-10-03T01:00:00.000Z");
     const cancelled = orderRecord({
       status: OrderStatus.CANCELLED,
       customerHiddenAt: null,
@@ -443,8 +530,12 @@ describe("OrdersService", () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([]),
       order: {
-        findUnique: vi.fn().mockResolvedValue(cancelled),
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce(cancelled)
+          .mockResolvedValue({ ...cancelled, customerHiddenAt: now }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        delete: vi.fn(),
       },
       orderEvent: { create: vi.fn().mockResolvedValue({}) },
       auditLog: { create: vi.fn().mockResolvedValue({}) },
@@ -460,60 +551,72 @@ describe("OrdersService", () => {
       new OrderStateMachine(),
       locations as never,
     );
-    const now = new Date("2026-10-03T01:00:00.000Z");
+    const expected = { orderId: cancelled.id, hiddenAt: now.toISOString() };
 
-    await expect(service.hideOwn(principal, cancelled.id, now)).resolves.toEqual(
-      {
-        orderId: cancelled.id,
-        hiddenAt: now.toISOString(),
-      },
-    );
-    expect(tx.order.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: cancelled.id,
-        customerId: principal.userId,
-        customerHiddenAt: null,
-        status: { in: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
-      },
-      data: { customerHiddenAt: now },
-    });
+    await expect(
+      service.hideOwn(principal, cancelled.id, now),
+    ).resolves.toEqual(expected);
+    await expect(
+      service.hideOwn(
+        principal,
+        cancelled.id,
+        new Date("2026-10-03T02:00:00.000Z"),
+      ),
+    ).resolves.toEqual(expected);
+    expect(tx.order.updateMany).toHaveBeenCalledOnce();
+    expect(tx.order.delete).not.toHaveBeenCalled();
     expect(tx.orderEvent.create).toHaveBeenCalledOnce();
     expect(tx.auditLog.create).toHaveBeenCalledOnce();
   });
 
-  it("refuses to hide a non-terminal order or reveal an already hidden order", async () => {
-    const active = orderRecord({
-      status: OrderStatus.ASSIGNED,
-      customerHiddenAt: null,
-    });
-    const hidden = orderRecord({
-      status: OrderStatus.CANCELLED,
-      customerHiddenAt: new Date("2026-10-03T01:00:00.000Z"),
-    });
-    const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([]),
-      order: { findUnique: vi.fn().mockResolvedValueOnce(active) },
-    };
-    const prisma = {
-      order: { findUnique: vi.fn().mockResolvedValue(hidden) },
-      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrdersService(
-      prisma as never,
-      {} as never,
-      new OrderStateMachine(),
-      locations as never,
-    );
+  it.each([
+    OrderStatus.ASSIGNED,
+    OrderStatus.IN_SERVICE,
+    OrderStatus.REFUNDING,
+  ])(
+    "refuses to hide a %s order or reveal an already hidden order",
+    async (status) => {
+      const active = orderRecord({
+        status,
+        customerHiddenAt: null,
+      });
+      const hidden = orderRecord({
+        status: OrderStatus.CANCELLED,
+        customerHiddenAt: new Date("2026-10-03T01:00:00.000Z"),
+      });
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        order: {
+          findUnique: vi.fn().mockResolvedValueOnce(active),
+          updateMany: vi.fn(),
+        },
+        orderEvent: { create: vi.fn() },
+        auditLog: { create: vi.fn() },
+      };
+      const prisma = {
+        order: { findUnique: vi.fn().mockResolvedValue(hidden) },
+        $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx),
+        ),
+      };
+      const service = new OrdersService(
+        prisma as never,
+        {} as never,
+        new OrderStateMachine(),
+        locations as never,
+      );
 
-    await expect(service.hideOwn(principal, active.id)).rejects.toBeInstanceOf(
-      ConflictException,
-    );
-    await expect(service.getOwn(principal, hidden.id)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-  });
+      await expect(
+        service.hideOwn(principal, active.id),
+      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.getOwn(principal, hidden.id)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(tx.order.updateMany).not.toHaveBeenCalled();
+      expect(tx.orderEvent.create).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    },
+  );
   it("does not release a reservation when a WeChat intent appeared while cancellation waited for the order lock", async () => {
     const current = orderRecord();
     const tx = {
