@@ -6,6 +6,7 @@ import vm from "node:vm";
 
 const require = createRequire(import.meta.url);
 const booking = require("../apps/miniapp/utils/booking.js");
+const { ApiError } = require("../apps/miniapp/utils/api.js");
 const now = Date.parse("2026-10-09T04:00:00.000Z");
 const coupon = (id, amountFen, minimumSpendFen, extra = {}) => ({
   id, organizationId: "org-fixture", title: `${amountFen / 100}元优惠券`, amountFen, minimumSpendFen,
@@ -23,7 +24,7 @@ const defer = () => { let resolve; const promise = new Promise((done) => { resol
 
 function fixture(handler = () => undefined) {
   const calls = [], timers = new Map(), toasts = [], modals = [];
-  let page, nextTimer = 1, nextHold = 1;
+  let page, nextTimer = 1, nextHold = 1, nextKey = 1;
   const api = async (path, method = "GET", data, key) => {
     calls.push({ path, method, data, key });
     const value = await handler(path, data, calls);
@@ -34,6 +35,7 @@ function fixture(handler = () => undefined) {
     };
     if (/\/booking-holds\/.*\/release/.test(path)) return { released: true };
     if (path === "/orders/quote") return quote(data.reservationId, data.couponId === null ? 0 : 4000, data.couponId === null ? null : "coupon40");
+    if (path === "/locations/address-geocodes") return { latitude: 34.7, longitude: 113.7, coordinateSystem: "GCJ-02" };
     if (path === "/locations/address-verifications") return { id: "verified-address" };
     if (path === "/orders") return {
       id: "order-fixture", status: "PENDING_PAYMENT", ...quote(data.reservationId),
@@ -53,7 +55,7 @@ function fixture(handler = () => undefined) {
     },
     require(name) {
       if (name === "../../utils/booking") return booking;
-      if (name === "../../utils/api") return { api, money: (amount) => (amount / 100).toFixed(2), shanghaiTime: (value) => value, newKey: () => "fixture-order-key" };
+      if (name === "../../utils/api") return { ApiError, api, money: (amount) => (amount / 100).toFixed(2), shanghaiTime: (value) => value, newKey: () => nextKey++ === 1 ? "fixture-order-key" : `fixture-order-key-${nextKey - 1}` };
       if (name === "../../utils/auth") return {
         getStoredSession: () => ({ user: { phoneVerified: true } }), needsPhoneVerification: () => false,
         requireVerifiedCustomerAccess: () => true, goToPhoneVerification() {},
@@ -213,6 +215,81 @@ test("a retry after an uncertain create result keeps identical immutable address
   const creates = f.calls.filter((call) => call.path === "/orders");
   assert.equal(creates.length, 2); assert.deepEqual(creates[0], creates[1]);
   assert.equal(f.calls.filter((call) => call.path === "/orders/quote").length, 2);
+});
+
+test("a definite coupon rejection unlocks editing and requires a fresh quote and idempotency key", async () => {
+  let creates = 0;
+  const f = fixture((path) => {
+    if (path === "/orders" && ++creates === 1) throw new ApiError("优惠券状态已变化，请重新获取报价", 409, "/orders", "POST");
+  });
+  await f.page.refreshQuote(); await f.page.create();
+  const rejected = f.calls.find((call) => call.path === "/orders");
+  assert.equal(f.page.data.orderSubmissionAttempted, false);
+  assert.equal(f.page.data.quoteDetails, null); assert.equal(f.page.data.quoteFingerprint, "");
+  assert.notEqual(f.page.data.orderKey, rejected.key);
+  f.page.input({ currentTarget: { dataset: { field: "doorNumber" } }, detail: { value: "103" } });
+  f.page.chooseCoupon({ currentTarget: { dataset: { id: "none" } } });
+  assert.equal(f.page.data.doorNumber, "103"); assert.equal(f.page.data.couponChoice, "none");
+  await f.page.create();
+  assert.equal(f.calls.filter((call) => call.path === "/orders").length, 1, "an invalidated quote cannot immediately create a replacement order");
+  assert.equal(f.calls.filter((call) => call.path === "/orders/quote").at(-1).data.couponId, null);
+  assert.equal(f.page.data.quoteDetails.payable, "498.00");
+});
+
+test("a definite expired hold discards that hold and takes a fresh real reservation", async () => {
+  const f = fixture((path) => { if (path === "/orders") throw new ApiError("预约占位已过期", 409, "/orders", "POST"); });
+  await f.page.refreshQuote(); await f.page.create();
+  assert.equal(f.page.data.orderSubmissionAttempted, false); assert.equal(f.page.data.reservationId, "");
+  assert.equal(f.page.data.reservationSlotKey, ""); assert.equal(f.page.data.reservationExpiresAt, "");
+  await f.page.prepareOrder();
+  assert.equal(f.page.data.reservationId, "hold-2");
+  assert.equal(f.calls.filter((call) => call.path === "/booking-holds").length, 2);
+});
+
+test("a definite address rejection invalidates its verification and mandates server verification again", async () => {
+  const f = fixture((path) => { if (path === "/orders") throw new ApiError("服务地址核验已失效，请重新核验", 422, "/orders", "POST"); });
+  await f.page.refreshQuote(); await f.page.create();
+  assert.equal(f.page.data.orderSubmissionAttempted, false); assert.equal(f.page.data.addressVerificationId, "");
+  assert.equal(f.page.data.addressVerificationRequired, true);
+  await f.page.prepareOrder();
+  assert.equal(f.page.data.addressVerificationId, "verified-address");
+  assert.equal(f.calls.filter((call) => call.path === "/locations/address-verifications").length, 1);
+});
+
+test("existing-order conflicts, unknown 4xx and 5xx never unlock an uncertain submission", async () => {
+  for (const error of [
+    new ApiError("预约占位已经生成订单", 409, "/orders", "POST"),
+    new ApiError("幂等键已用于不同的下单请求", 409, "/orders", "POST"),
+    new ApiError("未知冲突", 409, "/orders", "POST"),
+    new ApiError("下单参数或幂等键无效", 400, "/orders", "POST"),
+    new ApiError("请先登录", 401, "/orders", "POST"),
+    new ApiError("请先完成微信手机号验证", 403, "/orders", "POST"),
+    new ApiError("优惠券状态已变化，请重新获取报价", 500, "/orders", "POST"),
+    new ApiError("优惠券状态已变化，请重新获取报价", 409, "/orders/quote", "POST"),
+    new ApiError("优惠券状态已变化，请重新获取报价", 409, "/orders", "GET"),
+  ]) {
+    const f = fixture((path) => { if (path === "/orders") throw error; });
+    await f.page.refreshQuote(); await f.page.create();
+    assert.equal(f.page.data.orderSubmissionAttempted, true, `${error.statusCode}:${error.message}`);
+    f.page.chooseCoupon({ currentTarget: { dataset: { id: "none" } } });
+    assert.equal(f.page.data.couponChoice, "auto");
+    await f.page.create();
+    const creates = f.calls.filter((call) => call.path === "/orders");
+    assert.deepEqual(creates[0], creates[1]);
+  }
+});
+
+test("a known rejection after an earlier unknown result still preserves the original request", async () => {
+  for (const initial of [new Error("network outcome unknown"), new ApiError("服务器内部错误", 503, "/orders", "POST")]) {
+    let creates = 0;
+    const f = fixture((path) => {
+      if (path === "/orders") throw ++creates === 1 ? initial : new ApiError("优惠券状态已变化，请重新获取报价", 409, "/orders", "POST");
+    });
+    await f.page.refreshQuote(); await f.page.create(); await f.page.create();
+    assert.equal(f.page.data.orderSubmissionAttempted, true);
+    const calls = f.calls.filter((call) => call.path === "/orders");
+    assert.deepEqual(calls[0], calls[1]);
+  }
 });
 
 test("booking view has real coupon selection and never presents the catalog price as a final payable", () => {

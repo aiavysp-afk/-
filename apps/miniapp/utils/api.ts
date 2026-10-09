@@ -3,6 +3,22 @@ import {
   getStoredSession,
   redirectToCustomerLogin,
 } from "./auth";
+
+// HTTP rejections and uncertain transport failures must remain distinguishable.
+// Do not include request bodies, headers or credentials in this error.
+export class ApiError extends Error {
+  readonly name = "ApiError";
+
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly path: string,
+    readonly method: "GET" | "POST" | "PATCH" | "DELETE",
+  ) {
+    super(message);
+  }
+}
+
 export function api<T>(
   path: string,
   method: "GET" | "POST" | "PATCH" | "DELETE" = "GET",
@@ -36,8 +52,11 @@ export function api<T>(
           resolve(result.data.data);
         else
           reject(
-            new Error(
+            new ApiError(
               result.data.message || `请求失败（${result.statusCode}）`,
+              result.statusCode,
+              path,
+              method,
             ),
           );
       },

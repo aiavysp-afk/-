@@ -1,8 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.shanghaiTime = exports.money = exports.newKey = void 0;
+exports.shanghaiTime = exports.money = exports.newKey = exports.ApiError = void 0;
 exports.api = api;
 const auth_1 = require("./auth");
+// HTTP rejections and uncertain transport failures must remain distinguishable.
+// Do not include request bodies, headers or credentials in this error.
+class ApiError extends Error {
+    constructor(message, statusCode, path, method) {
+        super(message);
+        this.statusCode = statusCode;
+        this.path = path;
+        this.method = method;
+        this.name = "ApiError";
+    }
+}
+exports.ApiError = ApiError;
 function api(path, method = "GET", data, key) {
     const app = getApp();
     const session = (0, auth_1.getStoredSession)();
@@ -27,7 +39,7 @@ function api(path, method = "GET", data, key) {
                 result.data.data !== undefined)
                 resolve(result.data.data);
             else
-                reject(new Error(result.data.message || `请求失败（${result.statusCode}）`));
+                reject(new ApiError(result.data.message || `请求失败（${result.statusCode}）`, result.statusCode, path, method));
         },
         fail: () => reject(new Error("网络连接失败，请保留当前页面后重试")),
     }));

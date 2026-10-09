@@ -10,6 +10,27 @@ const categoryNames = {
     SPA_RELAXATION: "SPA 放松",
     FOOT_CARE: "足部养护",
 };
+function definitiveOrderRejection(error) {
+    if (!(error instanceof api_1.ApiError) || error.path !== "/orders" || error.method !== "POST")
+        return null;
+    // These exact create errors occur after a rollback/no-order result and the
+    // server's idempotency/reservation-order recheck. Never unlock for an existing
+    // order conflict, arbitrary 4xx, transport failure or 5xx.
+    const rejection = `${error.statusCode}:${error.message}`;
+    switch (rejection) {
+        case "409:优惠券已失效、已被使用或未达到项目费门槛，请重新获取报价":
+        case "409:优惠券状态已变化，请重新获取报价":
+            return "coupon";
+        case "409:预约占位已过期":
+        case "409:预约占位状态已变化":
+            return "hold";
+        case "422:请先完成服务地址核验":
+        case "422:服务地址核验已失效，请重新核验":
+            return "address";
+        default:
+            return null;
+    }
+}
 Page({
     quoteRevision: 0,
     slotsRevision: 0,
@@ -723,6 +744,7 @@ Page({
     async create() {
         if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy)
             return;
+        const retryingUncertainSubmission = this.data.orderSubmissionAttempted;
         if (!this.data.quoteDetails) {
             await this.prepareOrder();
             return;
@@ -804,6 +826,22 @@ Page({
             wx.redirectTo({ url: "/pages/orders/index" });
         }
         catch (error) {
+            const rejection = definitiveOrderRejection(error);
+            if (this.data.orderSubmissionAttempted && !retryingUncertainSubmission && rejection) {
+                // A prior uncertain request may still be in flight. Only a first, known
+                // rejected submission can safely return to an editable draft.
+                this.setData({
+                    orderSubmissionAttempted: false,
+                    orderKey: (0, api_1.newKey)(),
+                    addressVerificationId: "",
+                    ...(rejection === "hold" ? {
+                        reservationId: "", reservationSlotKey: "", reservationExpiresAt: "",
+                    } : {}),
+                    ...(rejection === "address" ? { addressVerificationRequired: true } : {}),
+                });
+                this.invalidateQuote(false);
+                void this.loadCoupons();
+            }
             this.fail(error);
         }
         finally {
