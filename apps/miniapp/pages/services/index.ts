@@ -114,4 +114,10 @@ Page({
       url: `/pages/therapist-detail/index?id=${encodeURIComponent(service.therapistId)}&slug=${encodeURIComponent(service.slug)}`,
     });
   },
+  openServiceDetail(e: { currentTarget: { dataset: { slug?: string } } }) {
+    if (!requireVerifiedCustomerAccess()) return;
+    const service = this.data.all.find((item) => item.slug === e.currentTarget.dataset.slug);
+    if (!service) return;
+    wx.navigateTo({ url: `/pages/service-detail/index?slug=${encodeURIComponent(service.slug)}` });
+  },
 });

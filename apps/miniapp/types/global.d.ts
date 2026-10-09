@@ -75,6 +75,7 @@ declare const wx: {
   navigateTo(options: { url: string }): void;
   redirectTo(options: { url: string }): void;
   navigateBack(options?: { delta?: number }): void;
+  pageScrollTo(options: { scrollTop: number; duration?: number }): void;
   reLaunch(options: { url: string; complete?(): void }): void;
   switchTab(options: { url: string }): void;
   showModal(options: {

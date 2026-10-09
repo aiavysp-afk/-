@@ -1,19 +1,37 @@
 <view class="detail-page">
-  <view class="nav"><text bindtap="back">‹</text><text>技师详情</text><view/></view>
+  <view class="nav"><text bindtap="back" aria-label="返回">‹</text><text>技师详情</text><view/></view>
   <button wx:if="{{canUploadOwnPhotos}}" class="own-photo-entry" bindtap="openOwnPhotos">管理本人技师照片 ›</button>
   <view wx:if="{{loading}}" class="detail-state">正在读取真实排班…</view>
   <view wx:elif="{{error}}" class="detail-state error">{{error}}</view>
   <view wx:elif="{{therapist}}">
+    <view class="green-banner"><text>中原到家 · 把放松带回家</text><text>正规保健放松服务 · 非医疗</text></view>
     <view class="profile-hero">
       <view class="portrait tone-{{therapist.avatarIndex}}"><image wx:if="{{therapist.avatarUrl}}" src="{{therapist.avatarUrl}}" mode="aspectFill"/><block wx:else><view class="head"/><view class="body"/></block></view>
       <view class="profile-copy"><view><text wx:if="{{therapist.alias}}" class="name">{{therapist.alias}}</text><text class="status {{therapist.statusTone}}">{{therapist.statusLabel}}</text></view><view class="tags"><text wx:for="{{therapist.tags}}" wx:key="*this">{{item}}</text></view><text class="earliest">最早可约 {{therapist.earliestLabel}}</text></view>
     </view>
+    <view class="service-guarantees"><text>✓ {{therapist.travelLabel}}</text><text>✓ 公开资料审核</text><text>✓ 保健非医疗</text></view>
     <view class="summary"><view><text>{{therapist.ratingLabel}}</text><text>用户评价</text></view><view><text>{{therapist.completedOrdersLabel}}</text><text>已完成订单</text></view><view><text>{{therapist.yearsExperienceLabel}}</text><text>从业年限</text></view></view>
     <view class="section"><text class="section-title">技师简介</text><text class="section-body">{{therapist.profile}}</text></view>
-    <view class="section"><view class="section-head"><text class="section-title">服务相册</text><text>{{therapist.galleryUrls.length?'已审核公开':'暂未发布'}}</text></view><scroll-view wx:if="{{therapist.galleryUrls.length}}" scroll-x show-scrollbar="{{false}}"><view class="gallery-row"><image wx:for="{{therapist.galleryUrls}}" wx:key="*this" src="{{item}}" mode="aspectFill"/></view></scroll-view><view wx:else class="empty-panel"><text>◇</text><text>暂无公开服务相册</text><text>只展示本人授权且后台审核通过的照片</text></view></view>
+    <view class="section"><view class="section-head"><text class="section-title">服务相册</text><text>{{therapist.galleryUrls.length?'已审核公开':'暂未发布'}}</text></view><scroll-view wx:if="{{therapist.galleryUrls.length}}" scroll-x show-scrollbar="{{false}}"><view class="gallery-row"><image wx:for="{{therapist.galleryUrls}}" wx:key="*this" src="{{item}}" mode="aspectFill"/></view></scroll-view><view wx:else class="empty-panel"><view class="empty-art photo-art"><view/><view/></view><text>暂无公开服务相册</text><text>只展示本人授权且后台审核通过的照片</text></view></view>
     <view class="section"><view class="section-head"><text class="section-title">资质与专长</text><text>后台审核发布</text></view><view wx:if="{{therapist.qualifications.length}}" class="qualification-list"><view wx:for="{{therapist.qualifications}}" wx:key="*this"><text>证</text><text>{{item}}</text></view></view><view wx:else class="certificate"><view>证</view><view><text>暂无公开资质名称</text><text>平台不会填写未审核的资质或证书</text></view></view></view>
-    <view class="section"><view class="section-head"><text class="section-title">可预约时间</text><text>未来两日</text></view><view class="service-slots" wx:for="{{therapist.services}}" wx:key="id"><view class="service-head"><view><text>{{item.name}}</text><text>{{item.durationMinutes}}分钟 · ¥{{item.price}}</text></view><button data-slug="{{item.slug}}" bindtap="book">去下单</button></view><scroll-view scroll-x show-scrollbar="{{false}}"><view class="slot-row"><text wx:for="{{item.slots}}" wx:key="startsAt">{{item.dayLabel}} {{item.timeLabel}}</text></view></scroll-view></view></view>
-    <view class="section"><view class="section-head"><text class="section-title">用户评价</text><text>{{therapist.reviewCount}}条已公开</text></view><view wx:if="{{therapist.reviews.length}}" class="review-list"><view wx:for="{{therapist.reviews}}" wx:key="id" class="review-card"><view><text>{{item.stars}}</text><text>{{item.ratingLabel}} · {{item.dateLabel}}</text></view><text>{{item.customerAlias}}</text><text>{{item.content}}</text></view></view><view wx:else class="empty-panel review-empty"><text>暂无已公开评价</text><text>只展示真实已完成订单的评价</text></view></view>
-    <text class="travel-note">免出行费（¥0.00）。服务器报价中的出行费必须为 0，否则客户端将阻止支付。</text>
+    <view class="project-tabs" role="tablist"><button wx:for="{{tabs}}" wx:key="key" class="tab {{activeTab===item.key?'active':''}}" data-tab="{{item.key}}" bindtap="selectTab" role="tab" aria-selected="{{activeTab===item.key}}">{{item.label}}</button></view>
+    <view class="section tab-content" wx:if="{{activeTab==='recommended'||activeTab==='all'}}">
+      <view class="section-head"><text class="section-title">{{activeTab==='all'?'全部项目':'推荐项目'}}</text><text>{{displayedServices.length}}个可约项目</text></view>
+      <view wx:if="{{selectedServiceName}}" class="selected-note">已选 {{selectedServiceName}}，可继续查看其他项目</view>
+      <view wx:if="{{displayedServices.length}}">
+        <view class="project-card {{item.slug===selectedServiceSlug?'selected-project':''}}" wx:for="{{displayedServices}}" wx:key="id">
+          <view class="project-main">
+            <view class="project-illustration category-{{item.category}}" data-slug="{{item.slug}}" bindtap="openService" aria-label="查看{{item.name}}详情"><view class="illustration-orbit"/><view class="illustration-leaf"/><view class="illustration-base"/><text>项目示意</text></view>
+            <view class="project-copy"><text class="project-name" data-slug="{{item.slug}}" bindtap="openService">{{item.name}}</text><text class="project-subtitle">{{item.subtitle}}</text><view class="project-meta"><text>{{item.durationMinutes}}分钟</text><text>免出行费</text></view><text class="project-price">¥{{item.price}}</text></view>
+          </view>
+          <view class="project-actions"><button class="details-button" data-slug="{{item.slug}}" bindtap="openService">查看项目详情 ›</button><button class="book-button" data-slug="{{item.slug}}" bindtap="book">去预约</button></view>
+          <scroll-view scroll-x show-scrollbar="{{false}}"><view class="slot-row"><text wx:for="{{item.slots}}" wx:key="startsAt">{{item.dayLabel}} {{item.timeLabel}}</text></view></scroll-view>
+        </view>
+      </view>
+      <view wx:else class="empty-panel project-empty"><view class="empty-art calendar-art"><view/><view/></view><text>{{activeTab==='recommended'?'暂无已推荐的可约项目':'当前暂无可约时间'}}</text><text>项目与时间以服务器真实排班为准</text><button wx:if="{{activeTab==='recommended'}}" bindtap="showAllProjects">查看全部项目</button></view>
+    </view>
+    <view class="section tab-content" wx:elif="{{activeTab==='reviews'}}"><view class="section-head"><text class="section-title">用户评论</text><text>{{therapist.reviewCount}}条已公开</text></view><view wx:if="{{therapist.reviews.length}}" class="review-list"><view wx:for="{{therapist.reviews}}" wx:key="id" class="review-card"><view><text>{{item.stars}}</text><text>{{item.ratingLabel}} · {{item.dateLabel}}</text></view><text>{{item.customerAlias}}</text><text>{{item.content}}</text></view></view><view wx:else class="empty-panel review-empty"><view class="empty-art comment-art"><view/><view/></view><text>暂无已公开评价</text><text>只展示真实已完成订单的评价</text></view></view>
+    <view class="section tab-content" wx:elif="{{activeTab==='updates'}}"><view class="section-head"><text class="section-title">商户动态</text><text>暂未发布</text></view><view class="empty-panel updates-empty"><view class="empty-art update-art"><view/><view/></view><text>暂无公开商户动态</text><text>当前只展示已审核资料与真实评价</text></view></view>
+    <text class="travel-note">免出行费（¥0.00）。预约时间与最终实付金额以服务器报价为准；如出行费不为 0，客户端将阻止支付。</text>
   </view>
 </view>

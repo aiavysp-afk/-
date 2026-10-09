@@ -364,6 +364,15 @@ Page({
             icon: "none",
         });
     },
+    openServiceDetail() {
+        if (!this.data.service || this.data.busy || this.data.orderSubmissionAttempted)
+            return;
+        const slug = encodeURIComponent(this.data.service.slug);
+        const therapist = this.data.preferredTherapistId
+            ? `&therapistId=${encodeURIComponent(this.data.preferredTherapistId)}`
+            : "";
+        wx.navigateTo({ url: `/pages/service-detail/index?slug=${slug}${therapist}` });
+    },
     select(e) {
         var _a, _b;
         if (!this.data.busy && !this.data.orderSubmissionAttempted) {

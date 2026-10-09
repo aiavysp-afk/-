@@ -64,7 +64,7 @@
 .service-card {
   display: flex;
   gap: 24rpx;
-  margin-top: -52rpx;
+  margin-top: 20rpx;
   position: relative;
   z-index: 3;
   background: #fff;
@@ -133,9 +133,10 @@
 }
 .service-subtitle {
   display: block;
-  color: #78847f;
-  font-size: 25rpx;
-  font-weight: 500;
+  color: #50645b;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 1.55;
   margin: 12rpx 0;
 }
 .service-tags {
@@ -144,8 +145,8 @@
   flex-wrap: wrap;
 }
 .service-tags text {
-  font-size: 21rpx;
-  font-weight: 500;
+  font-size: 25rpx;
+  font-weight: 600;
   color: #80601f;
   background: #f7f0df;
   border-radius: 8rpx;
@@ -175,6 +176,26 @@
   padding: 28rpx;
   margin-top: 20rpx;
   box-shadow: 0 7rpx 28rpx #1b45370a;
+}
+.booking-first-panel {
+  position: relative;
+  z-index: 3;
+  margin-top: -44rpx;
+}
+.service-detail-link {
+  margin: 14rpx 0 0;
+  padding: 12rpx 16rpx;
+  border-radius: 14rpx;
+  background: #e6f5ec;
+  color: #196a4e;
+  text-align: left;
+  line-height: 1.5;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.service-detail-link[disabled] {
+  color: #75887e;
+  background: #f0f4f1;
 }
 .panel-head {
   display: flex;
@@ -796,3 +817,32 @@ checkbox {
 .payment-options button.selected { border-color: #16a873; background: #ddf8e9; }
 .payment-options text { display: block; font-size: 26rpx; font-weight: 550; }
 .payment-options text:first-child { font-size: 30rpx; font-weight: 650; }
+
+/* Booking details and compliance copy remain readable on narrow phones. */
+.hero-copy { font-size: 26rpx; font-weight: 500; line-height: 1.6; color: #e0eee6; }
+.hero-kicker { font-size: 22rpx; letter-spacing: 3rpx; }
+.service-heading { flex-wrap: wrap; gap: 10rpx; }
+.service-heading text:last-child { font-size: 22rpx; font-weight: 600; }
+.service-price text:last-child { font-size: 24rpx; color: #65786f; }
+.panel-title { font-size: 32rpx; font-weight: 650; }
+.panel-head > view { min-width: 0; flex: 1; }
+.panel-note, .map-note, .quote-tip, .payment-note { font-size: 24rpx; font-weight: 500; line-height: 1.65; color: #5c7065; }
+.hour-picker button, .slots button, .date-field, .field { font-size: 26rpx; font-weight: 500; }
+.field { height: 96rpx; }
+.mode-tabs button text:last-child { font-size: 24rpx; font-weight: 500; line-height: 1.5; }
+.selected-summary { max-width: 240rpx; font-size: 23rpx; font-weight: 600; line-height: 1.5; overflow-wrap: break-word; }
+.preferred-note, .empty-slot text:last-child, .address-book-state, .coordinate-ok { font-size: 24rpx; font-weight: 500; line-height: 1.6; }
+.empty-slot text:first-child { font-size: 26rpx; font-weight: 600; }
+.account-status, .quote-badge, .review-count { font-size: 23rpx; font-weight: 600; line-height: 1.5; }
+.address-book-head > view text:first-child, .address-book-head > text, .address-book-empty, .address-book-empty text:last-child { font-size: 26rpx; font-weight: 550; }
+.address-book-head > view text:last-child, .saved-address > text { font-size: 24rpx; font-weight: 500; color: #5c7065; }
+.saved-address view text:first-child { font-size: 27rpx; }
+.saved-address view text:last-child { font-size: 22rpx; font-weight: 600; }
+.address-actions { grid-template-columns: 1fr; }
+.address-actions button { font-size: 26rpx; font-weight: 600; }
+.suggestions button text { font-size: 26rpx; font-weight: 500; }
+.boundary-list text, checkbox-group { font-size: 26rpx; font-weight: 500; line-height: 1.75; }
+.price-row { font-size: 26rpx; font-weight: 500; }
+.review-state, .review-empty text, .review-empty text:last-child, .review-row view text:last-child { font-size: 24rpx; font-weight: 500; line-height: 1.6; color: #65786d; }
+.review-row view text:first-child, .review-stars, .review-row > text:last-child { font-size: 26rpx; }
+.help-link { font-size: 25rpx; font-weight: 600; }

@@ -15,6 +15,7 @@
     "pages/customer-records/index",
     "pages/therapists/index",
     "pages/therapist-detail/index",
+    "pages/service-detail/index",
     "pages/orders/index",
     "pages/booking/index",
     "pages/friend-payment/index",

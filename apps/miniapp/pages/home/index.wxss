@@ -987,3 +987,4 @@
     transform: translateY(0);
   }
 }
+.project-detail-link{font-size:23rpx;font-weight:600;line-height:62rpx;margin:18rpx 0 0;padding:0 14rpx;border-radius:14rpx;background:#effaf4;color:#168360;text-align:left}
