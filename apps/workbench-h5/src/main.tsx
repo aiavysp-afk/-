@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import ReactDOM from "react-dom/client";
 import type {
@@ -49,6 +50,8 @@ import {
 } from "./technician-photo";
 import { workbenchPaymentSummary } from "./order-payment";
 import { technicianShiftSummary } from "./shift-summary";
+import { MfaSession } from "./mfa-session";
+import { MfaGate } from "./mfa-gate";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -162,7 +165,9 @@ function App() {
   const [token, setToken] = useState(
     () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
   );
-  const [workbench, setWorkbench] = useState<TechnicianWorkbench | null>(null);
+  const [storedWorkbench, setWorkbench] = useState<TechnicianWorkbench | null>(
+    null,
+  );
   const [earnings, setEarnings] = useState<TechnicianEarnings | null>(null);
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -180,7 +185,144 @@ function App() {
     TechnicianWorkbenchOrder[]
   >([]);
   const dismissedIncoming = useRef(new Set<string>());
-  const loadingRequest = useRef(false);
+  const loadingRequest = useRef<symbol | null>(null);
+  const tokenRef = useRef(token);
+  const loginAttempt = useRef(0);
+  const mfaSession = useMemo(
+    () =>
+      new MfaSession(
+        async <T,>(
+          path: string,
+          body: Record<string, string> | undefined,
+          accessToken: string,
+        ) => {
+          const response = await apiRequest<{ data: T }>(
+            path,
+            body === undefined
+              ? {}
+              : { method: "POST", body: JSON.stringify(body) },
+            accessToken,
+          );
+          return response.data;
+        },
+        (expiredToken) => {
+          if (tokenRef.current !== expiredToken) return;
+          tokenRef.current = "";
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          setToken("");
+          setError("登录会话已过期，请重新通过微信确认登录");
+        },
+      ),
+    [],
+  );
+  const mfaSnapshot = useSyncExternalStore(
+    mfaSession.subscribe,
+    mfaSession.getSnapshot,
+  );
+  const mfaReady = mfaSession.isReady(token);
+  const workbench = mfaReady ? storedWorkbench : null;
+
+  const selectSessionToken = useCallback(
+    (next: string) => {
+      loginAttempt.current++;
+      tokenRef.current = next;
+      if (next) sessionStorage.setItem(TOKEN_STORAGE_KEY, next);
+      else sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      mfaSession.setToken(next);
+      setToken(next);
+      setWorkbench(null);
+      setEarnings(null);
+      setIncomingOrders([]);
+      setRouteByOrder({});
+      setSavingOrderId("");
+      setLoading(false);
+      loadingRequest.current = null;
+      dismissedIncoming.current.clear();
+    },
+    [mfaSession],
+  );
+
+  useEffect(() => {
+    mfaSession.setToken(token);
+    return () => mfaSession.clearIfToken(token);
+  }, [mfaSession, token]);
+
+  useEffect(() => {
+    if (mfaReady) return;
+    setWorkbench(null);
+    setEarnings(null);
+    setIncomingOrders([]);
+    setRouteByOrder({});
+    setSavingOrderId("");
+    setLoading(false);
+    loadingRequest.current = null;
+    dismissedIncoming.current.clear();
+  }, [token, mfaReady]);
+
+  useEffect(() => {
+    const enrollment = mfaSnapshot.enrollment;
+    if (!enrollment) return;
+    const checkExpiry = () => {
+      if (
+        tokenRef.current === token &&
+        mfaSession.getSnapshot().enrollment?.expiresAt === enrollment.expiresAt
+      ) {
+        mfaSession.expireEnrollment(token);
+      }
+    };
+    const timer = window.setTimeout(
+      checkExpiry,
+      Math.max(0, Date.parse(enrollment.expiresAt) - Date.now()) + 1,
+    );
+    window.addEventListener("focus", checkExpiry);
+    document.addEventListener("visibilitychange", checkExpiry);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", checkExpiry);
+      document.removeEventListener("visibilitychange", checkExpiry);
+    };
+  }, [mfaSession, mfaSnapshot.enrollment, token]);
+
+  useEffect(() => {
+    if (!mfaReady || !mfaSnapshot.status?.required) return;
+    const deadline = Date.parse(mfaSnapshot.status.verifiedUntil ?? "");
+    const expireIfCurrent = () => {
+      if (
+        tokenRef.current === token &&
+        Date.parse(mfaSession.getSnapshot().status?.verifiedUntil ?? "") ===
+          deadline
+      ) {
+        mfaSession.expire(token);
+      }
+    };
+    const checkAfterBackground = () => {
+      if (Date.now() >= deadline) expireIfCurrent();
+    };
+    const timer = window.setTimeout(
+      expireIfCurrent,
+      Math.max(0, deadline - Date.now()) + 1,
+    );
+    window.addEventListener("focus", checkAfterBackground);
+    document.addEventListener("visibilitychange", checkAfterBackground);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", checkAfterBackground);
+      document.removeEventListener("visibilitychange", checkAfterBackground);
+    };
+  }, [mfaSession, mfaReady, mfaSnapshot.status, token]);
+
+  const handlePrivateFailure = useCallback(
+    (failure: Error & { status?: number }) => {
+      if (failure.status === 401) {
+        selectSessionToken("");
+        setError("登录会话已过期，请重新登录");
+      } else if (failure.status === 403) {
+        // Permissions and fresh-MFA failures share 403. Re-read authoritative status.
+        void mfaSession.recheckAfterForbidden(token);
+      }
+    },
+    [mfaSession, token, selectSessionToken],
+  );
 
   useEffect(() => {
     const abort = new AbortController();
@@ -201,8 +343,10 @@ function App() {
 
   const load = useCallback(
     async (silent = false) => {
-      if (!token || loadingRequest.current) return;
-      loadingRequest.current = true;
+      if (!mfaSession.isReady(token) || loadingRequest.current) return;
+      const current = mfaSession.guard(token, true);
+      const request = Symbol("workbench-load");
+      loadingRequest.current = request;
       if (!silent) {
         setLoading(true);
         setError("");
@@ -220,6 +364,7 @@ function App() {
             token,
           ),
         ]);
+        if (!current()) return;
         setWorkbench(workbenchResponse.data);
         setEarnings(earningsResponse.data);
         const incoming = workbenchResponse.data.orders.filter((order) =>
@@ -239,20 +384,18 @@ function App() {
           ];
         });
       } catch (caught) {
+        if (!current()) return;
         const failure = caught as Error & { status?: number };
         setWorkbench(null);
         setEarnings(null);
         if (!silent) setError(failure.message || "工作台加载失败");
-        if (failure.status === 401) {
-          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-          setToken("");
-        }
+        handlePrivateFailure(failure);
       } finally {
-        loadingRequest.current = false;
-        if (!silent) setLoading(false);
+        if (loadingRequest.current === request) loadingRequest.current = null;
+        if (current() && !silent) setLoading(false);
       }
     },
-    [token],
+    [token, mfaSession, mfaReady, handlePrivateFailure],
   );
 
   useEffect(() => {
@@ -260,22 +403,28 @@ function App() {
   }, [load]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!mfaReady) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load(true);
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [load, token]);
+  }, [load, mfaReady]);
 
   useEffect(() => {
     if (!loginChallenge || token) return;
     let stopped = false;
+    let inFlight = false;
+    const attempt = loginAttempt.current;
+    const current = () =>
+      !stopped && attempt === loginAttempt.current && !tokenRef.current;
     const poll = async () => {
+      if (inFlight || !current()) return;
       if (Date.parse(loginChallenge.expiresAt) <= Date.now()) {
         setLoginChallenge(null);
         setError("微信登录配对已过期，请重新发起");
         return;
       }
+      inFlight = true;
       try {
         const response = await apiRequest<{ data: { status: string } }>(
           "/auth/browser-login/poll",
@@ -287,7 +436,7 @@ function App() {
             }),
           },
         );
-        if (response.data.status !== "APPROVED" || stopped) return;
+        if (response.data.status !== "APPROVED" || !current()) return;
         const claimed = await apiRequest<{ data: AuthSession }>(
           "/auth/browser-login/claim",
           {
@@ -298,22 +447,36 @@ function App() {
             }),
           },
         );
+        if (!current()) {
+          void apiRequest(
+            "/auth/logout",
+            { method: "POST", body: "{}" },
+            claimed.data.accessToken,
+          ).catch(() => {});
+          return;
+        }
         if (
           !claimed.data.user.memberships.some(
             (membership) => membership.role === "THERAPIST",
           )
         ) {
+          void apiRequest(
+            "/auth/logout",
+            { method: "POST", body: "{}" },
+            claimed.data.accessToken,
+          ).catch(() => {});
           throw new Error("当前微信账号尚未在管理后台绑定为技师");
         }
-        sessionStorage.setItem(TOKEN_STORAGE_KEY, claimed.data.accessToken);
-        setToken(claimed.data.accessToken);
+        selectSessionToken(claimed.data.accessToken);
         setLoginChallenge(null);
-        setMessage("微信登录成功，正在同步后台订单。");
+        setMessage("微信登录成功，请完成当前设备安全验证。");
       } catch (caught) {
         const failure = caught as Error & { status?: number };
-        if (failure.status !== 429 && !stopped) {
+        if (failure.status !== 429 && current()) {
           setError(failure.message || "微信登录状态读取失败");
         }
+      } finally {
+        inFlight = false;
       }
     };
     void poll();
@@ -325,7 +488,7 @@ function App() {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [loginChallenge, token]);
+  }, [loginChallenge, token, selectSessionToken]);
 
   function refresh() {
     setMessage("");
@@ -334,6 +497,7 @@ function App() {
 
   async function startWechatLogin() {
     if (loginBusy) return;
+    const attempt = ++loginAttempt.current;
     setLoginBusy(true);
     setError("");
     try {
@@ -341,15 +505,18 @@ function App() {
         "/auth/browser-login/create",
         { method: "POST", body: "{}" },
       );
+      if (attempt !== loginAttempt.current || tokenRef.current) return;
       setLoginChallenge(response.data);
     } catch (caught) {
+      if (attempt !== loginAttempt.current || tokenRef.current) return;
       setError(caught instanceof Error ? caught.message : "微信登录发起失败");
     } finally {
-      setLoginBusy(false);
+      if (attempt === loginAttempt.current) setLoginBusy(false);
     }
   }
 
   async function developmentLogin() {
+    const attempt = ++loginAttempt.current;
     setLoading(true);
     setError("");
     try {
@@ -360,32 +527,42 @@ function App() {
           body: JSON.stringify({ code: "local-therapist-anran" }),
         },
       );
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, response.data.accessToken);
-      setToken(response.data.accessToken);
+      if (attempt !== loginAttempt.current || tokenRef.current) return;
+      selectSessionToken(response.data.accessToken);
     } catch (caught) {
+      if (attempt !== loginAttempt.current || tokenRef.current) return;
       setError(caught instanceof Error ? caught.message : "本地登录失败");
       setLoading(false);
     }
   }
 
   async function logout() {
-    try {
-      await apiRequest("/auth/logout", { method: "POST", body: "{}" }, token);
-    } catch {
-      // Removing an expired local session is still safe.
-    }
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    setToken("");
-    setWorkbench(null);
-    setEarnings(null);
+    const previousToken = tokenRef.current;
+    selectSessionToken("");
+    const stillLoggedOut = mfaSession.guard("");
+    setLoginChallenge(null);
+    setLoginBusy(false);
     setError("");
     setMessage("");
     setView("today");
-    setIncomingOrders([]);
-    dismissedIncoming.current.clear();
+    try {
+      await apiRequest(
+        "/auth/logout",
+        { method: "POST", body: "{}" },
+        previousToken,
+      );
+    } catch (caught) {
+      if (stillLoggedOut() && (caught as { status?: number }).status !== 401) {
+        setError(
+          "本机已退出；服务器注销暂未确认，请勿在共享设备继续使用原会话。",
+        );
+      }
+    }
   }
 
   async function advanceOrder(order: TechnicianWorkbenchOrder) {
+    if (!mfaSession.isReady(token)) return false;
+    const current = mfaSession.guard(token, true);
     const operation = actionByStatus[order.status];
     if (!operation) return false;
     if (operation.confirmation && !window.confirm(operation.confirmation)) {
@@ -403,20 +580,24 @@ function App() {
         },
         token,
       );
+      if (!current()) return false;
       setMessage(`${operation.label}成功，履约状态已更新。`);
       await load();
-      return true;
+      return current();
     } catch (caught) {
+      if (!current()) return false;
       setError(caught instanceof Error ? caught.message : "履约状态更新失败");
+      handlePrivateFailure(caught as Error & { status?: number });
       return false;
     } finally {
-      setSavingOrderId("");
+      if (current()) setSavingOrderId("");
     }
   }
 
   async function acceptIncomingOrder(order: TechnicianWorkbenchOrder) {
+    const current = mfaSession.guard(token, true);
     const accepted = await advanceOrder(order);
-    if (!accepted) return;
+    if (!accepted || !current()) return;
     dismissedIncoming.current.add(order.id);
     setIncomingOrders((current) =>
       current.filter((candidate) => candidate.id !== order.id),
@@ -431,6 +612,8 @@ function App() {
   }
 
   async function reportAndRoute(order: TechnicianWorkbenchOrder) {
+    if (!mfaSession.isReady(token)) return;
+    const current = mfaSession.guard(token, true);
     if (!order.destination) {
       setError("该订单缺少 GCJ-02 上门坐标，请联系调度处理。");
       return;
@@ -440,24 +623,29 @@ function App() {
     setMessage("");
     try {
       const location = await getBrowserGcj02Location();
+      if (!current()) return;
       await apiRequest(
         "/technician/workbench/location",
         { method: "POST", body: JSON.stringify(location) },
         token,
       );
+      if (!current()) return;
       const response = await apiRequest<{ data: TechnicianRoute }>(
         `/technician/workbench/orders/${order.id}/route`,
         {},
         token,
       );
+      if (!current()) return;
       setRouteByOrder((current) => ({ ...current, [order.id]: response.data }));
       setMessage("当前位置已上报，高德驾车距离和预计时长已更新。");
     } catch (caught) {
+      if (!current()) return;
       setError(
         caught instanceof Error ? caught.message : "位置上报或路线计算失败",
       );
+      handlePrivateFailure(caught as Error & { status?: number });
     } finally {
-      setSavingOrderId("");
+      if (current()) setSavingOrderId("");
     }
   }
 
@@ -502,6 +690,11 @@ function App() {
             <ShieldAlert size={24} />
             <h2>需要技师身份</h2>
             <p>使用本人微信登录；账号须已在管理后台绑定为有效技师。</p>
+            {error && (
+              <p className="error-banner" role="alert">
+                {error}
+              </p>
+            )}
             {!loginChallenge && (
               <button
                 onClick={() => void startWechatLogin()}
@@ -513,7 +706,7 @@ function App() {
             {loginChallenge && (
               <div className="pairing-card">
                 <strong>请在“中原到家”小程序确认</strong>
-                <span>我的 → 工作人员登录确认</span>
+                <span>技师入驻 → 已是技师？前往工作人员登录确认</span>
                 <label>配对码</label>
                 <code>{loginChallenge.pairCode}</code>
                 <label>六位核对数字</label>
@@ -521,7 +714,10 @@ function App() {
                 <small>确认后本页会自动登录，无需刷新。</small>
                 <button
                   className="secondary"
-                  onClick={() => setLoginChallenge(null)}
+                  onClick={() => {
+                    loginAttempt.current++;
+                    setLoginChallenge(null);
+                  }}
                 >
                   取消本次登录
                 </button>
@@ -538,7 +734,16 @@ function App() {
           </section>
         )}
 
-        {token && !workbench && (
+        {token && !mfaReady && (
+          <MfaGate
+            key={token}
+            session={mfaSession}
+            snapshot={mfaSnapshot}
+            onLogout={() => void logout()}
+          />
+        )}
+
+        {token && mfaReady && !workbench && (
           <section className="workbench-gate">
             <RefreshCw className={loading ? "spinning" : ""} />
             <h2>{loading ? "正在读取工作台" : "工作台暂不可用"}</h2>
@@ -584,16 +789,19 @@ function App() {
             {view === "shifts" && <ShiftsView workbench={workbench} />}
             {view === "profile" && (
               <ProfileView
+                key={token}
                 workbench={workbench}
                 earnings={earnings}
                 token={token}
+                session={mfaSession}
+                onPrivateFailure={handlePrivateFailure}
                 onLogout={logout}
               />
             )}
           </>
         )}
       </main>
-      {incomingOrders[0] && (
+      {mfaReady && incomingOrders[0] && (
         <div className="incoming-backdrop" role="dialog" aria-modal="true">
           <section className="incoming-order">
             <Bell size={26} />
@@ -951,11 +1159,15 @@ function ProfileView({
   workbench,
   earnings,
   token,
+  session,
+  onPrivateFailure,
   onLogout,
 }: {
   workbench: TechnicianWorkbench;
   earnings: TechnicianEarnings | null;
   token: string;
+  session: MfaSession;
+  onPrivateFailure: (failure: Error & { status?: number }) => void;
   onLogout: () => Promise<void>;
 }) {
   const [profile, setProfile] = useState<TechnicianProfile | null>(null);
@@ -967,8 +1179,21 @@ function ProfileView({
   const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>(
     {},
   );
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const captureCurrent = useCallback(() => {
+    const current = session.guard(token, true);
+    return () => mounted.current && current();
+  }, [session, token]);
 
   const loadProfile = useCallback(async () => {
+    const current = captureCurrent();
+    if (!current()) return;
     setProfileLoading(true);
     setProfileError("");
     try {
@@ -977,16 +1202,19 @@ function ProfileView({
         {},
         token,
       );
+      if (!current()) return;
       setProfile(response.data);
       setDraft(profileDraftFrom(response.data));
     } catch (caught) {
+      if (!current()) return;
+      onPrivateFailure(caught as Error & { status?: number });
       setProfileError(
         caught instanceof Error ? caught.message : "个人资料读取失败",
       );
     } finally {
-      setProfileLoading(false);
+      if (current()) setProfileLoading(false);
     }
-  }, [token]);
+  }, [token, captureCurrent, onPrivateFailure]);
 
   useEffect(() => {
     void loadProfile();
@@ -994,6 +1222,7 @@ function ProfileView({
 
   useEffect(() => {
     let active = true;
+    const current = captureCurrent();
     const blobUrls: string[] = [];
     const urls = [profile?.avatarUrl, ...(profile?.galleryUrls ?? [])].filter(
       (url): url is string => Boolean(url),
@@ -1011,24 +1240,26 @@ function ProfileView({
       }),
     )
       .then((entries) => {
-        if (active) setPhotoPreviews(Object.fromEntries(entries));
+        if (active && current()) setPhotoPreviews(Object.fromEntries(entries));
         else blobUrls.forEach((url) => URL.revokeObjectURL(url));
       })
       .catch(() => {
         blobUrls.forEach((url) => URL.revokeObjectURL(url));
-        if (active) setProfileError("照片预览读取失败，请刷新后重试");
+        if (active && current())
+          setProfileError("照片预览读取失败，请刷新后重试");
       });
     return () => {
       active = false;
       blobUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [profile, token]);
+  }, [profile, token, captureCurrent]);
 
   async function uploadProfilePhoto(
     file: File | undefined,
     kind: "AVATAR" | "GALLERY",
   ) {
-    if (!file || profileSaving) return;
+    const current = captureCurrent();
+    if (!file || profileSaving || !current()) return;
     if (
       !window.confirm(
         "确认上传本人已授权照片，审核后公开给客户？请勿上传身份证、证件号码、他人肖像或未经授权的照片。",
@@ -1040,6 +1271,7 @@ function ProfileView({
     setProfileMessage("");
     try {
       const base64 = await prepareTechnicianPhoto(file);
+      if (!current()) return;
       const response = await apiRequest<{ data: TechnicianPhotoUploadResult }>(
         `${TECHNICIAN_PROFILE_PATHS.profile}/photos`,
         {
@@ -1048,6 +1280,7 @@ function ProfileView({
         },
         token,
       );
+      if (!current()) return;
       setProfile(response.data.profile);
       setDraft((current) => ({
         ...current,
@@ -1059,16 +1292,19 @@ function ProfileView({
         "照片已保存并同步后台，审核发布后展示给客户；姓名、年龄段可后续补录。",
       );
     } catch (caught) {
+      if (!current()) return;
+      onPrivateFailure(caught as Error & { status?: number });
       setProfileError(
         caught instanceof Error ? caught.message : "照片上传失败",
       );
     } finally {
-      setProfileSaving(false);
+      if (current()) setProfileSaving(false);
     }
   }
 
   async function saveProfile(showConfirmation = true) {
-    if (!draft || profileSaving) return null;
+    const current = captureCurrent();
+    if (!draft || profileSaving || !current()) return null;
     setProfileSaving(true);
     setProfileError("");
     setProfileMessage("");
@@ -1078,23 +1314,27 @@ function ProfileView({
         { method: "PATCH", body: JSON.stringify(draft) },
         token,
       );
+      if (!current()) return null;
       setProfile(response.data);
       setDraft(profileDraftFrom(response.data));
       if (showConfirmation) setProfileMessage("资料草稿已同步到管理后台。");
       return response.data;
     } catch (caught) {
+      if (!current()) return null;
+      onPrivateFailure(caught as Error & { status?: number });
       setProfileError(
         caught instanceof Error ? caught.message : "资料保存失败",
       );
       return null;
     } finally {
-      setProfileSaving(false);
+      if (current()) setProfileSaving(false);
     }
   }
 
   async function submitProfile() {
+    const current = captureCurrent();
     const saved = await saveProfile(false);
-    if (!saved) return;
+    if (!saved || !current()) return;
     setProfileSaving(true);
     setProfileError("");
     try {
@@ -1103,15 +1343,18 @@ function ProfileView({
         { method: "POST", body: "{}" },
         token,
       );
+      if (!current()) return;
       setProfile(response.data);
       setDraft(profileDraftFrom(response.data));
       setProfileMessage("资料已提交后台审核，审核完成后才会对客户公开。");
     } catch (caught) {
+      if (!current()) return;
+      onPrivateFailure(caught as Error & { status?: number });
       setProfileError(
         caught instanceof Error ? caught.message : "提交审核失败",
       );
     } finally {
-      setProfileSaving(false);
+      if (current()) setProfileSaving(false);
     }
   }
 

@@ -55,19 +55,51 @@ test("production nginx exposes staff pairing and the technician workbench withou
   assert.ok(config.includes("(?:route|actions)"));
 });
 
-test("production nginx exposes exact admin identity and MFA routes", () => {
-  assertAllowedMethods("= /v1/auth/mfa", ["GET", "OPTIONS"]);
-  assertAllowedMethods("~ ^/v1/auth/mfa/(?:enrollment|activate|verify)$", [
-    "POST",
-    "OPTIONS",
-  ]);
+test("production nginx forwards only four exact session MFA resources and their preflights", () => {
+  const routes = [
+    ["/v1/auth/mfa", "GET"],
+    ["/v1/auth/mfa/enrollment", "POST"],
+    ["/v1/auth/mfa/activate", "POST"],
+    ["/v1/auth/mfa/verify", "POST"],
+  ];
+  const declarations = config.split(/\r?\n/).map((line) => line.trim());
+  assert.deepEqual(
+    declarations.filter((line) => /^location .*\/v1\/auth\/mfa/.test(line)),
+    routes.map(([path]) => `location = ${path} {`),
+  );
+  for (const [path, method] of routes) {
+    const block = assertAllowedMethods(`= ${path}`, [method, "OPTIONS"]);
+    const locationIndex = config.indexOf(`location = ${path} {`);
+    assert.ok(locationIndex > config.indexOf("server_name api.mtsc.top;"));
+    assert.ok(locationIndex < config.lastIndexOf("\nserver {"));
+    assert.ok(
+      block.includes(
+        `if ($request_method !~ ^(${method}|OPTIONS)$) { return 404; }`,
+      ),
+      `${path} must also reject implicit HEAD and every unsupported method`,
+    );
+    assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
+    assert.doesNotMatch(
+      block,
+      /satisfy any|auth_request off|proxy_set_header (?:Origin|Authorization|Cookie)|add_header Access-Control/,
+    );
+    for (const suffix of ["/", "/extra", "-recovery", "/recovery"]) {
+      assert.equal(
+        routes.some(([exact]) => exact === `${path}${suffix}`),
+        false,
+      );
+    }
+  }
+});
+
+test("MFA recovery remains an exact private admin resource", () => {
   assertAllowedMethods(
     "~ ^/v1/admin/organizations/[^/]+/mfa-recovery-requests/[^/]+/(?:approve|reject)$",
     ["POST", "OPTIONS"],
   );
 });
 
-test("production nginx restricts every admin and MFA request to private networks", () => {
+test("production nginx retains private gates with only four exact MFA exceptions", () => {
   for (const cidr of [
     "127.0.0.1/32 1;",
     "::1/128 1;",
@@ -79,6 +111,63 @@ test("production nginx restricts every admin and MFA request to private networks
   }
   assert.ok(config.includes("~^0:/v1/(?:admin/|auth/mfa(?:/|$)) 1;"));
   assert.ok(config.includes("if ($zydj_admin_request_denied) { return 403; }"));
+
+  const map = config.match(
+    /map "\$zydj_admin_network_allowed:\$uri" \$zydj_admin_request_denied \{([^}]+)\}/,
+  )?.[1];
+  assert.ok(map);
+  // Nginx map exact strings take precedence over regex entries. Check the entire
+  // map, not just expected markers, so a broad public exemption fails this test.
+  const entries = map
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  assert.deepEqual(entries, [
+    "default 0;",
+    '"0:/v1/auth/mfa" 0;',
+    '"0:/v1/auth/mfa/enrollment" 0;',
+    '"0:/v1/auth/mfa/activate" 0;',
+    '"0:/v1/auth/mfa/verify" 0;',
+    "~^0:/v1/(?:admin/|auth/mfa(?:/|$)) 1;",
+  ]);
+  const exact = new Map(
+    [...map.matchAll(/"([^"]+)" ([01]);/g)].map(([, key, value]) => [
+      key.toLowerCase(),
+      Number(value),
+    ]),
+  );
+  const denyPattern = new RegExp(map.match(/~(\S+) 1;/)[1]);
+  const denied = (privateNetwork, path) => {
+    const key = `${privateNetwork ? 1 : 0}:${path}`;
+    return exact.get(key.toLowerCase()) ?? Number(denyPattern.test(key));
+  };
+  for (const path of [
+    "/v1/auth/mfa",
+    "/v1/auth/mfa/enrollment",
+    "/v1/auth/mfa/activate",
+    "/v1/auth/mfa/verify",
+  ]) {
+    assert.equal(
+      denied(false, path),
+      0,
+      `${path} must reach session authentication`,
+    );
+    assert.equal(denied(true, path), 0);
+  }
+  for (const path of [
+    "/v1/admin/",
+    "/v1/admin/catalog/services",
+    "/v1/admin/organizations/org-1/mfa-recovery-requests/request-1/approve",
+    "/v1/admin/organizations/org-1/customer-center/wallet-ledger",
+    "/v1/auth/mfa/",
+    "/v1/auth/mfa/recovery",
+    "/v1/auth/mfa/verify/extra",
+    "/v1/auth/mfa/enrollment/",
+    "/v1/auth/mfa/unknown",
+  ]) {
+    assert.equal(denied(false, path), 1, `${path} must remain private`);
+    assert.equal(denied(true, path), 0);
+  }
 });
 
 test("production nginx evaluates the private-network gate against the URI path", () => {
@@ -103,6 +192,7 @@ test("admin TLS vhost exposes the UI only behind unchanged private-network prote
   );
   assert.ok(admin.includes("proxy_pass http://127.0.0.1:3222;"));
   assert.ok(admin.includes("proxy_set_header Host admin.mtsc.top;"));
+  assert.doesNotMatch(admin, /location = \/v1\/auth\/mfa/);
   assert.doesNotMatch(admin, /proxy_pass http:\/\/127\.0\.0\.1:321[023]/);
   assert.doesNotMatch(
     admin,

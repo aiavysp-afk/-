@@ -84,6 +84,14 @@ for marker in \
   'location = /v1/payments/notifications' \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
+  'location = /v1/auth/mfa {' \
+  'location = /v1/auth/mfa/enrollment {' \
+  'location = /v1/auth/mfa/activate {' \
+  'location = /v1/auth/mfa/verify {' \
+  '"0:/v1/auth/mfa" 0;' \
+  '"0:/v1/auth/mfa/enrollment" 0;' \
+  '"0:/v1/auth/mfa/activate" 0;' \
+  '"0:/v1/auth/mfa/verify" 0;' \
   'location ~ ^/v1/admin/organizations/[^/]+/customer-center/wallet-ledger$ {' \
   'if ($zydj_admin_request_denied) { return 403; }' \
   'if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }' \
@@ -191,20 +199,63 @@ wait_for_private_gateway() {
 }
 # End private gateway probe helpers.
 
+# Session MFA gateway probe helpers. No credentials, Origin overrides or bodies:
+# valid methods must stop at SessionAuthGuard (401), never create an enrollment.
+mfa_gateway_status() {
+  local address=$1 method=$2 path=$3 source=${4:-}
+  local remaining=$((mfa_gateway_deadline - SECONDS)) timeout=2
+  if (( remaining <= 0 )); then printf '%s' deadline-expired; return 0; fi
+  (( remaining >= timeout )) || timeout=$remaining
+  local args=(--silent --show-error --connect-timeout 1 --max-time "$timeout"
+    --http1.1 --header 'Connection: close' --noproxy '*'
+    --output /dev/null --write-out '%{http_code}'
+    --resolve "api.mtsc.top:443:$address")
+  [[ -z $source ]] || args+=(--interface "$source")
+  if [[ $method == HEAD ]]; then args+=(--head); else args+=(--request "$method"); fi
+  curl "${args[@]}" "https://api.mtsc.top$path"
+}
+
+verify_mfa_gateway() {
+  local address=$1 source=${2:-} mfa_gateway_deadline=$((SECONDS + 30)) index status method path
+  local paths=(/v1/auth/mfa /v1/auth/mfa/enrollment /v1/auth/mfa/activate /v1/auth/mfa/verify)
+  local allowed=(GET POST POST POST) rejected=(POST GET GET GET)
+  for index in "${!paths[@]}"; do
+    path=${paths[$index]}
+    status=$(mfa_gateway_status "$address" "${allowed[$index]}" "$path" "$source") || status=transport-error
+    [[ $status == 401 ]] || { printf 'MFA session gate failed: %s %s status=%s\n' "${allowed[$index]}" "$path" "$status" >&2; return 1; }
+    for method in "${rejected[$index]}" HEAD PATCH; do
+      status=$(mfa_gateway_status "$address" "$method" "$path" "$source") || status=transport-error
+      [[ $status == 404 ]] || { printf 'MFA method gate failed: %s %s status=%s\n' "$method" "$path" "$status" >&2; return 1; }
+    done
+  done
+  for path in /v1/auth/mfa/ /v1/auth/mfa/recovery /v1/auth/mfa/verify/extra; do
+    status=$(mfa_gateway_status "$address" GET "$path" "$source") || status=transport-error
+    [[ $status == 403 || $status == 404 ]] || { printf 'Unexpected MFA path is exposed: %s status=%s\n' "$path" "$status" >&2; return 1; }
+  done
+  if [[ -n $source ]]; then
+    status=$(mfa_gateway_status "$address" GET /v1/admin/catalog/services "$source") || status=transport-error
+    [[ $status == 403 ]] || { printf 'Public admin API gate failed: status=%s\n' "$status" >&2; return 1; }
+  fi
+}
+# End session MFA gateway probe helpers.
+
 # Failure remains a top-level error, invoking the existing exact-vhost rollback.
 wait_for_private_gateway
+verify_mfa_gateway 127.0.0.1
 # An actual public source can additionally prove the maintenance gate here.
 # NAT/EIP hosts often have only private interfaces: do not mistake a private
-# request for a public proof. An independent external client must verify 503
-# before the operator accepts this release. Never disable TLS verification.
+# request for a public proof. An independent external client must verify admin
+# 503/API admin 403 and exact MFA anonymous 401/method 404 before acceptance.
+# Never disable TLS verification.
 public_ipv4=$(ip -4 route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
 [[ $public_ipv4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
 if [[ $public_ipv4 == 127.* || $public_ipv4 == 10.* || $public_ipv4 == 192.168.* || $public_ipv4 =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]]; then
-  echo "Private/NAT source detected: independent external verification of public admin 503 is required"
+  echo "Private/NAT source detected: independent external verification of admin 503/API admin 403 and MFA 401/method 404 is required"
 else
   public_admin_status=$(curl --silent --show-error --max-time 10 --interface "$public_ipv4" --output /dev/null --write-out '%{http_code}' \
     --resolve "admin.mtsc.top:443:$public_ipv4" https://admin.mtsc.top/)
   [[ $public_admin_status == 503 ]]
+  verify_mfa_gateway "$public_ipv4" "$public_ipv4"
 fi
 for benefit_route in newcomer-coupons wallet/first-recharge-reward/claim; do
   benefit_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \

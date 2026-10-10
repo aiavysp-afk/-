@@ -1067,6 +1067,32 @@ main {
   align-items: center;
   box-shadow: 0 5px 18px #a9544859;
 }
+.mfa-gate form,
+.mfa-enrollment {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+.mfa-gate input {
+  border: 1px solid #b7c4bd;
+  border-radius: 9px;
+  padding: 12px;
+  font-size: 20px;
+  letter-spacing: 6px;
+  width: 100%;
+}
+.mfa-enrollment {
+  padding: 14px;
+  background: #f5f3ec;
+  border-radius: 12px;
+}
+.mfa-enrollment code {
+  overflow-wrap: anywhere;
+  user-select: all;
+  font-size: 15px;
+}
 .sos span {
   font-size: 11px;
   font-weight: 700;
