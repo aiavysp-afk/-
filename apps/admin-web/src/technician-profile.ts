@@ -6,7 +6,7 @@ import type {
 } from "@zydj/contracts";
 
 type AdminReviewStatus = AdminTechnicianReview["status"];
-type AdminProfileAction = "submit-review" | "approve" | "publish" | "unpublish";
+type AdminProfileAction = "submit-review" | "approve" | "reject" | "publish" | "unpublish";
 type AdminReviewAction = "publish" | "hide";
 
 export function adminTechnicianProfilePaths(

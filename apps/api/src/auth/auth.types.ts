@@ -28,4 +28,7 @@ export interface AuthPrincipal {
   displayName: string;
   memberships: AuthMembership[];
   mfaVerifiedUntil?: Date | null;
+  authChannel?: string;
+  authProvider?: string;
+  phoneVerified?: boolean;
 }

@@ -7,6 +7,7 @@ import {
   verifyWechatPhone,
 } from "../../utils/auth";
 import { safeFriendPaymentReturnPath } from "../../utils/friend-payment";
+import { safeLoginReturnPath } from "../../utils/login-return";
 
 type LoginMode = "" | "WECHAT" | "WECHAT_PHONE" | "SMS";
 
@@ -32,17 +33,21 @@ Page({
   returnPath: "",
   countdownTimer: undefined as number | undefined,
   onLoad(options: { required?: string; returnPath?: string }) {
-    this.returnPath = safeFriendPaymentReturnPath(options.returnPath);
-    this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean(this.returnPath) });
+    this.returnPath = safeLoginReturnPath(options.returnPath);
+    this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean(safeFriendPaymentReturnPath(options.returnPath)) });
     const session = getStoredSession();
-    if (!this.returnPath && session && !needsPhoneVerification(session)) {
+    if (!this.data.friendPaymentReturn && session && !needsPhoneVerification(session)) {
       this.setData({ completed: true, wechatReady: true });
-    } else if (!this.returnPath && session) {
+      this.returnToTechnician();
+    } else if (!this.data.friendPaymentReturn && session) {
       this.setData({ wechatReady: true });
     }
   },
   onUnload() {
     if (this.countdownTimer) clearInterval(this.countdownTimer);
+  },
+  returnToTechnician() {
+    if (this.returnPath.startsWith("/pages/technician-") && this.data.completed) wx.redirectTo({ url: this.returnPath });
   },
   ensureAgreementAccepted() {
     if (this.data.accepted) return true;
@@ -62,9 +67,10 @@ Page({
         : getStoredSession() ?? (await loginWithWechat());
       // Paying for a friend needs this app's real WeChat identity, not their
       // phone number. All original booking/customer phone guards stay intact.
-      if (this.returnPath || !needsPhoneVerification(session)) {
+      if (this.data.friendPaymentReturn || !needsPhoneVerification(session)) {
         this.setData({ completed: true, wechatReady: true });
         wx.showToast({ title: "账号已登录", icon: "success" });
+        this.returnToTechnician();
         return;
       }
       this.setData({ wechatReady: true, phoneFocused: false });
@@ -127,6 +133,7 @@ Page({
         actionStatus: "微信手机号验证完成",
       });
       wx.showToast({ title: "登录成功", icon: "success" });
+      this.returnToTechnician();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "微信手机号验证失败";
@@ -278,6 +285,7 @@ Page({
       );
       this.setData({ completed: true, maskedPhone: result.maskedPhone });
       wx.showToast({ title: "登录成功", icon: "success" });
+      this.returnToTechnician();
     } catch (error) {
       const message = error instanceof Error ? error.message : "验证码登录失败";
       this.setData({

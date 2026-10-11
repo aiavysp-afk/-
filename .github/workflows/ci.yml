@@ -59,6 +59,7 @@ jobs:
       - run: node --test scripts/verify-miniapp-payment.test.mjs
       - run: node --test scripts/verify-miniapp-safety.test.mjs
       - run: node --test scripts/verify-miniapp-technicians.test.mjs
+      - run: node --test scripts/verify-miniapp-technician-onboarding.test.mjs scripts/verify-miniapp-technician-photos.test.mjs
       - run: node --test scripts/verify-miniapp-therapists.test.mjs
       - run: node --test scripts/verify-miniapp-wxml.test.mjs
       - run: node --test scripts/package-contact-acceptance.test.mjs

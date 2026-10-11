@@ -13,6 +13,27 @@ const therapist: AuthPrincipal = {
 };
 
 describe("TechnicianWorkbenchService", () => {
+  it("native approved WeChat login can access only its own orders without browser pairing/MFA", async () => {
+    const prisma = { technicianProfile: { findFirst: vi.fn().mockResolvedValue({ id: "approved" }) }, order: { findMany: vi.fn().mockResolvedValue([]) }, therapistShift: { findMany: vi.fn().mockResolvedValue([]) } };
+    const access = { assertPermission: vi.fn(() => { throw new ForbiddenException("Browser MFA required"); }) };
+    const principal = { ...therapist, authChannel: "WECHAT_MINIAPP", authProvider: "wechat", phoneVerified: true };
+    await new TechnicianWorkbenchService(prisma as never, access as never, new OrderStateMachine()).get(principal);
+    expect(access.assertPermission).not.toHaveBeenCalled();
+    expect(prisma.technicianProfile.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ technicianId: therapist.userId, organizationId: "org-1", status: { in: ["APPROVED", "PUBLISHED"] } }) }));
+    expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ therapistId: therapist.userId }) }));
+  });
+  it("pending native login cannot query orders even with an older therapist membership", async () => {
+    const prisma = { technicianProfile: { findFirst: vi.fn().mockResolvedValue(null) }, order: { findMany: vi.fn() } };
+    const principal = { ...therapist, authChannel: "WECHAT_MINIAPP", authProvider: "wechat", phoneVerified: true };
+    await expect(new TechnicianWorkbenchService(prisma as never, {} as never, new OrderStateMachine()).get(principal)).rejects.toThrow("等待后台审核");
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
+  });
+  it.each([{ authChannel: "BROWSER", authProvider: "wechat", phoneVerified: true }, { authChannel: "WECHAT_MINIAPP", authProvider: "mock", phoneVerified: true }, { authChannel: "WECHAT_MINIAPP", authProvider: "wechat", phoneVerified: false }])("non-native or unverified sessions retain management MFA: %j", async (fields) => {
+    const prisma = { order: { findMany: vi.fn() } };
+    const access = { assertPermission: vi.fn(() => { throw new ForbiddenException("MFA required"); }) };
+    await expect(new TechnicianWorkbenchService(prisma as never, access as never, new OrderStateMachine()).get({ ...therapist, ...fields })).rejects.toThrow("MFA required");
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
+  });
   it("returns only the authenticated therapist's real schedule summary", async () => {
     const prisma = {
       order: {

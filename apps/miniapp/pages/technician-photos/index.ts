@@ -8,8 +8,8 @@ const statusLabels = { DRAFT: "草稿", PENDING_REVIEW: "待后台审核", APPRO
 Page({
   data: { profile: null as TechnicianProfile | null, avatarPreview: "", galleryPreviews: [] as string[], introduction: "", specialties: "", loading: false, busy: false, authorized: false, error: "", message: "", statusLabel: "" },
   async onShow() {
-    if (!requireVerifiedCustomerAccess()) return;
-    // The API validates current membership, including newly claimed invitations.
+    if (!requireVerifiedCustomerAccess("/pages/technician-onboarding/index")) return;
+    // The API validates the owner's application or current membership.
     await this.load();
   },
   back() { wx.navigateBack({ delta: 1 }); },
@@ -32,7 +32,7 @@ Page({
   onIntroduction(event: { detail: { value: string } }) { this.setData({ introduction: event.detail.value }); },
   onSpecialties(event: { detail: { value: string } }) { this.setData({ specialties: event.detail.value }); },
   async submitReview() {
-    if (this.data.busy || !this.data.profile || !requireVerifiedCustomerAccess()) return;
+    if (this.data.busy || !this.data.profile || !requireVerifiedCustomerAccess("/pages/technician-onboarding/index")) return;
     const introduction = this.data.introduction.trim();
     const specialties = [...new Set(this.data.specialties.split(/[，,\n]/).map((value: string) => value.trim()).filter(Boolean))];
     if (!this.data.profile.avatarUrl || !introduction || !specialties.length) {
@@ -43,12 +43,13 @@ Page({
       await api<TechnicianProfile>("/technician/workbench/profile", "PATCH", { introduction, specialties });
       const profile = await api<TechnicianProfile>("/technician/workbench/profile/submit-review", "POST", {});
       await this.showProfile(profile);
-      this.setData({ message: "已提交管理后台审核，审核通过并发布后才会公开；不会自动开通接单资格" });
+      this.setData({ message: "已提交管理后台审核，通过后开通本人工作台；公开展示仍需后台发布" });
+      wx.redirectTo({ url: "/pages/technician-onboarding/index" });
     } catch (error) { this.setData({ error: error instanceof Error ? error.message : "提交审核失败，请重试" }); }
     finally { this.setData({ busy: false }); }
   },
   async upload(event: { currentTarget: { dataset: { kind: "AVATAR" | "GALLERY" } } }) {
-    if (this.data.busy || !this.data.profile || !requireVerifiedCustomerAccess()) return;
+    if (this.data.busy || !this.data.profile || !requireVerifiedCustomerAccess("/pages/technician-onboarding/index")) return;
     if (!this.data.authorized) { wx.showToast({ title: "请先确认本人照片授权", icon: "none" }); return; }
     this.setData({ busy: true, error: "", message: "" });
     try {

@@ -105,6 +105,7 @@ function installWx({ requests = [], smsRequestFailure, storedSession } = {}) {
     showToast() {},
     showModal: (options) => modals.push(options),
     navigateTo: ({ url }) => navigations.push(url),
+    redirectTo: ({ url }) => navigations.push(url),
     navigateBack() {},
     switchTab: ({ url }) => navigations.push(url),
   };
@@ -118,6 +119,21 @@ function installWx({ requests = [], smsRequestFailure, storedSession } = {}) {
     },
   };
 }
+
+test("technician return cannot inherit friend-pay phone bypass and returns only after verified phone", async () => {
+  const host = installWx();
+  try {
+    const page = createPage();
+    page.onLoad({ required: "1", returnPath: encodeURIComponent("/pages/technician-onboarding/index") });
+    await page.authorizeWechat();
+    assert.equal(page.data.friendPaymentReturn, false);
+    assert.equal(page.data.completed, false);
+    assert.equal(host.navigations.length, 0);
+    await page.authorizeWechatPhone({ detail: { code: "fixture-phone-code" } });
+    assert.equal(page.data.completed, true);
+    assert.deepEqual(host.navigations, ["/pages/technician-onboarding/index"]);
+  } finally { host.restore(); }
+});
 
 test("login page defaults to all three agreements accepted and opens each document", () => {
   const host = installWx();

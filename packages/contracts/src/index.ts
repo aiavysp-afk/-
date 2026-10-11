@@ -589,6 +589,7 @@ export const TechnicianReviewSummarySchema = z.object({
 });
 
 export const TechnicianProfileSchema = z.object({
+  version: z.number().int().nonnegative().optional(),
   technicianId: z.string(),
   displayName: z.string(),
   publicName: z.string(),
@@ -629,6 +630,19 @@ export const TechnicianPhotoUploadResultSchema = z.object({
   publicUrl: PublicHttpsUrlSchema,
   profile: TechnicianProfileSchema,
 });
+
+export const TechnicianOnboardingSchema = z.object({
+  profile: TechnicianProfileSchema.nullable(),
+  canEnterWorkbench: z.boolean(),
+  phoneVerified: z.boolean(),
+});
+export const TechnicianProfileRejectSchema = z.object({
+  reason: z.string().trim().min(2).max(500),
+  expectedVersion: z.number().int().nonnegative(),
+}).strict();
+export const TechnicianProfileApproveSchema = z.object({ expectedVersion: z.number().int().nonnegative().optional() }).strict();
+export type TechnicianOnboarding = z.infer<typeof TechnicianOnboardingSchema>;
+export type TechnicianProfileReject = z.infer<typeof TechnicianProfileRejectSchema>;
 
 export type TechnicianPhotoUpload = z.infer<typeof TechnicianPhotoUploadSchema>;
 export type TechnicianPhotoUploadResult = z.infer<

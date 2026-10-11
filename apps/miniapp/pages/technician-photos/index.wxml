@@ -1,6 +1,6 @@
 <view class="photo-page">
   <view class="nav"><text bindtap="back">‹</text><text>本人技师照片</text><view/></view>
-  <view class="intro"><text>先上传照片，资料后续补录</text><text>仅供已入驻的本人技师使用。姓名、年龄段不必填写；后台审核发布后，照片同步展示在客户列表和详情页。</text></view>
+  <view class="intro"><text>填写本人入驻资料</text><text>微信身份和已验证手机号自动绑定申请。姓名、年龄段可留空；照片、真实介绍和擅长填写后提交后台审核，通过后即可进入本人工作台，发布后在客户端展示。</text></view>
   <view wx:if="{{loading}}" class="notice">正在读取本人资料…</view>
   <view wx:if="{{error}}" class="notice error">{{error}}</view>
   <view wx:if="{{message}}" class="notice success">{{message}}</view>

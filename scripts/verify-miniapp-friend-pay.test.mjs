@@ -291,6 +291,7 @@ test("friend return login requires agreement and real WeChat identity but not ph
     Page(definition) { page = { ...definition, data: structuredClone(definition.data), setData(update) { Object.assign(this.data, update); } }; },
     require(name) {
       if (name === "../../utils/friend-payment") return helpers;
+      if (name === "../../utils/login-return") return require("../apps/miniapp/utils/login-return.js");
       if (name === "../../utils/auth") return {
         getStoredSession: () => session,
         loginWithWechat: async () => { ++loginCalls; session = { user: { phoneVerified: false } }; return session; },
@@ -318,6 +319,7 @@ test("ordinary login without a valid friend route still requires phone verificat
     Page(definition) { page = { ...definition, data: structuredClone(definition.data), setData(update) { Object.assign(this.data, update); } }; },
     require(name) {
       if (name === "../../utils/friend-payment") return helpers;
+      if (name === "../../utils/login-return") return require("../apps/miniapp/utils/login-return.js");
       return {
         getStoredSession: () => undefined,
         loginWithWechat: async () => ({ user: { phoneVerified: false } }),
@@ -417,6 +419,7 @@ test("friend return login never skips fresh wx.login for a stored old identity",
     Page(definition) { page = { ...definition, data: structuredClone(definition.data), setData(update) { Object.assign(this.data, update); } }; },
     require(name) {
       if (name === "../../utils/friend-payment") return helpers;
+      if (name === "../../utils/login-return") return require("../apps/miniapp/utils/login-return.js");
       return {
         getStoredSession: () => session,
         loginWithWechat: async () => { ++loginCalls; session = { user: { id: "real-current-app-identity", phoneVerified: false } }; return session; },

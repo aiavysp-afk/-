@@ -59,7 +59,7 @@ const rules = [
   ],
   [
     new RegExp(
-      `^${organization}/technicians/${segment}/profile/(?:submit-review|approve|publish|unpublish)$`,
+      `^${organization}/technicians/${segment}/profile/(?:submit-review|approve|reject|publish|unpublish)$`,
     ),
     ["POST"],
   ],
@@ -81,6 +81,7 @@ const rules = [
     ["POST"],
   ],
   [new RegExp(`^${organization}/technician-invitations$`), ["GET", "POST"]],
+  [new RegExp(`^${organization}/technician-applications$`), ["GET"]],
   [
     new RegExp(`^${organization}/technician-invitations/${segment}/revoke$`),
     ["POST"],

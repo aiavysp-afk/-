@@ -1,77 +1,57 @@
-import type { TechnicianInvitationClaimed } from "@zydj/contracts";
+import type { TechnicianOnboarding } from "@zydj/contracts";
 import { api } from "../../utils/api";
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
 
+const ENTRY = "/pages/technician-onboarding/index";
+const labels = {
+  DRAFT: "填写入驻资料",
+  PENDING_REVIEW: "入驻资料审核中",
+  APPROVED: "审核通过",
+  PUBLISHED: "审核通过",
+  REJECTED: "请修改后重新提交",
+};
 Page({
   data: {
-    code: "",
     busy: false,
     error: "",
-    result: null as TechnicianInvitationClaimed | null,
+    application: null as TechnicianOnboarding | null,
+    statusLabel: "",
   },
-  onLoad(options: { code?: string }) {
-    if (!requireVerifiedCustomerAccess()) return;
-    const code = String(options.code ?? "")
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9_-]/g, "")
-      .slice(0, 12);
-    this.setData({ code });
+  async onShow() {
+    if (!requireVerifiedCustomerAccess(ENTRY)) return;
+    await this.load();
   },
-  onCodeInput(event: { detail: { value: string } }) {
-    this.setData({
-      code: event.detail.value
-        .toUpperCase()
-        .replace(/[^A-Z0-9_-]/g, "")
-        .slice(0, 12),
-      error: "",
-    });
-  },
-  async claim() {
-    if (this.data.busy || this.data.result) return;
-    if (!/^[A-Z0-9_-]{12}$/.test(this.data.code)) {
-      this.setData({ error: "请输入后台发放的12位技师邀请码" });
-      return;
-    }
-    const confirmed = await new Promise<boolean>((resolve) =>
-      wx.showModal({
-        title: "确认认领技师身份？",
-        content:
-          "邀请码只能由本人微信账号使用一次。认领后仍需填写本人资料，并经平台核验、审核和发布后才会向客户展示。",
-        confirmText: "本人认领",
-        success: (result) => resolve(result.confirm === true),
-        fail: () => resolve(false),
-      }),
-    );
-    if (!confirmed) return;
+  async load() {
+    if (this.data.busy) return;
     this.setData({ busy: true, error: "" });
     try {
-      const result = await api<TechnicianInvitationClaimed>(
-        "/technician-invitations/claim",
-        "POST",
-        { code: this.data.code },
+      let application = await api<TechnicianOnboarding>(
+        "/technician/onboarding",
       );
-      this.setData({ result, code: "" });
+      if (!application.profile)
+        application = await api<TechnicianOnboarding>(
+          "/technician/onboarding",
+          "POST",
+          {},
+        );
+      this.setData({
+        application,
+        statusLabel: application.profile
+          ? labels[application.profile.status]
+          : "填写入驻资料",
+      });
+      if (application.canEnterWorkbench)
+        wx.redirectTo({ url: "/pages/technician-workbench/index" });
     } catch (error) {
       this.setData({
-        error: error instanceof Error ? error.message : "技师身份认领失败",
+        error:
+          error instanceof Error ? error.message : "入驻状态读取失败，请重试",
       });
     } finally {
       this.setData({ busy: false });
     }
   },
-  copyWorkbenchAddress() {
-    wx.setClipboardData({
-      data: "https://mtsc.top/technician/",
-      success: () =>
-        wx.showToast({ title: "技师端地址已复制", icon: "success" }),
-    });
-  },
-  openOwnPhotos() {
-    if (!this.data.result || !requireVerifiedCustomerAccess()) return;
+  editProfile() {
     wx.navigateTo({ url: "/pages/technician-photos/index" });
-  },
-  openStaffLoginConfirmation() {
-    wx.navigateTo({ url: "/pages/admin-login/index" });
   },
 });

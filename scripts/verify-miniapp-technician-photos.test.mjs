@@ -28,11 +28,11 @@ function helperFixture(login, current = { id: "self-tech", memberships: [] }) {
 
 function pageFixture(handler = () => profile) {
   let page;
-  const apiCalls = [], toasts = [], selections = [];
+  const apiCalls = [], toasts = [], selections = [], routes = [];
   vm.runInNewContext(compile("pages/technician-photos/index.ts"), {
     exports: {}, Error, Promise,
     Page(definition) { page = { ...definition, data: structuredClone(definition.data), setData(values) { Object.assign(this.data, values); } }; },
-    wx: { showToast: (value) => toasts.push(value), navigateBack() {}, previewImage() {} },
+    wx: { showToast: (value) => toasts.push(value), navigateBack() {}, previewImage() {}, redirectTo: (value) => routes.push(value.url) },
     require(name) {
       if (name === "../../utils/auth") return { requireVerifiedCustomerAccess: () => true };
       if (name === "../../utils/api") return { api: async (path, method = "GET", data) => { apiCalls.push({ path, method, data }); return handler(path, method, data); } };
@@ -44,7 +44,7 @@ function pageFixture(handler = () => profile) {
     },
   });
   page.data.profile = structuredClone(profile);
-  return { page, apiCalls, toasts, selections };
+  return { page, apiCalls, toasts, selections, routes };
 }
 
 test("ordinary customers never receive an upload entry, while real current memberships are refreshed", async () => {
@@ -114,7 +114,9 @@ test("real owner introduction and specialties are saved before explicit review s
   assert.equal(fixture.apiCalls[1].method, "POST");
   assert.equal(Object.keys(fixture.apiCalls[1].data).length, 0);
   assert.equal(fixture.page.data.profile.status, "PENDING_REVIEW");
-  assert.match(fixture.page.data.message, /不会自动开通接单/);
+  assert.match(fixture.page.data.message, /通过后开通本人工作台/);
+  assert.match(fixture.page.data.message, /公开展示仍需后台发布/);
+  assert.deepEqual(fixture.routes, ["/pages/technician-onboarding/index"]);
 });
 
 test("client list/detail entries explicitly target only the uploader's own photo page", () => {

@@ -8,6 +8,15 @@ import { AuthService } from "./auth.service.js";
 import type { WechatMiniappClient } from "./wechat-miniapp.client.js";
 
 describe("AuthService", () => {
+  it("takes native authentication provenance and phone verification only from the stored session/user", async () => {
+    const session = { id: "session", authChannel: "WECHAT_MINIAPP", authProvider: "wechat", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, mfaVerifiedUntil: null, user: { id: "user", status: "ACTIVE", displayName: "微信用户", phoneEncrypted: "encrypted-fixture", phoneVerifiedAt: new Date(), memberships: [{ organizationId: "org", role: UserRole.THERAPIST }] } };
+    const prisma = { session: { findUnique: vi.fn().mockResolvedValue(session), update: vi.fn() } };
+    const service = new AuthService(prisma as never, { hashSessionToken: () => "hash" } as never, {} as never, {} as never);
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({ authChannel: "WECHAT_MINIAPP", authProvider: "wechat", phoneVerified: true });
+    session.authChannel = "BROWSER"; session.user.phoneVerifiedAt = null as never;
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({ authChannel: "BROWSER", phoneVerified: false });
+    expect(prisma.session.findUnique).toHaveBeenCalledWith(expect.objectContaining({ include: { user: { include: { memberships: { where: { status: "ACTIVE" } } } } } }));
+  });
   it("creates every new miniapp identity as a customer and returns only an opaque session token", async () => {
     const tx = {
       externalIdentity: {

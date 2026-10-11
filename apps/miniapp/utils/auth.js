@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.confirmSmsPhoneVerification = exports.requestSmsPhoneVerification = exports.verifyWechatPhone = exports.loginWithWechat = exports.goToPhoneVerification = exports.requireVerifiedCustomerAccess = exports.redirectToCustomerLogin = exports.hasVerifiedCustomerSession = exports.needsPhoneVerification = exports.clearStoredSession = exports.getStoredSession = void 0;
-const friend_payment_1 = require("./friend-payment");
+const login_return_1 = require("./login-return");
 const STORAGE_KEY = "zydj.auth.session";
 const CUSTOMER_LOGIN_URL = "/pages/phone-verification/index?required=1";
 let customerLoginRedirecting = false;
@@ -36,18 +36,18 @@ const redirectToCustomerLogin = (returnPath) => {
         return;
     customerLoginRedirecting = true;
     wx.reLaunch({
-        url: CUSTOMER_LOGIN_URL + ((0, friend_payment_1.safeFriendPaymentReturnPath)(returnPath)
-            ? `&returnPath=${encodeURIComponent((0, friend_payment_1.safeFriendPaymentReturnPath)(returnPath))}` : ""),
+        url: CUSTOMER_LOGIN_URL + ((0, login_return_1.safeLoginReturnPath)(returnPath)
+            ? `&returnPath=${encodeURIComponent((0, login_return_1.safeLoginReturnPath)(returnPath))}` : ""),
         complete: () => {
             customerLoginRedirecting = false;
         },
     });
 };
 exports.redirectToCustomerLogin = redirectToCustomerLogin;
-const requireVerifiedCustomerAccess = () => {
+const requireVerifiedCustomerAccess = (returnPath) => {
     if ((0, exports.hasVerifiedCustomerSession)())
         return true;
-    (0, exports.redirectToCustomerLogin)();
+    (0, exports.redirectToCustomerLogin)(returnPath);
     return false;
 };
 exports.requireVerifiedCustomerAccess = requireVerifiedCustomerAccess;

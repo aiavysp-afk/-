@@ -689,7 +689,12 @@ function App() {
           <section className="workbench-gate">
             <ShieldAlert size={24} />
             <h2>需要技师身份</h2>
-            <p>使用本人微信登录；账号须已在管理后台绑定为有效技师。</p>
+            <h3>微信入驻与登录，无需配对码</h3>
+            <p>在微信搜索“中原到家”小程序 → 我的 → 设置 → 技师入驻与登录，完成本人微信授权和手机号验证，直接填写照片与资料并提交后台审核。</p>
+            <p>审核通过后，同一微信账号再次进入该入口即可登录小程序技师工作台。待审核时只能查看本人申请，不能接单。</p>
+            <p>姓名、年龄段可以先留空；照片、介绍、擅长与审核进度自动同步管理后台。此网页为辅助工作台，小程序才是无配对码主入口。</p>
+            <details>
+              <summary>已绑定技师的网页辅助登录（可选）</summary>
             {error && (
               <p className="error-banner" role="alert">
                 {error}
@@ -700,13 +705,13 @@ function App() {
                 onClick={() => void startWechatLogin()}
                 disabled={loginBusy}
               >
-                {loginBusy ? "正在生成登录码…" : "微信登录技师端"}
+                {loginBusy ? "正在生成辅助登录码…" : "确认登录网页辅助工作台"}
               </button>
             )}
             {loginChallenge && (
               <div className="pairing-card">
                 <strong>请在“中原到家”小程序确认</strong>
-                <span>技师入驻 → 已是技师？前往工作人员登录确认</span>
+                <span>仅用于本人主动发起的网页辅助登录；小程序入驻与登录不使用配对码。</span>
                 <label>配对码</label>
                 <code>{loginChallenge.pairCode}</code>
                 <label>六位核对数字</label>
@@ -731,6 +736,7 @@ function App() {
                 {loading ? "登录中…" : "登录本地技师账号"}
               </button>
             )}
+            </details>
           </section>
         )}
 

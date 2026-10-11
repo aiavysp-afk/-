@@ -79,6 +79,21 @@ export class TechnicianWorkbenchService {
     @Optional() private readonly crypto?: AuthCryptoService,
   ) {}
 
+  private async assertOwnAccess(principal: AuthPrincipal, organizationId: string) {
+    if (principal.authChannel === "WECHAT_MINIAPP" && principal.authProvider === "wechat" && principal.phoneVerified) {
+      const member = principal.memberships.some((row) => row.role === UserRole.THERAPIST && row.organizationId === organizationId);
+      if (!member) throw new ForbiddenException("当前账号不是已审核技师");
+      const approved = await this.prisma.technicianProfile.findFirst({
+        where: { technicianId: principal.userId, organizationId, status: { in: ["APPROVED", "PUBLISHED"] }, technician: { status: "ACTIVE" } },
+        select: { id: true },
+      });
+      if (!approved) throw new ForbiddenException("请等待后台审核通过后进入工作台");
+      return;
+    }
+    // Browser sessions and every management endpoint retain their MFA policy.
+    this.access.assertPermission(principal, "orders.read", organizationId);
+  }
+
   async get(
     principal: AuthPrincipal,
     now = new Date(),
@@ -90,7 +105,7 @@ export class TechnicianWorkbenchService {
       throw new ForbiddenException("当前身份不是已授权技师");
     }
     for (const organizationId of organizationIds) {
-      this.access.assertPermission(principal, "orders.read", organizationId);
+      await this.assertOwnAccess(principal, organizationId);
     }
 
     const { start, end, weekStart, weekEnd, day } = this.shanghaiPeriods(now);
@@ -196,7 +211,7 @@ export class TechnicianWorkbenchService {
       throw new ForbiddenException("当前身份不是已授权技师");
     }
     for (const organizationId of organizationIds) {
-      this.access.assertPermission(principal, "orders.read", organizationId);
+      await this.assertOwnAccess(principal, organizationId);
     }
 
     const { start, end } = this.shanghaiMonth(now);
@@ -303,11 +318,7 @@ export class TechnicianWorkbenchService {
       if (!isTherapist || order.therapistId !== principal.userId) {
         throw new ForbiddenException("不能操作未指派给本人的订单");
       }
-      this.access.assertPermission(
-        principal,
-        "orders.read",
-        order.organizationId,
-      );
+      await this.assertOwnAccess(principal, order.organizationId);
 
       if (input.action === "ACCEPT") {
         if (order.status === OrderStatus.ASSIGNED) {
@@ -474,7 +485,7 @@ export class TechnicianWorkbenchService {
   ): Promise<TechnicianLocationReportResult> {
     const organizationIds = this.therapistOrganizations(principal);
     for (const organizationId of organizationIds)
-      this.access.assertPermission(principal, "orders.read", organizationId);
+      await this.assertOwnAccess(principal, organizationId);
     const location = await this.prisma.technicianLocation.upsert({
       where: { technicianId: principal.userId },
       create: {
@@ -528,11 +539,7 @@ export class TechnicianWorkbenchService {
     if (!order) throw new NotFoundException("履约订单不存在");
     if (order.therapistId !== principal.userId)
       throw new ForbiddenException("不能计算未指派给本人的订单路线");
-    this.access.assertPermission(
-      principal,
-      "orders.read",
-      order.organizationId,
-    );
+    await this.assertOwnAccess(principal, order.organizationId);
     if (
       order.status !== OrderStatus.ASSIGNED &&
       order.status !== OrderStatus.EN_ROUTE &&

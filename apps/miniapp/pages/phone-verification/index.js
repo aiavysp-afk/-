@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
 const friend_payment_1 = require("../../utils/friend-payment");
+const login_return_1 = require("../../utils/login-return");
 Page({
     data: {
         accepted: true,
@@ -24,19 +25,24 @@ Page({
     returnPath: "",
     countdownTimer: undefined,
     onLoad(options) {
-        this.returnPath = (0, friend_payment_1.safeFriendPaymentReturnPath)(options.returnPath);
-        this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean(this.returnPath) });
+        this.returnPath = (0, login_return_1.safeLoginReturnPath)(options.returnPath);
+        this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean((0, friend_payment_1.safeFriendPaymentReturnPath)(options.returnPath)) });
         const session = (0, auth_1.getStoredSession)();
-        if (!this.returnPath && session && !(0, auth_1.needsPhoneVerification)(session)) {
+        if (!this.data.friendPaymentReturn && session && !(0, auth_1.needsPhoneVerification)(session)) {
             this.setData({ completed: true, wechatReady: true });
+            this.returnToTechnician();
         }
-        else if (!this.returnPath && session) {
+        else if (!this.data.friendPaymentReturn && session) {
             this.setData({ wechatReady: true });
         }
     },
     onUnload() {
         if (this.countdownTimer)
             clearInterval(this.countdownTimer);
+    },
+    returnToTechnician() {
+        if (this.returnPath.startsWith("/pages/technician-") && this.data.completed)
+            wx.redirectTo({ url: this.returnPath });
     },
     ensureAgreementAccepted() {
         if (this.data.accepted)
@@ -59,9 +65,10 @@ Page({
                 : (_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (await (0, auth_1.loginWithWechat)());
             // Paying for a friend needs this app's real WeChat identity, not their
             // phone number. All original booking/customer phone guards stay intact.
-            if (this.returnPath || !(0, auth_1.needsPhoneVerification)(session)) {
+            if (this.data.friendPaymentReturn || !(0, auth_1.needsPhoneVerification)(session)) {
                 this.setData({ completed: true, wechatReady: true });
                 wx.showToast({ title: "账号已登录", icon: "success" });
+                this.returnToTechnician();
                 return;
             }
             this.setData({ wechatReady: true, phoneFocused: false });
@@ -125,6 +132,7 @@ Page({
                 actionStatus: "微信手机号验证完成",
             });
             wx.showToast({ title: "登录成功", icon: "success" });
+            this.returnToTechnician();
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "微信手机号验证失败";
@@ -277,6 +285,7 @@ Page({
             const result = await (0, auth_1.confirmSmsPhoneVerification)(this.data.phone, this.data.smsCode);
             this.setData({ completed: true, maskedPhone: result.maskedPhone });
             wx.showToast({ title: "登录成功", icon: "success" });
+            this.returnToTechnician();
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "验证码登录失败";

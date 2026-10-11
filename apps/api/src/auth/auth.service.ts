@@ -169,6 +169,9 @@ export class AuthService {
       userId: session.user.id,
       displayName: session.user.displayName,
       mfaVerifiedUntil: session.mfaVerifiedUntil,
+      authChannel: session.authChannel,
+      authProvider: session.authProvider,
+      phoneVerified: Boolean(session.user.phoneEncrypted && session.user.phoneVerifiedAt),
       memberships: session.user.memberships.map((membership) => ({
         organizationId: membership.organizationId,
         role: membership.role,

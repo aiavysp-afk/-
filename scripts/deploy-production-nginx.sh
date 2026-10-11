@@ -84,6 +84,7 @@ for marker in \
   'location = /v1/payments/notifications' \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
+  'location = /v1/technician/onboarding' \
   'location = /v1/auth/mfa {' \
   'location = /v1/auth/mfa/enrollment {' \
   'location = /v1/auth/mfa/activate {' \
@@ -247,6 +248,21 @@ verify_mfa_gateway() {
 # Failure remains a top-level error, invoking the existing exact-vhost rollback.
 wait_for_private_gateway
 verify_mfa_gateway 127.0.0.1
+# Autonomous registration is session-only; no anonymous draft or identity grant.
+for onboarding_method in GET POST; do
+  onboarding_status=$(curl --silent --show-error --max-time 10 \
+    --output /dev/null --write-out '%{http_code}' --request "$onboarding_method" \
+    --resolve api.mtsc.top:443:127.0.0.1 https://api.mtsc.top/v1/technician/onboarding)
+  [[ $onboarding_status == 401 ]]
+done
+for onboarding_method in HEAD PATCH DELETE; do
+  onboarding_args=(--request "$onboarding_method")
+  [[ $onboarding_method != HEAD ]] || onboarding_args=(--head)
+  onboarding_status=$(curl --silent --show-error --max-time 10 \
+    --output /dev/null --write-out '%{http_code}' "${onboarding_args[@]}" \
+    --resolve api.mtsc.top:443:127.0.0.1 https://api.mtsc.top/v1/technician/onboarding)
+  [[ $onboarding_status == 403 || $onboarding_status == 404 ]]
+done
 # An actual public source can additionally prove the maintenance gate here.
 # NAT/EIP hosts often have only private interfaces: do not mistake a private
 # request for a public proof. An independent external client must verify admin

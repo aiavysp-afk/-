@@ -13,7 +13,7 @@
     <view bindtap="openSecurity"><text>账号与安全</text><text>›</text></view>
   </view>
   <view class="menu-card single">
-    <view bindtap="openTechnicianOnboarding"><text>受邀技师认证</text><text>仅限持邀请码本人 ›</text></view>
+    <view bindtap="openTechnicianOnboarding"><text>技师入驻与登录</text><text>微信授权 · 后台审核 ›</text></view>
   </view>
   <view class="menu-card">
     <view data-kind="about" bindtap="openRecord"><text>关于我们</text><text>›</text></view>

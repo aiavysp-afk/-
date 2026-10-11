@@ -709,6 +709,7 @@ model TechnicianProfile {
   publicName      String                  @default("")
   ageRange        String?
   version         Int                     @default(0)
+  selfRegistered  Boolean                 @default(false)
   avatarUrl       String?
   galleryUrls     Json                    @default("[]")
   introduction    String                  @default("")

@@ -138,6 +138,7 @@ export function TechniciansWorkspace({
   const [error, setError] = useState("");
   const [selectedTechnicianId, setSelectedTechnicianId] = useState("");
   const [invitations, setInvitations] = useState<TechnicianInvitation[]>([]);
+  const [applications, setApplications] = useState<TechnicianProfile[]>([]);
   const [inviteName, setInviteName] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [createdInvite, setCreatedInvite] =
@@ -149,7 +150,7 @@ export function TechniciansWorkspace({
     setLoading(true);
     setError("");
     try {
-      const [boardValue, invitationRows] = await Promise.all([
+      const [boardValue, invitationRows, applicationRows] = await Promise.all([
         request<AdminTechnicianBoard>(
           `/admin/organizations/${organizationId}/technicians`,
           token,
@@ -158,10 +159,12 @@ export function TechniciansWorkspace({
           `/admin/organizations/${organizationId}/technician-invitations`,
           token,
         ),
+        request<TechnicianProfile[]>(`/admin/organizations/${organizationId}/technician-applications`, token),
       ]);
       if (!isCurrent()) return;
       setBoard(boardValue);
       setInvitations(invitationRows);
+      setApplications(applicationRows);
     } catch (caught) {
       if (!isCurrent()) return;
       setBoard(null);
@@ -271,6 +274,13 @@ export function TechniciansWorkspace({
         </button>
       </div>
       {error && <div className="catalog-error">{error}</div>}
+      <section className="technician-invite-card">
+        <div className="technician-invite-copy"><h3>微信自主入驻审核</h3><p>本人微信和手机号验证后直接提交资料，无需邀请码。核验照片授权、真实资料后通过审核才开通技师身份，公开展示仍需发布。</p></div>
+        <div className="technician-invite-list">
+          {applications.map((application) => <div key={application.technicianId}><span><strong>{application.publicName || "姓名待补录的入驻申请"}</strong><small>{profileStatusLabels[application.status]} · {formatDateTime(application.updatedAt)}</small></span><button className="ghost-action" onClick={() => setSelectedTechnicianId(application.technicianId)}>查看资料 / 审核</button></div>)}
+          {!loading && !applications.length && <p>暂无自主入驻申请。</p>}
+        </div>
+      </section>
       <section className="technician-invite-card">
         <div className="technician-invite-copy">
           <span className="eyebrow">ONE-TIME ONBOARDING</span>
@@ -597,17 +607,20 @@ function AdminTechnicianProfilePanel({
   }
 
   async function runWorkflowAction(
-    action: "submit-review" | "approve" | "publish" | "unpublish",
+    action: "submit-review" | "approve" | "reject" | "publish" | "unpublish",
   ) {
     if (!profile || !draft || loading || operationBusy.current) return;
-    if ((action === "approve" || action === "publish") && dirty) return;
+    if ((action === "approve" || action === "publish" || action === "reject") && dirty) return;
     const labels = {
       "submit-review":
         "确认保存当前最新照片和真实资料，并提交后台审核？姓名、年龄段可后补。",
       approve: "确认资料内容与真人授权、资质核验结果一致并通过审核？",
+      reject: "确认退回本次申请，由技师本人修改资料后重新提交？",
       publish: "确认将这份资料公开给客户端客户查看？",
       unpublish: "确认暂停公开这份技师资料？",
     } as const;
+    const reason = action === "reject" ? window.prompt("请填写2至500字退回原因")?.trim() : undefined;
+    if (action === "reject" && (!reason || reason.length < 2 || reason.length > 500)) return;
     if (!window.confirm(labels[action])) return;
     operationBusy.current = true;
     const isCurrent = requests.begin();
@@ -643,7 +656,7 @@ function AdminTechnicianProfilePanel({
           : await request<TechnicianProfile>(
               profilePaths.profileAction(action),
               token,
-              {},
+              action === "reject" ? { reason, expectedVersion: profile.version } : action === "approve" ? { expectedVersion: profile.version } : {},
             );
       if (!value || !isCurrent()) return;
       setProfile(value);
@@ -653,6 +666,8 @@ function AdminTechnicianProfilePanel({
           ? "最新资料已提交审核，审核通过并单独发布后才会对客户公开。"
           : action === "approve"
             ? "审核已通过，仍需单独发布才会对客户公开。"
+            : action === "reject"
+              ? "申请已退回，原因已同步技师端，未授予接单资格。"
             : action === "publish"
               ? "资料已公开，客户端将读取同一份资料。"
               : "资料已停止公开，历史订单和评价未删除。",
@@ -993,6 +1008,7 @@ function AdminTechnicianProfilePanel({
                 >
                   审核通过
                 </button>
+                <button className="danger-action" disabled={saving || dirty || profile.status !== "PENDING_REVIEW"} onClick={() => void runWorkflowAction("reject")}>退回修改</button>
                 {profile.status === "PUBLISHED" ? (
                   <button
                     className="danger-action"

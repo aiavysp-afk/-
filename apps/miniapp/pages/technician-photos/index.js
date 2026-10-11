@@ -7,9 +7,9 @@ const statusLabels = { DRAFT: "草稿", PENDING_REVIEW: "待后台审核", APPRO
 Page({
     data: { profile: null, avatarPreview: "", galleryPreviews: [], introduction: "", specialties: "", loading: false, busy: false, authorized: false, error: "", message: "", statusLabel: "" },
     async onShow() {
-        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+        if (!(0, auth_1.requireVerifiedCustomerAccess)("/pages/technician-onboarding/index"))
             return;
-        // The API validates current membership, including newly claimed invitations.
+        // The API validates the owner's application or current membership.
         await this.load();
     },
     back() { wx.navigateBack({ delta: 1 }); },
@@ -41,7 +41,7 @@ Page({
     onIntroduction(event) { this.setData({ introduction: event.detail.value }); },
     onSpecialties(event) { this.setData({ specialties: event.detail.value }); },
     async submitReview() {
-        if (this.data.busy || !this.data.profile || !(0, auth_1.requireVerifiedCustomerAccess)())
+        if (this.data.busy || !this.data.profile || !(0, auth_1.requireVerifiedCustomerAccess)("/pages/technician-onboarding/index"))
             return;
         const introduction = this.data.introduction.trim();
         const specialties = [...new Set(this.data.specialties.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean))];
@@ -54,7 +54,8 @@ Page({
             await (0, api_1.api)("/technician/workbench/profile", "PATCH", { introduction, specialties });
             const profile = await (0, api_1.api)("/technician/workbench/profile/submit-review", "POST", {});
             await this.showProfile(profile);
-            this.setData({ message: "已提交管理后台审核，审核通过并发布后才会公开；不会自动开通接单资格" });
+            this.setData({ message: "已提交管理后台审核，通过后开通本人工作台；公开展示仍需后台发布" });
+            wx.redirectTo({ url: "/pages/technician-onboarding/index" });
         }
         catch (error) {
             this.setData({ error: error instanceof Error ? error.message : "提交审核失败，请重试" });
@@ -64,7 +65,7 @@ Page({
         }
     },
     async upload(event) {
-        if (this.data.busy || !this.data.profile || !(0, auth_1.requireVerifiedCustomerAccess)())
+        if (this.data.busy || !this.data.profile || !(0, auth_1.requireVerifiedCustomerAccess)("/pages/technician-onboarding/index"))
             return;
         if (!this.data.authorized) {
             wx.showToast({ title: "请先确认本人照片授权", icon: "none" });

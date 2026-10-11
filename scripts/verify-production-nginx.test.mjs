@@ -245,13 +245,20 @@ test("production nginx rejects broad admin and development route exposure", () =
 
 test("production nginx exposes dashboard, dispatch, staffing, area and readiness exactly", () => {
   assertAllowedMethods(
-    "~ ^/v1/admin/organizations/[^/]+/(?:dashboard|dispatch|technicians|service-area|readiness|payments|safety-duty-rosters/current|safety-duty-staff|safety-notifications|safety-notifications-summary|safety-incidents|mfa-recovery-requests)$",
+    "~ ^/v1/admin/organizations/[^/]+/(?:dashboard|dispatch|technicians|technician-applications|service-area|readiness|payments|safety-duty-rosters/current|safety-duty-staff|safety-notifications|safety-notifications-summary|safety-incidents|mfa-recovery-requests)$",
     ["GET", "OPTIONS"],
   );
   assertAllowedMethods(
     "~ ^/v1/admin/organizations/[^/]+/dispatch/orders/[^/]+/assign$",
     ["POST", "OPTIONS"],
   );
+});
+
+test("autonomous technician registration is an exact session resource with HEAD explicitly closed", () => {
+  assertAllowedMethods("= /v1/technician/onboarding", ["GET", "POST", "OPTIONS"]);
+  const block = locationBlock("= /v1/technician/onboarding");
+  assert.match(block, /if \(\$request_method !~ \^\(GET\|POST\|OPTIONS\)\$\) \{ return 404; \}/);
+  assert.doesNotMatch(config, /location\s+\/v1\/technician\//);
 });
 
 test("production nginx exposes exact catalog, scheduling and audit resources", () => {
@@ -449,7 +456,7 @@ test("production nginx exposes exact authenticated admin profile and review mode
     ["GET", "PATCH", "OPTIONS"],
   );
   assertAllowedMethods(
-    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/(?:submit-review|approve|publish|unpublish)$",
+    "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile/(?:submit-review|approve|reject|publish|unpublish)$",
     ["POST", "OPTIONS"],
   );
   assertAllowedMethods(

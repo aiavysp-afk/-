@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import {
@@ -22,6 +23,7 @@ import type {
   TechnicianPhotoUploadResult,
   TechnicianReview,
   TechnicianReviewCreate,
+  TechnicianOnboarding,
 } from "@zydj/contracts";
 import { AccessControlService } from "../auth/access-control.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
@@ -35,6 +37,7 @@ type ProfileRecord = {
   publicName: string;
   ageRange?: string | null;
   version?: number;
+  selfRegistered?: boolean;
   avatarUrl: string | null;
   galleryUrls: Prisma.JsonValue;
   introduction: string;
@@ -54,6 +57,77 @@ export class TechniciansService {
     private readonly access: AccessControlService,
     private readonly photos?: TechnicianPhotoService,
   ) {}
+
+  private assertWechatRegistration(principal: AuthPrincipal, requirePhone = true) {
+    if (principal.authChannel !== "WECHAT_MINIAPP" || principal.authProvider !== "wechat") {
+      throw new ForbiddenException("请在小程序内使用本人微信授权登录");
+    }
+    if (requirePhone && !principal.phoneVerified) {
+      throw new ForbiddenException("请先完成本人手机号验证");
+    }
+  }
+
+  async onboarding(principal: AuthPrincipal): Promise<TechnicianOnboarding> {
+    this.assertWechatRegistration(principal, false);
+    const profile = await this.prisma.technicianProfile.findUnique({
+      where: { technicianId: principal.userId },
+      include: { technician: { select: { displayName: true } } },
+    });
+    const approved = profile && (profile.status === "APPROVED" || profile.status === "PUBLISHED");
+    return {
+      profile: profile ? await this.toProfile(profile, false) : null,
+      phoneVerified: principal.phoneVerified === true,
+      canEnterWorkbench: Boolean(principal.phoneVerified && approved && await this.hasActiveMembership(profile)),
+    };
+  }
+
+  async register(principal: AuthPrincipal): Promise<TechnicianOnboarding> {
+    this.assertWechatRegistration(principal);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${principal.userId} FOR NO KEY UPDATE`;
+      const user = await tx.user.findUnique({ where: { id: principal.userId }, select: {
+        status: true, phoneEncrypted: true, phoneVerifiedAt: true,
+        identities: { where: { provider: "WECHAT_MINIAPP" }, select: { id: true } },
+      } });
+      if (!user || user.status !== "ACTIVE" || !user.phoneEncrypted || !user.phoneVerifiedAt || !user.identities.length) {
+        throw new ForbiddenException("请完成本人微信和手机号验证后再入驻");
+      }
+      const existing = await tx.technicianProfile.findUnique({ where: { technicianId: principal.userId } });
+      if (existing) return;
+      // The applicant cannot select a tenant or grant themselves membership.
+      const organizations = await tx.organization.findMany({
+        where: { services: { some: { published: true } } }, select: { id: true }, take: 2,
+      });
+      if (organizations.length !== 1) throw new ServiceUnavailableException("入驻服务组织尚未明确，请联系平台配置");
+      const organizationId = organizations[0]!.id;
+      const membership = await tx.staffMembership.findFirst({
+        where: { userId: principal.userId, role: UserRole.THERAPIST },
+      });
+      if (membership && (membership.status !== MembershipStatus.ACTIVE || membership.organizationId !== organizationId)) {
+        throw new ForbiddenException("账号状态或组织归属需由后台核验");
+      }
+      const created = await tx.technicianProfile.create({ data: {
+        organizationId, technicianId: principal.userId, publicName: "", selfRegistered: true,
+        status: TechnicianProfileStatus.DRAFT,
+      } });
+      await tx.auditLog.create({ data: {
+        actorId: principal.userId, organizationId, action: "TECHNICIAN_SELF_REGISTRATION_CREATED",
+        resourceType: "TechnicianProfile", resourceId: created.id,
+        metadata: { phoneVerified: true, membershipGranted: false },
+      } });
+    });
+    return this.onboarding(principal);
+  }
+
+  async listApplications(principal: AuthPrincipal, organizationId: string): Promise<TechnicianProfile[]> {
+    this.access.assertPermission(principal, "technicians.manage", organizationId);
+    const rows = await this.prisma.technicianProfile.findMany({
+      where: { organizationId, selfRegistered: true, technician: { status: "ACTIVE" } },
+      include: { technician: { select: { displayName: true } } },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 100,
+    });
+    return Promise.all(rows.map((row) => this.toProfile(row, false)));
+  }
 
   async listPublic(): Promise<TechnicianProfile[]> {
     const profiles = await this.prisma.technicianProfile.findMany({
@@ -219,8 +293,7 @@ export class TechniciansService {
   }
 
   async getAdminPhoto(principal: AuthPrincipal, organizationId: string, technicianId: string, photoId: string) {
-    this.access.assertPermission(principal, "technicians.manage", organizationId);
-    await this.getTechnicianMembership(organizationId, technicianId);
+    await this.getAuthorizedProfile(principal, organizationId, technicianId);
     return this.getPrivatePhoto(organizationId, technicianId, photoId);
   }
 
@@ -289,15 +362,7 @@ export class TechniciansService {
       "technicians.manage",
       organizationId,
     );
-    const membership = await this.getTechnicianMembership(
-      organizationId,
-      technicianId,
-    );
-    const profile = await this.ensureProfile(
-      organizationId,
-      technicianId,
-      membership.user.displayName,
-    );
+    const profile = await this.getAuthorizedProfile(principal, organizationId, technicianId);
     return this.toProfile(profile, false);
   }
 
@@ -312,15 +377,7 @@ export class TechniciansService {
       "technicians.manage",
       organizationId,
     );
-    const membership = await this.getTechnicianMembership(
-      organizationId,
-      technicianId,
-    );
-    const current = await this.ensureProfile(
-      organizationId,
-      technicianId,
-      membership.user.displayName,
-    );
+    const current = await this.getAuthorizedProfile(principal, organizationId, technicianId);
     const updated = await this.prisma.$transaction(async (tx) => {
       const data = this.profileUpdateData(input);
       data.version = { increment: 1 };
@@ -373,12 +430,14 @@ export class TechniciansService {
     principal: AuthPrincipal,
     organizationId: string,
     technicianId: string,
+    expectedVersion?: number,
   ): Promise<TechnicianProfile> {
     const current = await this.getAuthorizedProfile(
       principal,
       organizationId,
       technicianId,
     );
+    if (current.selfRegistered && expectedVersion !== current.version) throw new ConflictException("入驻资料已更新，请刷新并重新核验后审核");
     if (current.status === TechnicianProfileStatus.APPROVED) {
       return this.toProfile(current, false);
     }
@@ -420,6 +479,14 @@ export class TechniciansService {
       "TECHNICIAN_PROFILE_PUBLISHED",
       true,
     );
+    return this.toProfile(updated, false);
+  }
+
+  async reject(principal: AuthPrincipal, organizationId: string, technicianId: string, reason: string, expectedVersion: number): Promise<TechnicianProfile> {
+    const current = await this.getAuthorizedProfile(principal, organizationId, technicianId);
+    if (expectedVersion !== current.version) throw new ConflictException("资料已更新，请刷新后重新审核");
+    if (current.status !== TechnicianProfileStatus.PENDING_REVIEW) throw new ConflictException("仅待审核资料可以退回");
+    const updated = await this.changeStatus(principal, current, TechnicianProfileStatus.REJECTED, "TECHNICIAN_PROFILE_REJECTED", true, reason);
     return this.toProfile(updated, false);
   }
 
@@ -542,7 +609,7 @@ export class TechniciansService {
       "technicians.manage",
       organizationId,
     );
-    await this.getTechnicianMembership(organizationId, technicianId);
+    await this.getAuthorizedProfile(principal, organizationId, technicianId);
     const rows = await this.prisma.technicianReview.findMany({
       where: { organizationId, technicianId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -691,7 +758,15 @@ export class TechniciansService {
       select: { organizationId: true },
       orderBy: { createdAt: "asc" },
     });
-    if (!membership) throw new ForbiddenException("当前账号不是有效技师");
+    if (!membership) {
+      this.assertWechatRegistration(principal);
+      const application = await this.prisma.technicianProfile.findFirst({
+        where: { technicianId: principal.userId, selfRegistered: true, technician: { status: "ACTIVE" } },
+        select: { organizationId: true },
+      });
+      if (!application) throw new ForbiddenException("请先提交本人入驻申请");
+      return application;
+    }
     return membership;
   }
 
@@ -745,10 +820,18 @@ export class TechniciansService {
       "technicians.manage",
       organizationId,
     );
-    const membership = await this.getTechnicianMembership(
-      organizationId,
-      technicianId,
-    );
+    const membership = await this.prisma.staffMembership.findFirst({
+      where: { organizationId, userId: technicianId, role: UserRole.THERAPIST, status: MembershipStatus.ACTIVE, user: { status: "ACTIVE" } },
+      select: { user: { select: { displayName: true } } },
+    });
+    if (!membership) {
+      const application = await this.prisma.technicianProfile.findFirst({
+        where: { organizationId, technicianId, selfRegistered: true, technician: { status: "ACTIVE" } },
+        include: { technician: { select: { displayName: true } } },
+      });
+      if (!application) throw new NotFoundException("有效技师或入驻申请不存在");
+      return application;
+    }
     return this.ensureProfile(
       organizationId,
       technicianId,
@@ -780,14 +863,32 @@ export class TechniciansService {
     status: TechnicianProfileStatus,
     action: string,
     reviewed = false,
+    rejectionReason: string | null = null,
   ): Promise<ProfileRecord> {
     return this.prisma.$transaction(async (tx) => {
+      if (current.selfRegistered && status === TechnicianProfileStatus.APPROVED) {
+        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${current.technicianId} FOR NO KEY UPDATE`;
+        const user = await tx.user.findUnique({ where: { id: current.technicianId }, select: {
+          status: true, phoneEncrypted: true, phoneVerifiedAt: true,
+          identities: { where: { provider: "WECHAT_MINIAPP" }, select: { id: true } },
+        } });
+        if (!user || user.status !== "ACTIVE" || !user.phoneEncrypted || !user.phoneVerifiedAt || !user.identities.length) {
+          throw new ForbiddenException("入驻账号的本人微信或手机号验证已失效");
+        }
+        const memberships = await tx.staffMembership.findMany({ where: { userId: current.technicianId, role: UserRole.THERAPIST } });
+        if (memberships.some((row) => row.organizationId !== current.organizationId || row.status !== MembershipStatus.ACTIVE)) {
+          throw new ForbiddenException("不可通过资料审核恢复停用账号或更换所属组织");
+        }
+        if (!memberships.length) await tx.staffMembership.create({ data: {
+          userId: current.technicianId, organizationId: current.organizationId, role: UserRole.THERAPIST, status: MembershipStatus.ACTIVE,
+        } });
+      }
       const changed = await tx.technicianProfile.updateMany({
         where: { id: current.id, status: current.status, version: current.version ?? 0 },
         data: {
           status,
           version: { increment: 1 },
-          rejectionReason: null,
+          rejectionReason,
           reviewedById: reviewed ? principal.userId : null,
           reviewedAt: reviewed ? new Date() : null,
         },
@@ -875,6 +976,7 @@ export class TechniciansService {
       rejectionReason: publicView ? null : profile.rejectionReason,
       freeTravelFee: true,
       travelFeeFen: 0,
+      version: publicView ? undefined : profile.version ?? 0,
       updatedAt: profile.updatedAt.toISOString(),
     };
   }

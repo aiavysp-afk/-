@@ -14,6 +14,8 @@ import {
   TechnicianInvitationCreateSchema,
   TechnicianProfileUpdateSchema,
   TechnicianPhotoUploadSchema,
+  TechnicianProfileRejectSchema,
+  TechnicianProfileApproveSchema,
   TechnicianReviewCreateSchema,
 } from "@zydj/contracts";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
@@ -30,6 +32,31 @@ function sendPhoto(reply: FastifyReply, content: Uint8Array) {
     .header("Content-Security-Policy", "default-src 'none'")
     .header("Cross-Origin-Resource-Policy", "cross-origin")
     .send(Buffer.from(content));
+}
+
+@Controller("technician/onboarding")
+@UseGuards(SessionAuthGuard)
+export class TechnicianOnboardingController {
+  constructor(private readonly technicians: TechniciansService) {}
+  @Get()
+  async get(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.onboarding(principal) };
+  }
+  @Post()
+  async register(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.register(principal) };
+  }
+}
+
+@Controller("admin/organizations/:organizationId/technician-applications")
+@UseGuards(SessionAuthGuard)
+export class AdminTechnicianApplicationsController {
+  constructor(private readonly technicians: TechniciansService) {}
+  @Get()
+  async list(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string) {
+    const data = await this.technicians.listApplications(principal, organizationId);
+    return { data, meta: { total: data.length } };
+  }
 }
 
 @Controller("technician-invitations")
@@ -219,14 +246,25 @@ export class AdminTechnicianProfileController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Param("organizationId") organizationId: string,
     @Param("technicianId") technicianId: string,
+    @Body() body: unknown,
   ) {
+    const parsed = TechnicianProfileApproveSchema.safeParse(body ?? {});
+    if (!parsed.success) throw new BadRequestException("审核版本无效，请刷新资料");
     return {
       data: await this.technicians.approve(
         principal,
         organizationId,
         technicianId,
+        parsed.data.expectedVersion,
       ),
     };
+  }
+
+  @Post("reject")
+  async reject(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string, @Body() body: unknown) {
+    const parsed = TechnicianProfileRejectSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("请填写2至500字退回原因");
+    return { data: await this.technicians.reject(principal, organizationId, technicianId, parsed.data.reason, parsed.data.expectedVersion) };
   }
 
   @Post("photos")

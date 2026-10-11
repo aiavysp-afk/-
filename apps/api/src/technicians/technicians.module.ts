@@ -8,6 +8,8 @@ import {
   TechnicianInvitationsController,
   TechnicianProfileController,
   TechnicianReviewsController,
+  TechnicianOnboardingController,
+  AdminTechnicianApplicationsController,
 } from "./technicians.controller.js";
 import { TechnicianInvitationsService } from "./technician-invitations.service.js";
 import { TechniciansService } from "./technicians.service.js";
@@ -16,6 +18,8 @@ import { TechnicianPhotoService } from "./technician-photo.service.js";
 @Module({
   imports: [AuthModule],
   controllers: [
+    TechnicianOnboardingController,
+    AdminTechnicianApplicationsController,
     PublicTechniciansController,
     TechnicianInvitationsController,
     AdminTechnicianInvitationsController,
