@@ -58,7 +58,9 @@ curl() {
     GET:https://api.mtsc.top/v1/admin/catalog/services)
       if [[ $fault == public-admin ]]; then printf 401; else printf 403; fi ;;
     *)
-      if [[ $fault == unsupported-method ]]; then printf 401; else printf 404; fi ;;
+      if [[ $fault == unsupported-method ]]; then printf 401
+      elif [[ $fault == method-denied ]]; then printf 403
+      else printf 404; fi ;;
   esac
 }
 ${helpers}
@@ -83,7 +85,7 @@ test("MFA release probes are bounded, anonymous, TLS-verified and never mutate i
   assert.ok(helpers.includes("--noproxy '*'"));
   assert.ok(helpers.includes("Connection: close"));
   assert.ok(helpers.includes("[[ $status == 401 ]]"));
-  assert.ok(helpers.includes("[[ $status == 404 ]]"));
+  assert.ok(helpers.includes("[[ $status == 403 || $status == 404 ]]"));
   assert.ok(helpers.includes("[[ $status == 403 ]]"));
   assert.doesNotMatch(
     helpers,
@@ -141,6 +143,19 @@ for (const publicSource of [false, true]) {
         result.stderr.includes("/v1/admin/catalog/services"),
         publicSource,
       );
+    },
+  );
+}
+
+for (const publicSource of [false, true]) {
+  test(
+    `Nginx limit_except 403 denies unsupported MFA methods from ${publicSource ? "public" : "loopback"} sources`,
+    { skip: !canRunBash },
+    () => {
+      const result = simulate("method-denied", publicSource);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /MFA_GATES_VERIFIED/);
+      assert.doesNotMatch(result.stdout, /ROLLED_BACK/);
     },
   );
 }

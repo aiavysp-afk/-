@@ -225,7 +225,12 @@ verify_mfa_gateway() {
     [[ $status == 401 ]] || { printf 'MFA session gate failed: %s %s status=%s\n' "${allowed[$index]}" "$path" "$status" >&2; return 1; }
     for method in "${rejected[$index]}" HEAD PATCH; do
       status=$(mfa_gateway_status "$address" "$method" "$path" "$source") || status=transport-error
-      [[ $status == 404 ]] || { printf 'MFA method gate failed: %s %s status=%s\n' "$method" "$path" "$status" >&2; return 1; }
+      # limit_except uses a separate location configuration: its deny all may
+      # return 403 without running the enclosing rewrite-module if. GET's
+      # implicit HEAD allowance is explicitly closed by that if with 404.
+      # Both responses deny the method; never accept an API authentication
+      # response (401), a success, redirect, or transport failure here.
+      [[ $status == 403 || $status == 404 ]] || { printf 'MFA method gate failed: %s %s status=%s\n' "$method" "$path" "$status" >&2; return 1; }
     done
   done
   for path in /v1/auth/mfa/ /v1/auth/mfa/recovery /v1/auth/mfa/verify/extra; do
@@ -245,12 +250,12 @@ verify_mfa_gateway 127.0.0.1
 # An actual public source can additionally prove the maintenance gate here.
 # NAT/EIP hosts often have only private interfaces: do not mistake a private
 # request for a public proof. An independent external client must verify admin
-# 503/API admin 403 and exact MFA anonymous 401/method 404 before acceptance.
+# 503/API admin 403 and exact MFA anonymous 401/method 403 or 404 before acceptance.
 # Never disable TLS verification.
 public_ipv4=$(ip -4 route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
 [[ $public_ipv4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
 if [[ $public_ipv4 == 127.* || $public_ipv4 == 10.* || $public_ipv4 == 192.168.* || $public_ipv4 =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]]; then
-  echo "Private/NAT source detected: independent external verification of admin 503/API admin 403 and MFA 401/method 404 is required"
+  echo "Private/NAT source detected: independent external verification of admin 503/API admin 403 and MFA 401/method 403 or 404 is required"
 else
   public_admin_status=$(curl --silent --show-error --max-time 10 --interface "$public_ipv4" --output /dev/null --write-out '%{http_code}' \
     --resolve "admin.mtsc.top:443:$public_ipv4" https://admin.mtsc.top/)
