@@ -16,6 +16,7 @@ import type { AuthSession } from "@zydj/contracts";
 import {
   draftFromApplication,
   h5OnboardingPaths,
+  isConfigurationUnavailableRoute,
   isWechatBrowser,
   normalizeList,
   parseWechatCallbackTicket,
@@ -133,6 +134,27 @@ function WechatAuthorization({
         {busy ? "正在连接微信…" : "微信授权并开始入驻"}
       </button>
       <p className="onboarding-consent">继续即表示同意平台为入驻审核处理您主动提交的身份与服务资料。身份证照片仅限审核使用，不在客户端公开。</p>
+    </main>
+  );
+}
+
+function ConfigurationUnavailable() {
+  return (
+    <main className="onboarding-main onboarding-welcome">
+      <section className="onboarding-hero">
+        <div className="onboarding-hero-icon">
+          <Clock3 />
+        </div>
+        <p>中原到家 · 技师招募</p>
+        <h2>入驻通道正在配置中</h2>
+        <span>当前暂不能进行微信授权，请稍后再试或联系平台工作人员。</span>
+      </section>
+      <p className="onboarding-warning" role="status">
+        您的微信资料和手机号尚未提交，刷新或稍后重新扫码不会产生重复申请。
+      </p>
+      <button className="onboarding-primary" type="button" onClick={() => window.location.replace(window.location.pathname)}>
+        返回入驻首页
+      </button>
     </main>
   );
 }
@@ -424,6 +446,7 @@ function ApprovedStatus({ token }: { token: string }) {
 }
 
 export function TechnicianH5Onboarding() {
+  const configurationUnavailable = isConfigurationUnavailableRoute(window.location.hash);
   const [token, setToken] = useState(readStoredToken);
   const [status, setStatus] = useState<H5OnboardingStatus | null>(null);
   const [services, setServices] = useState<H5CatalogService[]>([]);
@@ -499,13 +522,14 @@ export function TechnicianH5Onboarding() {
   };
 
   const content = useMemo(() => {
+    if (configurationUnavailable) return <ConfigurationUnavailable />;
     if (!token || (!status && !loading)) return <WechatAuthorization busy={authorizing} error={error} onAuthorize={authorize} />;
     if (loading || !status) return <main className="onboarding-main onboarding-loading"><LoaderCircle className="spinning" /><p>正在读取入驻资料…</p>{error && <p className="onboarding-error">{error}</p>}</main>;
     if (status.stage === "PHONE_REQUIRED") return <PhoneVerification token={token} onVerified={verified} onExpired={expire} />;
     if (status.stage === "PENDING_REVIEW") return <ReviewStatus status={status} onRefresh={() => loadStatus()} />;
     if (status.stage === "APPROVED") return <ApprovedStatus token={token} />;
     return <ProfileForm key={status.application?.updatedAt || status.stage} token={token} status={status} services={services} onUpdated={setStatus} onExpired={expire} />;
-  }, [authorizing, error, expire, loading, services, status, token, loadStatus]);
+  }, [authorizing, configurationUnavailable, error, expire, loading, services, status, token, loadStatus]);
 
   return <div className="technician-onboarding"><OnboardingHeader step={step} />{content}</div>;
 }

@@ -136,6 +136,12 @@ export class TechnicianH5AuthService {
     return this.auth.createSessionForUser(row.userId, "WECHAT_H5");
   }
 
+  configurationUnavailableRedirectUrl() {
+    const entry = this.entryUrl();
+    entry.hash = "/configuration-unavailable";
+    return entry.toString();
+  }
+
   private hash(kind: string, value: string) {
     return this.crypto.hashBrowserLogin(`technician-h5:${kind}`, value);
   }

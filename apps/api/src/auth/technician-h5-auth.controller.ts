@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
   Post,
   Query,
   Req,
@@ -21,14 +22,21 @@ export class TechnicianH5AuthController {
 
   @Get("start")
   async start(@Res() reply: FastifyReply) {
-    const result = await this.h5Auth.begin();
-    return reply
-      .header(
-        "Set-Cookie",
-        `${OAUTH_BINDING_COOKIE}=${encodeURIComponent(result.browserBinding)}; Max-Age=${result.maxAgeSeconds}; Path=/; HttpOnly; Secure; SameSite=Lax`,
-      )
-      .header("Cache-Control", "no-store")
-      .redirect(result.authorizeUrl);
+    try {
+      const result = await this.h5Auth.begin();
+      return reply
+        .header(
+          "Set-Cookie",
+          `${OAUTH_BINDING_COOKIE}=${encodeURIComponent(result.browserBinding)}; Max-Age=${result.maxAgeSeconds}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+        )
+        .header("Cache-Control", "no-store")
+        .redirect(result.authorizeUrl);
+    } catch (error) {
+      if (!isConfigurationNotReady(error)) throw error;
+      return reply
+        .header("Cache-Control", "no-store")
+        .redirect(this.h5Auth.configurationUnavailableRedirectUrl());
+    }
   }
 
   @Get("callback")
@@ -65,6 +73,17 @@ export class TechnicianH5AuthController {
     if (!parsed.success) throw new BadRequestException("登录交换票据无效");
     return { data: await this.h5Auth.exchange(parsed.data.ticket) };
   }
+}
+
+function isConfigurationNotReady(error: unknown) {
+  if (!(error instanceof HttpException)) return false;
+  const response = error.getResponse();
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "code" in response &&
+    response.code === "CONFIGURATION_NOT_READY"
+  );
 }
 
 function cookieValue(header: string | undefined, name: string) {

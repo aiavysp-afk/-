@@ -47,6 +47,10 @@ export function parseWechatCallbackTicket(hash: string) {
   return IDENTIFIER.test(ticket) ? ticket : null;
 }
 
+export function isConfigurationUnavailableRoute(hash: string) {
+  return hash === "#/configuration-unavailable";
+}
+
 export function normalizeList(value: string | string[]) {
   const parts = Array.isArray(value) ? value : value.split(/[，,\n]/);
   return [

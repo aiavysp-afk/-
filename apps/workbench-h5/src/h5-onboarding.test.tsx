@@ -4,6 +4,7 @@ import { OnboardingProfileFields } from "./h5-onboarding-page";
 import {
   draftFromApplication,
   h5OnboardingPaths,
+  isConfigurationUnavailableRoute,
   isOnboardingRoute,
   normalizeList,
   parseWechatCallbackTicket,
@@ -44,6 +45,12 @@ describe("independent technician H5 onboarding", () => {
     expect(parseWechatCallbackTicket("#/wechat-callback?ticket=valid_ticket-12345678901234567890")).toBe("valid_ticket-12345678901234567890");
     expect(parseWechatCallbackTicket("#/wechat-callback?ticket=https%3A%2F%2Fevil.invalid")).toBeNull();
     expect(parseWechatCallbackTicket("#/wechat-callback?ticket=short")).toBeNull();
+  });
+
+  it("recognizes only the fixed configuration unavailable callback state", () => {
+    expect(isConfigurationUnavailableRoute("#/configuration-unavailable")).toBe(true);
+    expect(isConfigurationUnavailableRoute("#/configuration-unavailable?next=https://evil.invalid")).toBe(false);
+    expect(isConfigurationUnavailableRoute("#/wechat-callback")).toBe(false);
   });
 
   it("normalizes areas and blocks incomplete applications before uploads", () => {
