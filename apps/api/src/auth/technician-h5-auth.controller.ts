@@ -30,11 +30,13 @@ export class TechnicianH5AuthController {
           `${OAUTH_BINDING_COOKIE}=${encodeURIComponent(result.browserBinding)}; Max-Age=${result.maxAgeSeconds}; Path=/; HttpOnly; Secure; SameSite=Lax`,
         )
         .header("Cache-Control", "no-store")
+        .code(302)
         .redirect(result.authorizeUrl);
     } catch (error) {
       if (!isConfigurationNotReady(error)) throw error;
       return reply
         .header("Cache-Control", "no-store")
+        .code(302)
         .redirect(this.h5Auth.configurationUnavailableRedirectUrl());
     }
   }
@@ -59,6 +61,7 @@ export class TechnicianH5AuthController {
         `${OAUTH_BINDING_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
       )
       .header("Cache-Control", "no-store")
+      .code(302)
       .redirect(redirectUrl);
   }
 

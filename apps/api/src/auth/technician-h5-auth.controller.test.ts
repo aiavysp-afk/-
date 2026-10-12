@@ -17,14 +17,36 @@ describe("TechnicianH5AuthController", () => {
         .mockReturnValue("https://mtsc.top/technician/onboarding/#/configuration-unavailable"),
     };
     const controller = new TechnicianH5AuthController(h5Auth as never);
-    const reply = { header: vi.fn(), redirect: vi.fn() };
+    const reply = { header: vi.fn(), code: vi.fn(), redirect: vi.fn() };
     reply.header.mockReturnValue(reply);
+    reply.code.mockReturnValue(reply);
 
     await controller.start(reply as never);
 
     expect(reply.header).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(reply.code).toHaveBeenCalledWith(302);
     expect(reply.redirect).toHaveBeenCalledWith(
       "https://mtsc.top/technician/onboarding/#/configuration-unavailable",
+    );
+  });
+
+  it("uses an explicit redirect status for a successful OAuth start", async () => {
+    const controller = new TechnicianH5AuthController({
+      begin: vi.fn().mockResolvedValue({
+        authorizeUrl: "https://open.weixin.qq.com/connect/oauth2/authorize",
+        browserBinding: "b".repeat(43),
+        maxAgeSeconds: 600,
+      }),
+    } as never);
+    const reply = { header: vi.fn(), code: vi.fn(), redirect: vi.fn() };
+    reply.header.mockReturnValue(reply);
+    reply.code.mockReturnValue(reply);
+
+    await controller.start(reply as never);
+
+    expect(reply.code).toHaveBeenCalledWith(302);
+    expect(reply.redirect).toHaveBeenCalledWith(
+      "https://open.weixin.qq.com/connect/oauth2/authorize",
     );
   });
 
