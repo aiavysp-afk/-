@@ -20,6 +20,12 @@ enum UserRole {
 
 enum IdentityProvider {
   WECHAT_MINIAPP
+  WECHAT_H5
+}
+
+enum TechnicianIdentityDocumentKind {
+  ID_FRONT
+  ID_BACK
 }
 
 enum MembershipStatus {
@@ -210,7 +216,9 @@ model User {
   createdAt                    DateTime                     @default(now())
   updatedAt                    DateTime                     @updatedAt
   identities                   ExternalIdentity[]
+  wechatUnionIdentity          WechatUnionIdentity?
   sessions                     Session[]
+  technicianH5LoginTickets     TechnicianH5LoginTicket[]
   memberships                  StaffMembership[]
   mfaCredential                MfaCredential?
   customerOrders               Order[]                      @relation("CustomerOrders")
@@ -445,6 +453,17 @@ model ExternalIdentity {
 
   @@unique([provider, subjectHash])
   @@index([userId, provider])
+}
+
+// A database-enforced cross-channel binding prevents the same WeChat UnionID
+// from being attached to two local users during concurrent OAuth callbacks.
+model WechatUnionIdentity {
+  unionIdHash      String   @id
+  unionIdEncrypted String
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Session {
@@ -710,6 +729,12 @@ model TechnicianProfile {
   ageRange        String?
   version         Int                     @default(0)
   selfRegistered  Boolean                 @default(false)
+  registrationChannel String              @default("LEGACY")
+  realNameEncrypted String?
+  serviceCity      String                 @default("")
+  serviceAreas     Json                   @default("[]")
+  availableTimeSlots Json                 @default("[]")
+  serviceIds       Json                   @default("[]")
   avatarUrl       String?
   galleryUrls     Json                    @default("[]")
   introduction    String                  @default("")
@@ -724,8 +749,56 @@ model TechnicianProfile {
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
   photos          TechnicianPhoto[]
+  identityDocuments TechnicianIdentityDocument[]
 
   @@index([organizationId, status, updatedAt])
+}
+
+// Identity documents are private application material. They are encrypted at
+// rest and are never referenced by the public technician profile or a public URL.
+model TechnicianIdentityDocument {
+  id               String                         @id @default(cuid())
+  profileId        String
+  profile          TechnicianProfile              @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  kind             TechnicianIdentityDocumentKind
+  contentEncrypted String
+  digest           String
+  width            Int
+  height           Int
+  mimeType         String                         @default("image/jpeg")
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  @@unique([profileId, kind])
+  @@index([profileId, updatedAt])
+}
+
+// OAuth state is one-time and browser-bound. Neither the raw state nor the
+// browser nonce is stored, so database reads cannot replay an OAuth callback.
+model TechnicianH5OAuthState {
+  id                 String    @id @default(cuid())
+  stateHash          String    @unique
+  browserBindingHash String
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+// The OAuth callback redirects with this one-time ticket in the URL fragment.
+// A real session token is minted only after the H5 exchanges the ticket.
+model TechnicianH5LoginTicket {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }
 
 // Only approved profile references are served publicly. Private drafts require

@@ -8,6 +8,122 @@ import { AuthService } from "./auth.service.js";
 import type { WechatMiniappClient } from "./wechat-miniapp.client.js";
 
 describe("AuthService", () => {
+  it("refuses H5 identity binding without a UnionID", async () => {
+    const auth = new AuthService(
+      {} as never,
+      {} as never,
+      {} as never,
+      new ConfigService({ TECHNICIAN_H5_APP_ID: "wx-h5" }) as ConfigService<
+        AppEnv,
+        true
+      >,
+    );
+    await expect(
+      auth.identifyWechatH5({ openId: "openid-without-unionid" }),
+    ).rejects.toThrow("未获取到UnionID");
+  });
+
+  it("reuses the unique UnionID owner across miniapp and H5 without creating another user", async () => {
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      externalIdentity: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "h5-identity" }),
+      },
+      wechatUnionIdentity: {
+        findUnique: vi.fn().mockResolvedValue({
+          unionIdHash: "union-hash",
+          userId: "existing-user",
+        }),
+        create: vi.fn(),
+      },
+      user: { create: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    } as unknown as PrismaService;
+    const crypto = {
+      hashIdentity: vi.fn((scope: string) =>
+        scope === "unionid" ? "union-hash" : "subject-hash",
+      ),
+      encrypt: vi.fn((value: string) => `encrypted:${value}`),
+    } as unknown as AuthCryptoService;
+    const auth = new AuthService(
+      prisma,
+      crypto,
+      {} as never,
+      new ConfigService({ TECHNICIAN_H5_APP_ID: "wx-h5" }) as ConfigService<
+        AppEnv,
+        true
+      >,
+    );
+
+    await expect(
+      auth.identifyWechatH5({
+        openId: "h5-openid",
+        unionId: "shared-unionid",
+      }),
+    ).resolves.toBe("existing-user");
+    expect(tx.user.create).not.toHaveBeenCalled();
+    expect(tx.wechatUnionIdentity.create).not.toHaveBeenCalled();
+    expect(tx.externalIdentity.create).toHaveBeenCalledWith({
+      data: {
+        provider: "WECHAT_H5",
+        subjectHash: "subject-hash",
+        subjectEncrypted: "encrypted:h5-openid",
+        unionIdHash: "union-hash",
+        unionIdEncrypted: "encrypted:shared-unionid",
+        userId: "existing-user",
+      },
+    });
+  });
+
+  it("fails closed when an H5 openid and UnionID point at different users", async () => {
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      externalIdentity: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "external",
+          userId: "user-a",
+          unionIdHash: "union-hash",
+        }),
+      },
+      wechatUnionIdentity: {
+        findUnique: vi.fn().mockResolvedValue({
+          unionIdHash: "union-hash",
+          userId: "user-b",
+        }),
+      },
+    };
+    const auth = new AuthService(
+      {
+        $transaction: vi.fn(
+          async (callback: (client: typeof tx) => unknown) => callback(tx),
+        ),
+      } as never,
+      {
+        hashIdentity: vi.fn((scope: string) =>
+          scope === "unionid" ? "union-hash" : "subject-hash",
+        ),
+        encrypt: vi.fn((value: string) => `encrypted:${value}`),
+      } as never,
+      {} as never,
+      new ConfigService({ TECHNICIAN_H5_APP_ID: "wx-h5" }) as ConfigService<
+        AppEnv,
+        true
+      >,
+    );
+
+    await expect(
+      auth.identifyWechatH5({
+        openId: "h5-openid",
+        unionId: "shared-unionid",
+      }),
+    ).rejects.toThrow("UnionID已绑定其他账号");
+  });
+
   it("takes native authentication provenance and phone verification only from the stored session/user", async () => {
     const session = { id: "session", authChannel: "WECHAT_MINIAPP", authProvider: "wechat", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, mfaVerifiedUntil: null, user: { id: "user", status: "ACTIVE", displayName: "微信用户", phoneEncrypted: "encrypted-fixture", phoneVerifiedAt: new Date(), memberships: [{ organizationId: "org", role: UserRole.THERAPIST }] } };
     const prisma = { session: { findUnique: vi.fn().mockResolvedValue(session), update: vi.fn() } };

@@ -17,7 +17,12 @@ import {
   TechnicianProfileRejectSchema,
   TechnicianProfileApproveSchema,
   TechnicianReviewCreateSchema,
+  TechnicianH5ProfileUpdateSchema,
+  TechnicianH5PhotoUploadSchema,
+  TechnicianIdentityDocumentKindSchema,
+  TechnicianIdentityDocumentUploadSchema,
 } from "@zydj/contracts";
+import { TechnicianIdentityDocumentKind } from "@prisma/client";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
 import { SessionAuthGuard } from "../auth/session-auth.guard.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
@@ -32,6 +37,83 @@ function sendPhoto(reply: FastifyReply, content: Uint8Array) {
     .header("Content-Security-Policy", "default-src 'none'")
     .header("Cross-Origin-Resource-Policy", "cross-origin")
     .send(Buffer.from(content));
+}
+
+function sendIdentityDocument(reply: FastifyReply, content: Uint8Array) {
+  return reply
+    .type("image/jpeg")
+    .header("Cache-Control", "private, no-store, max-age=0")
+    .header("Pragma", "no-cache")
+    .header("X-Content-Type-Options", "nosniff")
+    .header("X-Robots-Tag", "noindex, nofollow, noarchive")
+    .header("Content-Security-Policy", "default-src 'none'")
+    .header("Cross-Origin-Resource-Policy", "same-site")
+    .header("Content-Disposition", 'inline; filename="identity-document.jpg"')
+    .send(Buffer.from(content));
+}
+
+@Controller("technician/h5-onboarding")
+@UseGuards(SessionAuthGuard)
+export class TechnicianH5OnboardingController {
+  constructor(private readonly technicians: TechniciansService) {}
+
+  @Get("status")
+  async status(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.h5OnboardingStatus(principal) };
+  }
+
+  @Post("register")
+  async register(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.registerH5(principal) };
+  }
+
+  @Patch("profile")
+  async updateProfile(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianH5ProfileUpdateSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("入驻资料格式无效");
+    return {
+      data: await this.technicians.updateH5Profile(principal, parsed.data),
+    };
+  }
+
+  @Post("photos")
+  async uploadPhoto(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianH5PhotoUploadSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException("请选择本人授权的JPG或PNG形象照，单张不超过512KB");
+    }
+    return {
+      data: await this.technicians.uploadH5Photo(principal, parsed.data),
+    };
+  }
+
+  @Post("documents")
+  async uploadDocument(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianIdentityDocumentUploadSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException("请上传清晰的JPG或PNG身份证照片，单张不超过512KB");
+    }
+    return {
+      data: await this.technicians.uploadH5IdentityDocument(
+        principal,
+        parsed.data,
+      ),
+    };
+  }
+
+  @Post("submit")
+  async submit(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.submitH5Application(principal) };
+  }
 }
 
 @Controller("technician/onboarding")
@@ -56,6 +138,25 @@ export class AdminTechnicianApplicationsController {
   async list(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string) {
     const data = await this.technicians.listApplications(principal, organizationId);
     return { data, meta: { total: data.length } };
+  }
+
+  @Get(":technicianId/documents/:kind")
+  async document(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("technicianId") technicianId: string,
+    @Param("kind") kind: string,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = TechnicianIdentityDocumentKindSchema.safeParse(kind);
+    if (!parsed.success) throw new BadRequestException("证件类型无效");
+    const document = await this.technicians.getAdminIdentityDocument(
+      principal,
+      organizationId,
+      technicianId,
+      parsed.data as TechnicianIdentityDocumentKind,
+    );
+    return sendIdentityDocument(reply, document.content);
   }
 }
 

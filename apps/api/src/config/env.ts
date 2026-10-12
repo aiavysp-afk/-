@@ -18,10 +18,37 @@ const EnvSchema = z.object({
   BRAND_NAME: z.string().default("中原到家"),
   SERVICE_CITY: z.string().trim().min(2).max(32).default("郑州市"),
   // Empty disables photo uploads. Use an HTTPS /v1 URL on the API origin.
-  TECHNICIAN_PHOTO_PUBLIC_BASE_URL: z.union([z.literal(""), z.string().trim().url().refine((value) => value.startsWith("https://") && new URL(value).pathname === "/v1" && !new URL(value).search && !new URL(value).hash, "照片公开地址须为 HTTPS API /v1 地址")]).default(""),
+  TECHNICIAN_PHOTO_PUBLIC_BASE_URL: z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .url()
+        .refine(
+          (value) =>
+            value.startsWith("https://") &&
+            new URL(value).pathname === "/v1" &&
+            !new URL(value).search &&
+            !new URL(value).hash,
+          "照片公开地址须为 HTTPS API /v1 地址",
+        ),
+    ])
+    .default(""),
   WECHAT_MINIAPP_APP_ID: z.string().default("wxab76ea213eb6d01a"),
   WECHAT_MINIAPP_SECRET: z.string().default(""),
   WECHAT_OFFICIAL_ACCOUNT_ID: z.string().default("gh_a4b5f9d63539"),
+  TECHNICIAN_H5_ONBOARDING_ENABLED: z.enum(["false", "true"]).default("false"),
+  TECHNICIAN_H5_APP_ID: z.string().default(""),
+  TECHNICIAN_H5_APP_SECRET: z.string().default(""),
+  TECHNICIAN_H5_ENTRY_URL: z
+    .string()
+    .default("https://mtsc.top/technician/onboarding/"),
+  TECHNICIAN_H5_OAUTH_CALLBACK_URL: z
+    .string()
+    .default(
+      "https://api.mtsc.top/v1/technician/h5-onboarding/wechat/callback",
+    ),
   AUTH_PROVIDER: z.enum(["mock", "wechat"]).default("mock"),
   // Production always requires staff MFA; this flag also exercises it in private tests.
   STAFF_MFA_REQUIRED: z.enum(["false", "true"]).default("false"),
@@ -61,9 +88,7 @@ const EnvSchema = z.object({
   MAP_PROVIDER: z.enum(["mock", "amap"]).default("mock"),
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
   // Independent fallback gate for login/phone-binding verification codes.
-  PHONE_VERIFICATION_SMS_ENABLED: z
-    .enum(["false", "true"])
-    .default("false"),
+  PHONE_VERIFICATION_SMS_ENABLED: z.enum(["false", "true"]).default("false"),
   // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
   SAFETY_NOTIFICATION_DISPATCH_ENABLED: z
     .enum(["false", "true"])
@@ -206,6 +231,55 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     if (env.AUTH_PROVIDER === "mock") invalid.push("AUTH_PROVIDER");
     if (env.AUTH_PROVIDER === "wechat" && !env.WECHAT_MINIAPP_SECRET) {
       invalid.push("WECHAT_MINIAPP_SECRET");
+    }
+    if (env.TECHNICIAN_H5_ONBOARDING_ENABLED === "true") {
+      if (!/^wx[a-zA-Z0-9]{16}$/.test(env.TECHNICIAN_H5_APP_ID))
+        invalid.push("TECHNICIAN_H5_APP_ID");
+      if (
+        !env.TECHNICIAN_H5_APP_SECRET ||
+        /[\r\n]/.test(env.TECHNICIAN_H5_APP_SECRET)
+      )
+        invalid.push("TECHNICIAN_H5_APP_SECRET");
+      if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
+      if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
+      if (env.PHONE_VERIFICATION_SMS_ENABLED !== "true")
+        invalid.push("PHONE_VERIFICATION_SMS_ENABLED");
+      for (const key of [
+        "TECHNICIAN_H5_ENTRY_URL",
+        "TECHNICIAN_H5_OAUTH_CALLBACK_URL",
+      ] as const) {
+        try {
+          const url = new URL(env[key]);
+          if (
+            url.protocol !== "https:" ||
+            url.username ||
+            url.password ||
+            url.search ||
+            url.hash
+          )
+            invalid.push(key);
+        } catch {
+          invalid.push(key);
+        }
+      }
+      try {
+        const entry = new URL(env.TECHNICIAN_H5_ENTRY_URL);
+        if (
+          entry.origin !== "https://mtsc.top" ||
+          entry.pathname !== "/technician/onboarding/"
+        ) {
+          invalid.push("TECHNICIAN_H5_ENTRY_URL");
+        }
+        const callback = new URL(env.TECHNICIAN_H5_OAUTH_CALLBACK_URL);
+        if (
+          callback.origin !== "https://api.mtsc.top" ||
+          callback.pathname !== "/v1/technician/h5-onboarding/wechat/callback"
+        ) {
+          invalid.push("TECHNICIAN_H5_OAUTH_CALLBACK_URL");
+        }
+      } catch {
+        // URL validity is reported above.
+      }
     }
     if (
       env.AUTH_SESSION_PEPPER.length < 32 ||

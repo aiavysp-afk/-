@@ -123,6 +123,7 @@ describe("微信自主入驻审核", () => {
         technicianId: "applicant",
         publicName: "",
         selfRegistered: true,
+        registrationChannel: "WECHAT_MINIAPP",
         status: "DRAFT",
       },
     });

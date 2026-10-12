@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Update only the two technician image CSP directives in the loaded root vhost.
-# Never run the legacy-retirement script to publish this narrow configuration fix.
+# Publish the exact technician H5 onboarding entry and retain the two technician
+# image CSP directives in the loaded root vhost. Never widen the maintenance root.
 set -euo pipefail
 umask 077
 
@@ -43,6 +43,18 @@ printf '%s\n' "$current_nginx_dump" | grep -F 'if ($zydj_admin_network_allowed =
 
 old_policy="default-src 'self'; connect-src https://api.mtsc.top; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 new_policy="default-src 'self'; connect-src https://api.mtsc.top; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+onboarding_redirect='location = /technician/onboarding { return 301 https://mtsc.top/technician/onboarding/; }'
+onboarding_location='location = /technician/onboarding/ {'
+onboarding_redirect_count=$(grep -Fc "$onboarding_redirect" "$target" || true)
+onboarding_location_count=$(grep -Fc "$onboarding_location" "$target" || true)
+if [[ $onboarding_redirect_count == 0 && $onboarding_location_count == 0 ]]; then
+  insert_onboarding=true
+elif [[ $onboarding_redirect_count == 1 && $onboarding_location_count == 1 ]]; then
+  insert_onboarding=false
+else
+  echo "Technician onboarding route is partial or duplicated; refusing deployment" >&2
+  exit 1
+fi
 target_dir=$(dirname "$target")
 target_name=$(basename "$target")
 candidate="$target_dir/.$target_name.technician-candidate-$release_id"
@@ -55,14 +67,25 @@ trap cleanup_candidate EXIT
 
 # Technician candidate helper: preserve other directives and require two exact policies.
 build_technician_candidate() {
-  awk -v old="$old_policy" -v updated="$new_policy" '
+  awk -v old="$old_policy" -v updated="$new_policy" -v insert_onboarding="$insert_onboarding" '
     BEGIN { old_directive="add_header Content-Security-Policy \"" old "\" always;"; new_directive="add_header Content-Security-Policy \"" updated "\" always;" }
     { line=$0; sub(/^[[:space:]]*/, "", line)
       if (line == old_directive || line == new_directive) {
         prefix=substr($0, 1, length($0)-length(line)); print prefix new_directive; count++
       } else print
+      if (insert_onboarding == "true" && line == "location = /technician { return 301 https://mtsc.top/technician/; }") {
+        prefix=substr($0, 1, length($0)-length(line))
+        print prefix "location = /technician/onboarding { return 301 https://mtsc.top/technician/onboarding/; }"
+        print prefix "location = /technician/onboarding/ {"
+        print prefix "    rewrite ^ /technician/index.html last;"
+        print prefix "}"
+        inserted++
+      }
     }
-    END { if (count != 2) { print "Expected exactly two unchanged technician CSP directives" > "/dev/stderr"; exit 1 } }
+    END {
+      if (count != 2) { print "Expected exactly two unchanged technician CSP directives" > "/dev/stderr"; exit 1 }
+      if (insert_onboarding == "true" && inserted != 1) { print "Could not insert the exact technician onboarding route" > "/dev/stderr"; exit 1 }
+    }
   ' "$target" > "$candidate"
 }
 # End technician candidate helper.
@@ -99,10 +122,12 @@ technician_gateway_response() {
   fi
 }
 verify_technician_gateway() {
-  local headers main_status admin_status
+  local headers main_status onboarding_status admin_status
   headers=$(technician_gateway_response mtsc.top /technician/ headers) || return 1
   printf '%s\n' "$headers" | grep -Eq '^HTTP/[0-9.]+ 200([[:space:]]|$)' || return 1
   printf '%s\n' "$headers" | grep -Fxi "Content-Security-Policy: $new_policy" >/dev/null || return 1
+  onboarding_status=$(technician_gateway_response mtsc.top /technician/onboarding/ status) || return 1
+  [[ $onboarding_status == 200 ]] || return 1
   main_status=$(technician_gateway_response mtsc.top / status) || return 1
   [[ $main_status == 503 ]] || return 1
   admin_status=$(technician_gateway_response admin.mtsc.top / status) || return 1

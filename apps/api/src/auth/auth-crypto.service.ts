@@ -72,6 +72,36 @@ export class AuthCryptoService {
     ]).toString("utf8");
   }
 
+  encryptScoped(purpose: string, value: string) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.encryptionKey, iv);
+    cipher.setAAD(Buffer.from(`zydj:${purpose}`, "utf8"));
+    const encrypted = Buffer.concat([
+      cipher.update(value, "utf8"),
+      cipher.final(),
+    ]);
+    const tag = cipher.getAuthTag();
+    return `v2.${iv.toString("base64url")}.${tag.toString("base64url")}.${encrypted.toString("base64url")}`;
+  }
+
+  decryptScoped(purpose: string, value: string) {
+    const [version, ivEncoded, tagEncoded, payloadEncoded] = value.split(".");
+    if (version !== "v2" || !ivEncoded || !tagEncoded || !payloadEncoded) {
+      throw new Error("无法识别的敏感数据密文格式");
+    }
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      this.encryptionKey,
+      Buffer.from(ivEncoded, "base64url"),
+    );
+    decipher.setAAD(Buffer.from(`zydj:${purpose}`, "utf8"));
+    decipher.setAuthTag(Buffer.from(tagEncoded, "base64url"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(payloadEncoded, "base64url")),
+      decipher.final(),
+    ]).toString("utf8");
+  }
+
   private hash(purpose: string, value: string) {
     return createHmac("sha256", this.pepper)
       .update(`${purpose}\0${value}`)

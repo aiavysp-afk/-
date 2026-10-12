@@ -253,6 +253,66 @@ describe("production safety gate", () => {
     expect(env.CORS_ORIGINS).toContain("http://127.0.0.1:5173");
   });
 
+  it("keeps H5 onboarding disabled without credentials and pins enabled production redirects to owned origins", () => {
+    expect(validateEnv({ NODE_ENV: "development" })).toMatchObject({
+      TECHNICIAN_H5_ONBOARDING_ENABLED: "false",
+      TECHNICIAN_H5_ENTRY_URL: "https://mtsc.top/technician/onboarding/",
+    });
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "merchant-id-placeholder",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "serial-placeholder",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/wechat/merchant-private-key.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_placeholder",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/wechat/wechat-pay-public-key.pem",
+      SMS_PROVIDER: "aliyun",
+      SMS_SEND_ENABLED: "true",
+      PHONE_VERIFICATION_SMS_ENABLED: "true",
+      ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: "SMS_phoneverify",
+      MAP_PROVIDER: "amap",
+      SAFETY_HOTLINE: "400-000-0000",
+      TECHNICIAN_H5_ONBOARDING_ENABLED: "true",
+      TECHNICIAN_H5_APP_ID: "wx1234567890abcdef",
+      TECHNICIAN_H5_APP_SECRET: "official-account-secret",
+      TECHNICIAN_H5_ENTRY_URL: "https://mtsc.top/technician/onboarding/",
+      TECHNICIAN_H5_OAUTH_CALLBACK_URL:
+        "https://api.mtsc.top/v1/technician/h5-onboarding/wechat/callback",
+    } as const;
+    expect(validateEnv(raw).TECHNICIAN_H5_ONBOARDING_ENABLED).toBe("true");
+    expect(() => validateEnv({ ...raw, SMS_PROVIDER: "none" })).toThrow(
+      "SMS_PROVIDER",
+    );
+    expect(() => validateEnv({ ...raw, SMS_SEND_ENABLED: "false" })).toThrow(
+      "SMS_SEND_ENABLED",
+    );
+    expect(() =>
+      validateEnv({ ...raw, PHONE_VERIFICATION_SMS_ENABLED: "false" }),
+    ).toThrow("PHONE_VERIFICATION_SMS_ENABLED");
+    expect(() =>
+      validateEnv({
+        ...raw,
+        ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: "",
+      }),
+    ).toThrow("ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE");
+    expect(() =>
+      validateEnv({
+        ...raw,
+        TECHNICIAN_H5_ENTRY_URL:
+          "https://attacker.example/technician/onboarding/",
+      }),
+    ).toThrow("TECHNICIAN_H5_ENTRY_URL");
+    expect(() =>
+      validateEnv({
+        ...raw,
+        TECHNICIAN_H5_OAUTH_CALLBACK_URL:
+          "https://attacker.example/v1/technician/h5-onboarding/wechat/callback",
+      }),
+    ).toThrow("TECHNICIAN_H5_OAUTH_CALLBACK_URL");
+  });
+
   it("rejects missing WeChat Pay merchant and signature verification configuration", () => {
     const validate = () =>
       validateEnv({

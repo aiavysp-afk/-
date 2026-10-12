@@ -18,6 +18,8 @@ let root,
   calls = [],
   failure = null;
 const profile = "/v1/admin/organizations/org-1/technicians/tech-1/profile";
+const identityDocument =
+  "/v1/admin/organizations/org-1/technician-applications/tech-1/documents/ID_FRONT";
 const walletLedger =
   "/v1/admin/organizations/org-1/customer-center/wallet-ledger";
 before(async () => {
@@ -54,6 +56,15 @@ before(async () => {
         return new Response(new Uint8Array([255, 216, 255]), {
           headers: {
             "Content-Type": "image/jpeg",
+            "Set-Cookie": "do-not-forward",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      if (new URL(url).pathname === identityDocument)
+        return new Response(new Uint8Array([137, 80, 78, 71]), {
+          headers: {
+            "Content-Type": "image/png",
+            "Content-Disposition": "attachment; filename=private-id.png",
             "Set-Cookie": "do-not-forward",
             "Access-Control-Allow-Origin": "*",
           },
@@ -169,6 +180,11 @@ test("all required exact management routes have narrowly allowed methods", () =>
     ["/v1/admin/organizations/org-1/dashboard", ["GET"]],
     ["/v1/admin/organizations/org-1/technicians", ["GET"]],
     ["/v1/admin/organizations/org-1/technician-applications", ["GET"]],
+    [identityDocument, ["GET"]],
+    [
+      "/v1/admin/organizations/org-1/technician-applications/tech-1/documents/ID_BACK",
+      ["GET"],
+    ],
     [profile, ["GET", "PATCH"]],
     [profile + "/submit-review", ["POST"]],
     [profile + "/reject", ["POST"]],
@@ -210,6 +226,8 @@ test("customer, dev, pairing approval and unknown API endpoints never fall back 
     "/v1/auth/browser-login/approve",
     "/v1/auth/browser-login/inspect",
     profile + "/photos/photo-1/extra",
+    identityDocument + "/extra",
+    identityDocument.replace("ID_FRONT", "PASSPORT"),
   ]) {
     assert.equal((await send(path)).status, 404, path);
   }
@@ -356,6 +374,25 @@ test("private photo binary and content type survive but upstream cookies and COR
   assert.deepEqual([...result.body], [255, 216, 255]);
   assert.equal(result.headers["set-cookie"], undefined);
   assert.equal(result.headers["access-control-allow-origin"], undefined);
+});
+test("private identity document binary is narrowly proxied without download, cookie or CORS headers", async () => {
+  const result = await send(identityDocument, {
+    headers: { Authorization: "Bearer synthetic" },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers["content-type"], "image/png");
+  assert.deepEqual([...result.body], [137, 80, 78, 71]);
+  assert.equal(result.headers["content-disposition"], undefined);
+  assert.equal(result.headers["set-cookie"], undefined);
+  assert.equal(result.headers["access-control-allow-origin"], undefined);
+  assert.equal(result.headers["cache-control"], "no-store");
+  assert.equal(calls.at(-1).url, API_ORIGIN + identityDocument);
+  assert.equal(calls.at(-1).options.headers.Authorization, "Bearer synthetic");
+
+  const count = calls.length;
+  for (const method of ["POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"])
+    assert.equal(await send(identityDocument, { method }).then((item) => item.status), 405);
+  assert.equal(calls.length, count);
 });
 test("unsupported methods and non-JSON uploads are rejected without API effects", async () => {
   const count = calls.length;

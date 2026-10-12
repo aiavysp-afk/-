@@ -4,6 +4,8 @@ import {
   CircleAlert,
   CircleCheck,
   FileClock,
+  IdCard,
+  LockKeyhole,
   MapPinned,
   RefreshCw,
   Settings,
@@ -22,6 +24,7 @@ import type {
   TechnicianProfile,
   TechnicianProfileUpdate,
   TechnicianPhotoUploadResult,
+  ServiceItem,
 } from "@zydj/contracts";
 import {
   adminTechnicianProfilePaths,
@@ -38,6 +41,15 @@ import {
   prepareTechnicianPhoto,
 } from "./technician-photo";
 import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
+import {
+  formatAvailabilityTimeSlot,
+  hasIdentityDocument,
+  loadPrivateIdentityDocumentPreview,
+  maskRealName,
+  onboardingServiceLabels,
+  type IdentityDocumentKind,
+  type TechnicianOnboardingReviewProfile,
+} from "./technician-onboarding-admin";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -138,7 +150,9 @@ export function TechniciansWorkspace({
   const [error, setError] = useState("");
   const [selectedTechnicianId, setSelectedTechnicianId] = useState("");
   const [invitations, setInvitations] = useState<TechnicianInvitation[]>([]);
-  const [applications, setApplications] = useState<TechnicianProfile[]>([]);
+  const [applications, setApplications] = useState<
+    TechnicianOnboardingReviewProfile[]
+  >([]);
   const [inviteName, setInviteName] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [createdInvite, setCreatedInvite] =
@@ -159,7 +173,10 @@ export function TechniciansWorkspace({
           `/admin/organizations/${organizationId}/technician-invitations`,
           token,
         ),
-        request<TechnicianProfile[]>(`/admin/organizations/${organizationId}/technician-applications`, token),
+        request<TechnicianOnboardingReviewProfile[]>(
+          `/admin/organizations/${organizationId}/technician-applications`,
+          token,
+        ),
       ]);
       if (!isCurrent()) return;
       setBoard(boardValue);
@@ -275,9 +292,47 @@ export function TechniciansWorkspace({
       </div>
       {error && <div className="catalog-error">{error}</div>}
       <section className="technician-invite-card">
-        <div className="technician-invite-copy"><h3>微信自主入驻审核</h3><p>本人微信和手机号验证后直接提交资料，无需邀请码。核验照片授权、真实资料后通过审核才开通技师身份，公开展示仍需发布。</p></div>
+        <div className="technician-invite-copy">
+          <h3>微信自主入驻审核</h3>
+          <p>
+            本人微信和手机号验证后直接提交资料，无需邀请码。列表只显示脱敏姓名；审核详情内才可核验实名和私密证件。
+          </p>
+        </div>
         <div className="technician-invite-list">
-          {applications.map((application) => <div key={application.technicianId}><span><strong>{application.publicName || "姓名待补录的入驻申请"}</strong><small>{profileStatusLabels[application.status]} · {formatDateTime(application.updatedAt)}</small></span><button className="ghost-action" onClick={() => setSelectedTechnicianId(application.technicianId)}>查看资料 / 审核</button></div>)}
+          {applications.map((application) => {
+            const applicantName =
+              application.publicName ||
+              maskRealName(application.realName) ||
+              "姓名待补录的入驻申请";
+            return (
+              <div key={application.technicianId}>
+                <span>
+                  <strong>{applicantName}</strong>
+                  <small>
+                    {profileStatusLabels[application.status]} ·{" "}
+                    {formatDateTime(application.updatedAt)}
+                  </small>
+                  <small>
+                    {application.serviceCity || "服务城市待填"} ·{" "}
+                    {application.serviceAreas?.length
+                      ? `${application.serviceAreas.length} 个接单区域`
+                      : "接单区域待填"}
+                  </small>
+                </span>
+                <em data-status={application.status}>
+                  {profileStatusLabels[application.status]}
+                </em>
+                <button
+                  className="ghost-action"
+                  onClick={() =>
+                    setSelectedTechnicianId(application.technicianId)
+                  }
+                >
+                  查看资料 / 审核
+                </button>
+              </div>
+            );
+          })}
           {!loading && !applications.length && <p>暂无自主入驻申请。</p>}
         </div>
       </section>
@@ -428,6 +483,9 @@ export function TechniciansWorkspace({
           token={token}
           organizationId={organizationId}
           technicianId={selectedTechnicianId}
+          application={applications.find(
+            (item) => item.technicianId === selectedTechnicianId,
+          )}
           onClose={() => setSelectedTechnicianId("")}
         />
       )}
@@ -439,14 +497,17 @@ function AdminTechnicianProfilePanel({
   token,
   organizationId,
   technicianId,
+  application,
   onClose,
 }: {
   token: string;
   organizationId: string;
   technicianId: string;
+  application?: TechnicianOnboardingReviewProfile;
   onClose: () => void;
 }) {
   const [profile, setProfile] = useState<TechnicianProfile | null>(null);
+  const [catalogServices, setCatalogServices] = useState<ServiceItem[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>(
     {},
   );
@@ -457,7 +518,14 @@ function AdminTechnicianProfilePanel({
   const [reviewSavingId, setReviewSavingId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [identityLoadingKind, setIdentityLoadingKind] =
+    useState<IdentityDocumentKind | null>(null);
+  const [identityPreview, setIdentityPreview] = useState<{
+    kind: IdentityDocumentKind;
+    url: string;
+  } | null>(null);
   const requests = useMemo(createLatestRequest, []);
+  const identityRequests = useMemo(createLatestRequest, []);
   const operationBusy = useRef(false);
   const profilePaths = adminTechnicianProfilePaths(
     organizationId,
@@ -472,14 +540,16 @@ function AdminTechnicianProfilePanel({
     setError("");
     setMessage("");
     try {
-      const [value, reviewRows] = await Promise.all([
+      const [value, reviewRows, services] = await Promise.all([
         request<TechnicianProfile>(profilePath, token),
         request<AdminTechnicianReview[]>(reviewsPath, token),
+        request<ServiceItem[]>("/catalog/services", token).catch(() => []),
       ]);
       if (!isCurrent()) return;
       setProfile(value);
       setDraft(profileUpdateFrom(value));
       setReviews(reviewRows);
+      setCatalogServices(services);
     } catch (caught) {
       if (!isCurrent()) return;
       setProfile(null);
@@ -493,6 +563,7 @@ function AdminTechnicianProfilePanel({
 
   useEffect(() => void load(), [load]);
   useEffect(() => () => requests.invalidate(), [requests]);
+  useEffect(() => () => identityRequests.invalidate(), [identityRequests]);
   const dirty = Boolean(
     profile && draft && profileHasUnsavedChanges(profile, draft),
   );
@@ -532,6 +603,44 @@ function AdminTechnicianProfilePanel({
       blobUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [profile, profilePath, token]);
+
+  useEffect(() => {
+    const previewUrl = identityPreview?.url;
+    return () => {
+      if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+    };
+  }, [identityPreview?.url]);
+
+  async function previewIdentityDocument(kind: IdentityDocumentKind) {
+    if (!application || identityLoadingKind) return;
+    const isCurrent = identityRequests.begin();
+    setIdentityLoadingKind(kind);
+    setError("");
+    try {
+      const url = await loadPrivateIdentityDocumentPreview(
+        API_BASE_URL,
+        organizationId,
+        technicianId,
+        kind,
+        token,
+      );
+      if (!isCurrent()) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      setIdentityPreview({ kind, url });
+    } catch (caught) {
+      if (isCurrent()) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "证件预览读取失败",
+        );
+      }
+    } finally {
+      if (isCurrent()) setIdentityLoadingKind(null);
+    }
+  }
 
   async function uploadPhoto(
     file: File | undefined,
@@ -783,6 +892,111 @@ function AdminTechnicianProfilePanel({
             <div className="catalog-error">
               最近退回原因：{profile.rejectionReason}
             </div>
+          )}
+          {application && (
+            <section className="onboarding-review-card">
+              <header>
+                <div>
+                  <span className="eyebrow">PRIVATE ONBOARDING REVIEW</span>
+                  <h3>入驻实名资料</h3>
+                  <p>
+                    仅当前组织授权审核人员可见；实名和证件不进入客户端公开资料。
+                  </p>
+                </div>
+                <span className="onboarding-channel">
+                  {
+                    {
+                      WECHAT_H5: "微信 H5 入驻",
+                      WECHAT_MINIAPP: "微信小程序入驻",
+                      LEGACY: "历史资料",
+                    }[application.registrationChannel]
+                  }
+                </span>
+              </header>
+              <dl className="onboarding-review-grid">
+                <div>
+                  <dt>真实姓名</dt>
+                  <dd>{application.realName || "待补录"}</dd>
+                  <small>仅用于后台实名审核</small>
+                </div>
+                <div>
+                  <dt>服务城市</dt>
+                  <dd>{application.serviceCity || "待补录"}</dd>
+                </div>
+                <div>
+                  <dt>接单区域</dt>
+                  <dd>
+                    {application.serviceAreas.length
+                      ? application.serviceAreas.join("、")
+                      : "待补录"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>可接单时间段</dt>
+                  <dd>
+                    {application.availableTimeSlots.length
+                      ? application.availableTimeSlots
+                          .map(formatAvailabilityTimeSlot)
+                          .join("、")
+                      : "待补录"}
+                  </dd>
+                </div>
+                <div className="onboarding-review-wide">
+                  <dt>擅长项目</dt>
+                  <dd className="onboarding-review-tags">
+                    {onboardingServiceLabels(
+                      application.serviceIds,
+                      catalogServices,
+                    ).map((name) => (
+                      <span key={name}>{name}</span>
+                    ))}
+                    {!application.serviceIds.length && <span>待补录</span>}
+                  </dd>
+                </div>
+                <div className="onboarding-review-wide">
+                  <dt>个人简介</dt>
+                  <dd className="onboarding-review-bio">
+                    {application.introduction || "待补录"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="identity-document-review">
+                <div>
+                  <LockKeyhole size={18} />
+                  <span>
+                    <strong>身份证核验</strong>
+                    <small>
+                      点击后才从私密接口加载，预览不缓存且不生成公开 URL。
+                    </small>
+                  </span>
+                </div>
+                <div>
+                  {(["ID_FRONT", "ID_BACK"] as const).map((kind) => {
+                    const uploaded = hasIdentityDocument(application, kind);
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        className="ghost-action identity-preview-action"
+                        disabled={!uploaded || Boolean(identityLoadingKind)}
+                        onClick={() => void previewIdentityDocument(kind)}
+                      >
+                        <IdCard size={15} />
+                        {!uploaded
+                          ? kind === "ID_FRONT"
+                            ? "正面未上传"
+                            : "反面未上传"
+                          : identityLoadingKind === kind
+                            ? "读取中…"
+                            : kind === "ID_FRONT"
+                              ? "私密查看正面"
+                              : "私密查看反面"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
           )}
           <div className="profile-admin-layout">
             <fieldset
@@ -1115,6 +1329,46 @@ function AdminTechnicianProfilePanel({
               </p>
             </aside>
           </div>
+          {identityPreview && (
+            <div
+              className="identity-preview-backdrop"
+              role="dialog"
+              aria-modal="true"
+              aria-label={
+                identityPreview.kind === "ID_FRONT"
+                  ? "身份证正面私密预览"
+                  : "身份证反面私密预览"
+              }
+              onClick={() => setIdentityPreview(null)}
+            >
+              <section
+                className="identity-preview-dialog"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <header>
+                  <div>
+                    <span className="eyebrow">PRIVATE DOCUMENT</span>
+                    <h3>
+                      {identityPreview.kind === "ID_FRONT"
+                        ? "身份证正面"
+                        : "身份证反面"}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-action"
+                    onClick={() => setIdentityPreview(null)}
+                  >
+                    关闭并清除预览
+                  </button>
+                </header>
+                <img src={identityPreview.url} alt="入驻实名证件私密预览" />
+                <p>
+                  只用于核验本人入驻资料，禁止下载、转发或用于其他用途。
+                </p>
+              </section>
+            </div>
+          )}
         </>
       )}
     </section>

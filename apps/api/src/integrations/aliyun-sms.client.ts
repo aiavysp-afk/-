@@ -76,7 +76,7 @@ export class AliyunSmsClient {
       this.config.get("PHONE_VERIFICATION_SMS_ENABLED", { infer: true }) !==
       "true"
     )
-      throw new ServiceUnavailableException("短信手机号验证门禁未开启");
+      throw configurationNotReady("短信手机号验证门禁未开启");
     if (!/^\d{4,6}$/.test(input.code))
       throw new BadRequestException("短信验证码参数无效");
     return this.sendWithTemplate(
@@ -103,7 +103,7 @@ export class AliyunSmsClient {
       this.config.get("SMS_PROVIDER", { infer: true }) !== "aliyun" ||
       this.config.get("SMS_SEND_ENABLED", { infer: true }) !== "true"
     )
-      throw new ServiceUnavailableException("真实短信发送门禁未开启");
+      throw configurationNotReady("真实短信发送门禁未开启");
     if (
       !/^1[3-9]\d{9}$/.test(input.phone) ||
       !/^[A-Za-z0-9_-]{1,64}$/.test(input.trackingId)
@@ -125,7 +125,7 @@ export class AliyunSmsClient {
       !signName.trim() ||
       !/^SMS_[A-Za-z0-9]+$/.test(template)
     )
-      throw new ServiceUnavailableException("短信渠道配置未就绪");
+      throw configurationNotReady("短信渠道配置未就绪");
     let request: ReturnType<typeof signAliyunRpc>;
     try {
       request = signAliyunRpc({
@@ -148,7 +148,7 @@ export class AliyunSmsClient {
         },
       });
     } catch {
-      throw new ServiceUnavailableException("短信渠道配置未就绪");
+      throw configurationNotReady("短信渠道配置未就绪");
     }
     try {
       const response = await fetch(
@@ -268,3 +268,10 @@ const normalizeDeliveryError = (value?: string) => {
     .replace(/[^A-Z0-9_.-]/g, "_");
   return safe ? `SMS_DELIVERY_${safe.slice(0, 64)}` : "SMS_DELIVERY_FAILED";
 };
+
+const configurationNotReady = (message: string) =>
+  new ServiceUnavailableException({
+    statusCode: 503,
+    code: "CONFIGURATION_NOT_READY",
+    message,
+  });

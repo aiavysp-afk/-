@@ -61,7 +61,7 @@ function execute(input) {
     env: { ...process.env, BASH_ENV: "", ENV: "" },
   });
 }
-function transform(source) {
+function transform(source, insertOnboarding = false) {
   const directory = mkdtempSync(join(tmpdir(), "zydj-technician-nginx-test-"));
   try {
     const target = join(directory, "target.conf");
@@ -72,6 +72,7 @@ target=${shellQuote(target.replaceAll("\\", "/"))}
 candidate=${shellQuote(candidate.replaceAll("\\", "/"))}
 old_policy=${shellQuote(oldPolicy)}
 new_policy=${shellQuote(newPolicy)}
+insert_onboarding=${insertOnboarding ? "true" : "false"}
 ${candidateHelper}
 build_technician_candidate
 `);
@@ -95,6 +96,7 @@ curl() {
     https://mtsc.top/technician/) if [[ "$scenario" == stale ]] || (( rounds <= 2 )); then
       printf '%s\\r\\n' 'HTTP/1.1 200 OK' ${shellQuote(`Content-Security-Policy: ${oldPolicy}`)};
       else printf '%s\\r\\n' 'HTTP/1.1 200 OK' ${shellQuote(`Content-Security-Policy: ${newPolicy}`)}; fi ;;
+	    https://mtsc.top/technician/onboarding/) printf 200 ;;
     https://mtsc.top/) printf 503 ;;
     https://admin.mtsc.top/) printf 200 ;;
     *) return 90 ;;
@@ -138,6 +140,7 @@ test("technician config publication binds a loaded root vhost, shared lock and e
   assert.ok(probeHelpers.includes("SECONDS + 30"));
   assert.ok(probeHelpers.includes("attempts < 10"));
   assert.ok(probeHelpers.includes("[[ $main_status == 503 ]]"));
+  assert.ok(probeHelpers.includes("[[ $onboarding_status == 200 ]]"));
   assert.ok(probeHelpers.includes("[[ $admin_status == 200 ]]"));
 });
 
@@ -147,6 +150,19 @@ test(
   () => {
     const original = template.replaceAll(newPolicy, oldPolicy);
     const result = transform(original);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.candidate, template);
+  },
+);
+
+test(
+  "candidate inserts the exact independent onboarding route once",
+  { skip: !canRunBash },
+  () => {
+    const block = `    location = /technician/onboarding { return 301 https://mtsc.top/technician/onboarding/; }\n    location = /technician/onboarding/ {\n        rewrite ^ /technician/index.html last;\n    }\n`;
+    const original = template.replace(block, "");
+    assert.notEqual(original, template);
+    const result = transform(original, true);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.candidate, template);
   },

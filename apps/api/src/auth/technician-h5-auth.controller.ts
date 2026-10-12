@@ -1,0 +1,83 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  Req,
+  Res,
+} from "@nestjs/common";
+import { TechnicianH5OauthTicketExchangeSchema } from "@zydj/contracts";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { TechnicianH5AuthService } from "./technician-h5-auth.service.js";
+
+const OAUTH_BINDING_COOKIE = "__Host-zydj-technician-h5-oauth";
+
+@Controller("technician/h5-onboarding/wechat")
+export class TechnicianH5AuthController {
+  constructor(private readonly h5Auth: TechnicianH5AuthService) {}
+
+  @Get("start")
+  async start(@Res() reply: FastifyReply) {
+    const result = await this.h5Auth.begin();
+    return reply
+      .header(
+        "Set-Cookie",
+        `${OAUTH_BINDING_COOKIE}=${encodeURIComponent(result.browserBinding)}; Max-Age=${result.maxAgeSeconds}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+      )
+      .header("Cache-Control", "no-store")
+      .redirect(result.authorizeUrl);
+  }
+
+  @Get("callback")
+  async callback(
+    @Query("code") code: string | undefined,
+    @Query("state") state: string | undefined,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    if (!code || !state)
+      throw new BadRequestException("微信授权回调参数不完整");
+    const redirectUrl = await this.h5Auth.callback(
+      code,
+      state,
+      cookieValue(request.headers.cookie, OAUTH_BINDING_COOKIE),
+    );
+    return reply
+      .header(
+        "Set-Cookie",
+        `${OAUTH_BINDING_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
+      )
+      .header("Cache-Control", "no-store")
+      .redirect(redirectUrl);
+  }
+
+  @Post("exchange")
+  @HttpCode(200)
+  async exchange(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
+    const parsed = TechnicianH5OauthTicketExchangeSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException("登录交换票据无效");
+    return { data: await this.h5Auth.exchange(parsed.data.ticket) };
+  }
+}
+
+function cookieValue(header: string | undefined, name: string) {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 1) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}

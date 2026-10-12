@@ -36,7 +36,7 @@ function assertAllowedMethods(declaration, methods) {
 test("production nginx exposes every customer authentication route", () => {
   assertAllowedMethods(
     "~ ^/v1/auth/(?:wechat-miniapp|wechat-phone|sms-phone/(?:request|confirm))$",
-    ["POST"],
+    ["POST", "OPTIONS"],
   );
   assertAllowedMethods("= /v1/auth/me", ["GET", "OPTIONS"]);
   assertAllowedMethods("= /v1/auth/logout", ["POST", "OPTIONS"]);
@@ -259,6 +259,49 @@ test("autonomous technician registration is an exact session resource with HEAD 
   const block = locationBlock("= /v1/technician/onboarding");
   assert.match(block, /if \(\$request_method !~ \^\(GET\|POST\|OPTIONS\)\$\) \{ return 404; \}/);
   assert.doesNotMatch(config, /location\s+\/v1\/technician\//);
+});
+
+test("technician H5 onboarding exposes only its concrete OAuth and application resources", () => {
+  assert.match(
+    config,
+    /limit_req_zone \$binary_remote_addr zone=technician_h5_oauth:10m rate=30r\/m;/,
+  );
+  const oauthNavigation = assertAllowedMethods(
+    "~ ^/v1/technician/h5-onboarding/wechat/(?:start|callback)$",
+    ["GET"],
+  );
+  assert.ok(oauthNavigation.includes("access_log off;"));
+  assert.ok(
+    oauthNavigation.includes(
+      "limit_req zone=technician_h5_oauth burst=10 nodelay;",
+    ),
+  );
+  assert.ok(oauthNavigation.includes("limit_req_status 429;"));
+  assertAllowedMethods(
+    "= /v1/technician/h5-onboarding/wechat/exchange",
+    ["POST", "OPTIONS"],
+  );
+  assertAllowedMethods("= /v1/technician/h5-onboarding/status", [
+    "GET",
+    "OPTIONS",
+  ]);
+  assertAllowedMethods(
+    "~ ^/v1/technician/h5-onboarding/(?:register|photos|documents|submit)$",
+    ["POST", "OPTIONS"],
+  );
+  assertAllowedMethods("= /v1/technician/h5-onboarding/profile", [
+    "PATCH",
+    "OPTIONS",
+  ]);
+  assert.doesNotMatch(config, /location\s+\^~\s+\/v1\/technician\/h5-onboarding/);
+});
+
+test("technician identity documents remain an exact private audited resource", () => {
+  const block = assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[^/]+/technician-applications/[^/]+/documents/(?:ID_FRONT|ID_BACK)$",
+    ["GET", "OPTIONS"],
+  );
+  assert.ok(block.includes("access_log off;"));
 });
 
 test("production nginx exposes exact catalog, scheduling and audit resources", () => {
@@ -584,6 +627,12 @@ test("root-domain maintenance config publishes only the technician client subtre
     "utf8",
   );
   assert.ok(maintenance.includes("location = /technician/"));
+  assert.ok(maintenance.includes("location = /technician/onboarding/"));
+  assert.ok(
+    maintenance.includes(
+      "location = /technician/onboarding { return 301 https://mtsc.top/technician/onboarding/; }",
+    ),
+  );
   assert.ok(maintenance.includes("rewrite ^ /technician/index.html last;"));
   assert.ok(maintenance.includes("location = /technician/index.html"));
   assert.ok(

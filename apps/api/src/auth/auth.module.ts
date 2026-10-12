@@ -14,6 +14,9 @@ import { MfaRecoveryController } from "./mfa-recovery.controller.js";
 import { MfaRecoveryService } from "./mfa-recovery.service.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { PhoneVerificationSmsService } from "./phone-verification-sms.service.js";
+import { WechatH5Client } from "./wechat-h5.client.js";
+import { TechnicianH5AuthService } from "./technician-h5-auth.service.js";
+import { TechnicianH5AuthController } from "./technician-h5-auth.controller.js";
 
 @Module({
   imports: [IntegrationsModule],
@@ -23,6 +26,7 @@ import { PhoneVerificationSmsService } from "./phone-verification-sms.service.js
     MfaController,
     BrowserLoginController,
     MfaRecoveryController,
+    TechnicianH5AuthController,
   ],
   providers: [
     AuthService,
@@ -34,6 +38,8 @@ import { PhoneVerificationSmsService } from "./phone-verification-sms.service.js
     SessionAuthGuard,
     AccessControlService,
     PhoneVerificationSmsService,
+    WechatH5Client,
+    TechnicianH5AuthService,
   ],
   exports: [
     AuthService,

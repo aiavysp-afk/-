@@ -32,4 +32,25 @@ describe("AuthCryptoService", () => {
     expect(crypto.hashSessionToken(first)).toHaveLength(64);
     expect(crypto.hashSessionToken(first)).toBe(crypto.hashSessionToken(first));
   });
+
+  it("binds sensitive ciphertext to its document purpose", () => {
+    const crypto = createCrypto();
+    const encrypted = crypto.encryptScoped(
+      "technician-identity-document:profile:ID_FRONT",
+      "base64-image-payload",
+    );
+
+    expect(
+      crypto.decryptScoped(
+        "technician-identity-document:profile:ID_FRONT",
+        encrypted,
+      ),
+    ).toBe("base64-image-payload");
+    expect(() =>
+      crypto.decryptScoped(
+        "technician-identity-document:profile:ID_BACK",
+        encrypted,
+      ),
+    ).toThrow();
+  });
 });

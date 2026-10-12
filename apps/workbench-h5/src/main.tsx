@@ -52,6 +52,8 @@ import { workbenchPaymentSummary } from "./order-payment";
 import { technicianShiftSummary } from "./shift-summary";
 import { MfaSession } from "./mfa-session";
 import { MfaGate } from "./mfa-gate";
+import { TechnicianH5Onboarding } from "./h5-onboarding-page";
+import { isOnboardingRoute } from "./h5-onboarding";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -1769,6 +1771,10 @@ function NextOrder({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {isOnboardingRoute(window.location.pathname, window.location.hash) ? (
+      <TechnicianH5Onboarding />
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );

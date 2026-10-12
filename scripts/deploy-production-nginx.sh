@@ -85,6 +85,10 @@ for marker in \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'location = /v1/technician/onboarding' \
+  'limit_req_zone $binary_remote_addr zone=technician_h5_oauth:10m rate=30r/m;' \
+  'location ~ ^/v1/technician/h5-onboarding/wechat/(?:start|callback)$' \
+  'location = /v1/technician/h5-onboarding/status' \
+  'technician-applications/[^/]+/documents/(?:ID_FRONT|ID_BACK)' \
   'location = /v1/auth/mfa {' \
   'location = /v1/auth/mfa/enrollment {' \
   'location = /v1/auth/mfa/activate {' \

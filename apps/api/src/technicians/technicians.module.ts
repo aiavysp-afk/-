@@ -10,6 +10,7 @@ import {
   TechnicianReviewsController,
   TechnicianOnboardingController,
   AdminTechnicianApplicationsController,
+  TechnicianH5OnboardingController,
 } from "./technicians.controller.js";
 import { TechnicianInvitationsService } from "./technician-invitations.service.js";
 import { TechniciansService } from "./technicians.service.js";
@@ -19,6 +20,7 @@ import { TechnicianPhotoService } from "./technician-photo.service.js";
   imports: [AuthModule],
   controllers: [
     TechnicianOnboardingController,
+    TechnicianH5OnboardingController,
     AdminTechnicianApplicationsController,
     PublicTechniciansController,
     TechnicianInvitationsController,

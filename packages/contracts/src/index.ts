@@ -636,12 +636,162 @@ export const TechnicianOnboardingSchema = z.object({
   canEnterWorkbench: z.boolean(),
   phoneVerified: z.boolean(),
 });
+
+export const TechnicianH5OnboardingStageSchema = z.enum([
+  "PHONE_REQUIRED",
+  "PROFILE_REQUIRED",
+  "PENDING_REVIEW",
+  "APPROVED",
+  "REJECTED",
+]);
+
+export const TechnicianH5OauthTicketExchangeSchema = z
+  .object({
+    ticket: z.string().trim().min(32).max(256),
+  })
+  .strict();
+
+const TechnicianH5TimeSlotSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^(MON|TUE|WED|THU|FRI|SAT|SUN):(?:[01]\d|2[0-3]):[0-5]\d-(?:[01]\d|2[0-3]):[0-5]\d$/,
+    "可接单时段格式应为 MON:09:00-18:00",
+  )
+  .refine((value) => {
+    const [, range = ""] = value.split(":", 2);
+    const match = value.match(/:(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+    if (!match || !range) return false;
+    const start = Number(match[1]) * 60 + Number(match[2]);
+    const end = Number(match[3]) * 60 + Number(match[4]);
+    return start < end;
+  }, "可接单结束时间必须晚于开始时间");
+
+export const TechnicianH5ProfileUpdateSchema = z
+  .object({
+    realName: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), "真实姓名含无效字符"),
+    serviceCity: z.string().trim().min(2).max(32),
+    serviceAreas: z
+      .array(z.string().trim().min(2).max(40))
+      .min(1)
+      .max(20)
+      .refine((values) => new Set(values).size === values.length, "接单区域不能重复"),
+    availableTimeSlots: z
+      .array(TechnicianH5TimeSlotSchema)
+      .min(1)
+      .max(28)
+      .refine((values) => new Set(values).size === values.length, "可接单时段不能重复"),
+    bio: z.string().trim().min(10).max(2_000),
+    serviceIds: z
+      .array(z.string().trim().min(1).max(128))
+      .min(1)
+      .max(20)
+      .refine((values) => new Set(values).size === values.length, "擅长项目不能重复"),
+  })
+  .strict();
+
+export const TechnicianH5PhotoUploadSchema = z
+  .object({
+    kind: z.enum(["AVATAR", "GALLERY"]),
+    contentBase64: z
+      .string()
+      .min(4)
+      .max(699_052)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    consentConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const TechnicianIdentityDocumentKindSchema = z.enum([
+  "ID_FRONT",
+  "ID_BACK",
+]);
+
+export const TechnicianIdentityDocumentUploadSchema = z
+  .object({
+    kind: TechnicianIdentityDocumentKindSchema,
+    contentBase64: z
+      .string()
+      .min(4)
+      .max(699_052)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  })
+  .strict();
+
+export const TechnicianH5ApplicationSchema = z.object({
+  id: z.string(),
+  status: TechnicianProfileStatusSchema,
+  realName: z.string().nullable(),
+  serviceCity: z.string(),
+  serviceAreas: z.array(z.string()),
+  availableTimeSlots: z.array(TechnicianH5TimeSlotSchema),
+  bio: z.string(),
+  serviceIds: z.array(z.string()),
+  avatarUrl: PublicHttpsUrlSchema.nullable(),
+  galleryUrls: z.array(PublicHttpsUrlSchema),
+  hasIdFront: z.boolean(),
+  hasIdBack: z.boolean(),
+  rejectionReason: z.string().nullable(),
+  updatedAt: IsoDateTimeSchema,
+  version: z.number().int().nonnegative(),
+});
+
+export const TechnicianH5OnboardingStatusSchema = z.object({
+  stage: TechnicianH5OnboardingStageSchema,
+  phoneMasked: z.string().nullable(),
+  application: TechnicianH5ApplicationSchema.nullable(),
+});
+
+export const TechnicianApplicationSchema = TechnicianProfileSchema.extend({
+  realName: z.string().nullable(),
+  serviceCity: z.string(),
+  serviceAreas: z.array(z.string()),
+  availableTimeSlots: z.array(TechnicianH5TimeSlotSchema),
+  serviceIds: z.array(z.string()),
+  registrationChannel: z.enum(["LEGACY", "WECHAT_MINIAPP", "WECHAT_H5"]),
+  identityDocuments: z.object({
+    idFrontUploaded: z.boolean(),
+    idBackUploaded: z.boolean(),
+  }),
+});
 export const TechnicianProfileRejectSchema = z.object({
   reason: z.string().trim().min(2).max(500),
   expectedVersion: z.number().int().nonnegative(),
 }).strict();
 export const TechnicianProfileApproveSchema = z.object({ expectedVersion: z.number().int().nonnegative().optional() }).strict();
 export type TechnicianOnboarding = z.infer<typeof TechnicianOnboardingSchema>;
+export type TechnicianH5OnboardingStage = z.infer<
+  typeof TechnicianH5OnboardingStageSchema
+>;
+export type TechnicianH5OauthTicketExchange = z.infer<
+  typeof TechnicianH5OauthTicketExchangeSchema
+>;
+export type TechnicianH5ProfileUpdate = z.infer<
+  typeof TechnicianH5ProfileUpdateSchema
+>;
+export type TechnicianH5PhotoUpload = z.infer<
+  typeof TechnicianH5PhotoUploadSchema
+>;
+export type TechnicianIdentityDocumentKind = z.infer<
+  typeof TechnicianIdentityDocumentKindSchema
+>;
+export type TechnicianIdentityDocumentUpload = z.infer<
+  typeof TechnicianIdentityDocumentUploadSchema
+>;
+export type TechnicianH5Application = z.infer<
+  typeof TechnicianH5ApplicationSchema
+>;
+export type TechnicianH5OnboardingStatus = z.infer<
+  typeof TechnicianH5OnboardingStatusSchema
+>;
+export type TechnicianApplication = z.infer<
+  typeof TechnicianApplicationSchema
+>;
 export type TechnicianProfileReject = z.infer<typeof TechnicianProfileRejectSchema>;
 
 export type TechnicianPhotoUpload = z.infer<typeof TechnicianPhotoUploadSchema>;
