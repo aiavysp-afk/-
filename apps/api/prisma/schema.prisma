@@ -205,47 +205,50 @@ model Organization {
 }
 
 model User {
-  id                           String                       @id @default(cuid())
+  id                           String                        @id @default(cuid())
   organizationId               String?
-  organization                 Organization?                @relation(fields: [organizationId], references: [id])
+  organization                 Organization?                 @relation(fields: [organizationId], references: [id])
   role                         UserRole
   displayName                  String
   phoneEncrypted               String?
   phoneVerifiedAt              DateTime?
-  status                       String                       @default("ACTIVE")
-  createdAt                    DateTime                     @default(now())
-  updatedAt                    DateTime                     @updatedAt
+  status                       String                        @default("ACTIVE")
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
   identities                   ExternalIdentity[]
   wechatUnionIdentity          WechatUnionIdentity?
   sessions                     Session[]
   technicianH5LoginTickets     TechnicianH5LoginTicket[]
   memberships                  StaffMembership[]
   mfaCredential                MfaCredential?
-  customerOrders               Order[]                      @relation("CustomerOrders")
-  payerPayments                Payment[]                    @relation("PaymentPayer")
-  therapistOrders              Order[]                      @relation("TherapistOrders")
-  therapistShifts              TherapistShift[]             @relation("TherapistShifts")
-  customerReservations         AppointmentReservation[]     @relation("CustomerReservations")
-  therapistReservations        AppointmentReservation[]     @relation("TherapistReservations")
-  requestedMfaRecoveries       MfaRecoveryRequest[]         @relation("MfaRecoveryTarget")
-  reviewedMfaRecoveries        MfaRecoveryRequest[]         @relation("MfaRecoveryReviewer")
-  createdSafetyRosters         SafetyDutyRoster[]           @relation("SafetyRosterCreator")
-  primarySafetyRosters         SafetyDutyRoster[]           @relation("SafetyRosterPrimary")
-  backupSafetyRosters          SafetyDutyRoster[]           @relation("SafetyRosterBackup")
-  reportedSafetyIncidents      SafetyIncident[]             @relation("SafetyIncidentReporter")
-  primarySafetyIncidents       SafetyIncident[]             @relation("SafetyIncidentPrimary")
-  backupSafetyIncidents        SafetyIncident[]             @relation("SafetyIncidentBackup")
-  acknowledgedIncidents        SafetyIncident[]             @relation("SafetyIncidentAcknowledger")
-  closedSafetyIncidents        SafetyIncident[]             @relation("SafetyIncidentCloser")
+  staffPasswordCredential      StaffPasswordCredential?
+  staffPasswordLoginChallenges StaffPasswordLoginChallenge[]
+  staffTrustedDevices          StaffTrustedDevice[]
+  customerOrders               Order[]                       @relation("CustomerOrders")
+  payerPayments                Payment[]                     @relation("PaymentPayer")
+  therapistOrders              Order[]                       @relation("TherapistOrders")
+  therapistShifts              TherapistShift[]              @relation("TherapistShifts")
+  customerReservations         AppointmentReservation[]      @relation("CustomerReservations")
+  therapistReservations        AppointmentReservation[]      @relation("TherapistReservations")
+  requestedMfaRecoveries       MfaRecoveryRequest[]          @relation("MfaRecoveryTarget")
+  reviewedMfaRecoveries        MfaRecoveryRequest[]          @relation("MfaRecoveryReviewer")
+  createdSafetyRosters         SafetyDutyRoster[]            @relation("SafetyRosterCreator")
+  primarySafetyRosters         SafetyDutyRoster[]            @relation("SafetyRosterPrimary")
+  backupSafetyRosters          SafetyDutyRoster[]            @relation("SafetyRosterBackup")
+  reportedSafetyIncidents      SafetyIncident[]              @relation("SafetyIncidentReporter")
+  primarySafetyIncidents       SafetyIncident[]              @relation("SafetyIncidentPrimary")
+  backupSafetyIncidents        SafetyIncident[]              @relation("SafetyIncidentBackup")
+  acknowledgedIncidents        SafetyIncident[]              @relation("SafetyIncidentAcknowledger")
+  closedSafetyIncidents        SafetyIncident[]              @relation("SafetyIncidentCloser")
   addressVerifications         AddressVerification[]
   phoneVerificationChallenges  PhoneVerificationChallenge[]
   technicianLocation           TechnicianLocation?
-  technicianProfile            TechnicianProfile?           @relation("TechnicianProfileOwner")
-  reviewedTechnicianProfiles   TechnicianProfile[]          @relation("TechnicianProfileReviewer")
-  submittedTechnicianReviews   TechnicianReview[]           @relation("TechnicianReviewCustomer")
-  receivedTechnicianReviews    TechnicianReview[]           @relation("TechnicianReviewTechnician")
-  createdTechnicianInvitations TechnicianInvitation[]       @relation("TechnicianInvitationCreator")
-  claimedTechnicianInvitations TechnicianInvitation[]       @relation("TechnicianInvitationClaimant")
+  technicianProfile            TechnicianProfile?            @relation("TechnicianProfileOwner")
+  reviewedTechnicianProfiles   TechnicianProfile[]           @relation("TechnicianProfileReviewer")
+  submittedTechnicianReviews   TechnicianReview[]            @relation("TechnicianReviewCustomer")
+  receivedTechnicianReviews    TechnicianReview[]            @relation("TechnicianReviewTechnician")
+  createdTechnicianInvitations TechnicianInvitation[]        @relation("TechnicianInvitationCreator")
+  claimedTechnicianInvitations TechnicianInvitation[]        @relation("TechnicianInvitationClaimant")
   customerCoupons              CustomerCoupon[]
   storedValueAccounts          StoredValueAccount[]
   storedValueRecharges         StoredValueRecharge[]
@@ -467,19 +470,77 @@ model WechatUnionIdentity {
 }
 
 model Session {
-  id               String    @id @default(cuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash        String    @unique
-  expiresAt        DateTime
-  revokedAt        DateTime?
-  lastSeenAt       DateTime  @default(now())
-  createdAt        DateTime  @default(now())
-  mfaVerifiedUntil DateTime?
-  authChannel      String    @default("LEGACY")
-  authProvider     String    @default("unknown")
+  id                      String              @id @default(cuid())
+  userId                  String
+  user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash               String              @unique
+  expiresAt               DateTime
+  revokedAt               DateTime?
+  lastSeenAt              DateTime            @default(now())
+  createdAt               DateTime            @default(now())
+  mfaVerifiedUntil        DateTime?
+  authChannel             String              @default("LEGACY")
+  authProvider            String              @default("unknown")
+  // Login assurance is separate from the five-minute TOTP step-up grant.
+  staffVerifiedUntil      DateTime?
+  staffVerificationMethod String?
+  staffPasswordVersion    Int?
+  trustedDeviceId         String?
+  trustedDevice           StaffTrustedDevice? @relation(fields: [trustedDeviceId], references: [id], onDelete: SetNull)
 
   @@index([userId, expiresAt])
+  @@index([trustedDeviceId])
+}
+
+model StaffPasswordCredential {
+  userId         String    @id
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneHash      String    @unique
+  passwordHash   String
+  version        Int       @default(1)
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model StaffPasswordLoginChallenge {
+  id                String    @id
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretHash        String
+  passwordVersion   Int
+  phoneHash         String
+  codeHash          String
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  consumedAt        DateTime?
+  providerRequestId String?
+  providerBizId     String?
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model StaffTrustedDevice {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash            String    @unique
+  userAgentHash        String
+  label                String    @default("常用设备")
+  createdAt            DateTime  @default(now())
+  expiresAt            DateTime
+  lastUsedAt           DateTime?
+  revokedAt            DateTime?
+  mfaEnabledAtSnapshot DateTime
+  passwordVersion      Int       @default(0)
+  phoneHash            String
+  sessions             Session[]
+
+  @@index([userId, revokedAt, expiresAt])
 }
 
 model BrowserLoginChallenge {
@@ -720,36 +781,36 @@ model Order {
 }
 
 model TechnicianProfile {
-  id              String                  @id @default(cuid())
-  organizationId  String
-  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  technicianId    String                  @unique
-  technician      User                    @relation("TechnicianProfileOwner", fields: [technicianId], references: [id], onDelete: Cascade)
-  publicName      String                  @default("")
-  ageRange        String?
-  version         Int                     @default(0)
-  selfRegistered  Boolean                 @default(false)
-  registrationChannel String              @default("LEGACY")
-  realNameEncrypted String?
-  serviceCity      String                 @default("")
-  serviceAreas     Json                   @default("[]")
-  availableTimeSlots Json                 @default("[]")
-  serviceIds       Json                   @default("[]")
-  avatarUrl       String?
-  galleryUrls     Json                    @default("[]")
-  introduction    String                  @default("")
-  specialties     Json                    @default("[]")
-  serviceYears    Int?
-  certificates    Json                    @default("[]")
-  status          TechnicianProfileStatus @default(DRAFT)
-  rejectionReason String?
-  reviewedById    String?
-  reviewedBy      User?                   @relation("TechnicianProfileReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
-  reviewedAt      DateTime?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  photos          TechnicianPhoto[]
-  identityDocuments TechnicianIdentityDocument[]
+  id                  String                       @id @default(cuid())
+  organizationId      String
+  organization        Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  technicianId        String                       @unique
+  technician          User                         @relation("TechnicianProfileOwner", fields: [technicianId], references: [id], onDelete: Cascade)
+  publicName          String                       @default("")
+  ageRange            String?
+  version             Int                          @default(0)
+  selfRegistered      Boolean                      @default(false)
+  registrationChannel String                       @default("LEGACY")
+  realNameEncrypted   String?
+  serviceCity         String                       @default("")
+  serviceAreas        Json                         @default("[]")
+  availableTimeSlots  Json                         @default("[]")
+  serviceIds          Json                         @default("[]")
+  avatarUrl           String?
+  galleryUrls         Json                         @default("[]")
+  introduction        String                       @default("")
+  specialties         Json                         @default("[]")
+  serviceYears        Int?
+  certificates        Json                         @default("[]")
+  status              TechnicianProfileStatus      @default(DRAFT)
+  rejectionReason     String?
+  reviewedById        String?
+  reviewedBy          User?                        @relation("TechnicianProfileReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedAt          DateTime?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  photos              TechnicianPhoto[]
+  identityDocuments   TechnicianIdentityDocument[]
 
   @@index([organizationId, status, updatedAt])
 }
@@ -804,14 +865,14 @@ model TechnicianH5LoginTicket {
 // Only approved profile references are served publicly. Private drafts require
 // owner or organization management authorization; backups include photo bytes.
 model TechnicianPhoto {
-  id          String            @id @default(cuid())
-  profileId   String
-  profile     TechnicianProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  digest      String
-  content     Bytes
-  width       Int
-  height      Int
-  createdAt   DateTime          @default(now())
+  id        String            @id @default(cuid())
+  profileId String
+  profile   TechnicianProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  digest    String
+  content   Bytes
+  width     Int
+  height    Int
+  createdAt DateTime          @default(now())
 
   @@unique([profileId, digest])
   @@index([profileId, createdAt])

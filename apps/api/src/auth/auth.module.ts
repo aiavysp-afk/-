@@ -17,6 +17,10 @@ import { PhoneVerificationSmsService } from "./phone-verification-sms.service.js
 import { WechatH5Client } from "./wechat-h5.client.js";
 import { TechnicianH5AuthService } from "./technician-h5-auth.service.js";
 import { TechnicianH5AuthController } from "./technician-h5-auth.controller.js";
+import { StaffPasswordController } from "./staff-password.controller.js";
+import { StaffPasswordService } from "./staff-password.service.js";
+import { TrustedDeviceController } from "./trusted-device.controller.js";
+import { TrustedDeviceService } from "./trusted-device.service.js";
 
 @Module({
   imports: [IntegrationsModule],
@@ -27,6 +31,8 @@ import { TechnicianH5AuthController } from "./technician-h5-auth.controller.js";
     BrowserLoginController,
     MfaRecoveryController,
     TechnicianH5AuthController,
+    StaffPasswordController,
+    TrustedDeviceController,
   ],
   providers: [
     AuthService,
@@ -40,6 +46,8 @@ import { TechnicianH5AuthController } from "./technician-h5-auth.controller.js";
     PhoneVerificationSmsService,
     WechatH5Client,
     TechnicianH5AuthService,
+    StaffPasswordService,
+    TrustedDeviceService,
   ],
   exports: [
     AuthService,

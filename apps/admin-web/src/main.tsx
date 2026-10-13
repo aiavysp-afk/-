@@ -32,6 +32,8 @@ import { formatMoney } from "@zydj/contracts";
 import "./styles.css";
 import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
+import { BrowserLogin } from "./browser-login";
+import { managementOrganizationId } from "./login-state";
 import { SafetyWorkspace } from "./safety";
 import { CustomerCenterWorkspace } from "./customer-center-workspace";
 import { StoredValueLedgerWorkspace } from "./stored-value-ledger-workspace";
@@ -111,7 +113,9 @@ async function apiRequest<T>(
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(options.body === undefined
+        ? {}
+        : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -798,7 +802,7 @@ function App() {
         if (current) {
           setUser(r.data);
           setDisplayName(r.data.displayName);
-          setOrganizationId(r.data.memberships[0]?.organizationId ?? "");
+          setOrganizationId(managementOrganizationId(r.data));
         }
       })
       .catch((error: { status?: number }) => {
@@ -849,7 +853,7 @@ function App() {
     currentToken.current = response.data.accessToken;
     setToken(response.data.accessToken);
     setDisplayName(response.data.user.displayName);
-    setOrganizationId(response.data.user.memberships[0]?.organizationId ?? "");
+    setOrganizationId(managementOrganizationId(response.data.user));
     setUser(response.data.user);
   }
 
@@ -866,8 +870,10 @@ function App() {
     currentToken.current = session.accessToken;
     setToken(session.accessToken);
     setDisplayName(session.user.displayName);
-    setOrganizationId(session.user.memberships[0]?.organizationId ?? "");
+    setOrganizationId(managementOrganizationId(session.user));
     setUser(session.user);
+    setSection("security");
+    setQuery("");
   }
 
   const canSearch = (
@@ -993,14 +999,21 @@ function App() {
               <Bell size={20} />
               <span />
             </button>
-            <div className="profile">
+            <button
+              className="profile profile-login"
+              aria-label={token ? "查看账户安全" : "登录管理后台"}
+              onClick={() => {
+                setSection("security");
+                setQuery("");
+              }}
+            >
               <div>管</div>
               <span>
                 <strong>{displayName}</strong>
-                <small>{token ? "已登录 · 总部" : "只读视图"}</small>
+                <small>{token ? "已登录 · 账户安全" : "点击登录"}</small>
               </span>
               <ChevronDown size={16} />
-            </div>
+            </button>
             {token && (
               <button
                 className="logout-button"
@@ -1013,6 +1026,9 @@ function App() {
             )}
           </div>
         </header>
+        {!token && section !== "security" && (
+          <BrowserLogin onSession={acceptBrowserSession} />
+        )}
         {section === "dashboard" ? (
           <Dashboard
             key={`${token}:${organizationId}`}
@@ -1061,6 +1077,7 @@ function App() {
           />
         ) : section === "security" ? (
           <SecurityWorkspace
+            key={token}
             token={token}
             onLogout={logout}
             onSession={acceptBrowserSession}

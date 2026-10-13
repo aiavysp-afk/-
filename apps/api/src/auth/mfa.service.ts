@@ -40,6 +40,8 @@ export class MfaService {
         credential.enrollmentExpiresAt!.getTime() > Date.now(),
       lockedUntil: credential?.lockedUntil?.toISOString() ?? null,
       verifiedUntil: principal.mfaVerifiedUntil?.toISOString() ?? null,
+      loginVerifiedUntil: principal.staffVerifiedUntil?.toISOString() ?? null,
+      loginMethod: principal.staffVerificationMethod ?? null,
       required:
         this.config.get("NODE_ENV") === "production" ||
         this.config.get("STAFF_MFA_REQUIRED") === "true",

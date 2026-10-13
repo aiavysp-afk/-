@@ -16,6 +16,12 @@ const rules = [
   [/^\/v1\/auth\/logout$/, ["POST"]],
   [/^\/v1\/auth\/browser-login\/config$/, ["GET"]],
   [/^\/v1\/auth\/browser-login\/(?:create|poll|claim|cancel)$/, ["POST"]],
+  [/^\/v1\/auth\/staff-password\/config$/, ["GET"]],
+  [/^\/v1\/auth\/staff-password$/, ["GET", "PUT"]],
+  [/^\/v1\/auth\/staff-password\/(?:login|confirm)$/, ["POST"]],
+  [/^\/v1\/auth\/trusted-devices\/config$/, ["GET"]],
+  [/^\/v1\/auth\/trusted-devices$/, ["GET", "POST"]],
+  [/^\/v1\/auth\/trusted-devices\/(?:accept|revoke)$/, ["POST"]],
   [/^\/v1\/auth\/mfa$/, ["GET"]],
   [/^\/v1\/auth\/mfa\/(?:enrollment|activate|verify)$/, ["POST"]],
   [/^\/v1\/admin\/(?:audit-logs|catalog\/services)$/, ["GET"]],
@@ -109,6 +115,26 @@ const types = {
 
 export function allowedAdminMethods(path) {
   return rules.find(([pattern]) => pattern.test(path))?.[1];
+}
+
+const trustCookieName = "__Host-zydj_staff_trust";
+const trustPaths = /^\/v1\/auth\/trusted-devices(?:\/(?:accept|revoke))?$/;
+export function limitedTrustRequestCookie(header) {
+  if (typeof header !== "string" || header.length > 16_384) return undefined;
+  const matches = header.split(";").map((part) => part.trim()).filter((part) => part.startsWith(`${trustCookieName}=`));
+  return matches.length === 1 && new RegExp(`^${trustCookieName}=[A-Za-z0-9_-]{43}$`).test(matches[0]) ? matches[0] : undefined;
+}
+export function permittedTrustResponseCookie(cookie) {
+  if (typeof cookie !== "string" || cookie.length > 1024 || /[\r\n]/.test(cookie)) return false;
+  const [nameValue, ...attributes] = cookie.split(";").map((part) => part.trim());
+  if (!new RegExp(`^${trustCookieName}=(?:[A-Za-z0-9_-]{43})?$`).test(nameValue)) return false;
+  const attrs = attributes.map((part) => part.toLowerCase());
+  if (!attrs.includes("httponly") || !attrs.includes("secure") || !attrs.includes("samesite=strict") || !attrs.includes("path=/") || attrs.some((part) => part.startsWith("domain="))) return false;
+  for (const key of ["path=", "max-age=", "samesite="]) {
+    if (attrs.filter((part) => part.startsWith(key)).length !== 1) return false;
+  }
+  const populated = nameValue !== `${trustCookieName}=`;
+  return attrs.includes(populated ? "max-age=604800" : "max-age=0");
 }
 
 export async function createPrivateAdminServer(
@@ -214,6 +240,14 @@ export async function createPrivateAdminServer(
             ? { "Idempotency-Key": req.headers["idempotency-key"] }
             : {}),
         };
+        // A single host-only device cookie is the only new exception. Never
+        // relay browser cookies or arbitrary User-Agent data to other APIs.
+        if (trustPaths.test(url.pathname)) {
+          const cookie = limitedTrustRequestCookie(req.headers.cookie);
+          if (cookie) headers.Cookie = cookie;
+          const agent = req.headers["user-agent"];
+          if (typeof agent === "string" && agent.length <= 1024 && !/[\r\n\x00]/.test(agent)) headers["User-Agent"] = agent;
+        }
         const response = await fetchApi(
           `${API_ORIGIN}${url.pathname}${url.search}`,
           {
@@ -227,10 +261,14 @@ export async function createPrivateAdminServer(
         if (response.status >= 300 && response.status < 400)
           throw Error("Upstream redirect refused");
         const bytes = Buffer.from(await response.arrayBuffer());
-        // No redirects, cookies, permissive CORS, or arbitrary upstream headers.
+        const cookies = trustPaths.test(url.pathname)
+          ? response.headers.getSetCookie().filter(permittedTrustResponseCookie)
+          : [];
+        // No redirects, permissive CORS, or arbitrary upstream cookies/headers.
         res.writeHead(response.status, {
           "Content-Type":
             response.headers.get("content-type") ?? "application/json",
+          ...(cookies.length === 1 ? { "Set-Cookie": cookies } : {}),
         });
         res.end(bytes);
         return;

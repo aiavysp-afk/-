@@ -9,6 +9,8 @@ import {
   allowedAdminMethods,
   API_ORIGIN,
   ADMIN_PORT,
+  limitedTrustRequestCookie,
+  permittedTrustResponseCookie,
 } from "./serve-production-private-admin.mjs";
 
 let root,
@@ -43,6 +45,10 @@ before(async () => {
         return new Response("secret redirect detail", {
           status: 302,
           headers: { Location: "https://evil.invalid" },
+        });
+      if (failure === "trust-cookie")
+        return new Response('{"data":{"trusted":true}}', {
+          headers: { "Content-Type": "application/json", "Set-Cookie": `__Host-zydj_staff_trust=${"x".repeat(43)}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict` },
         });
       if (
         new URL(url).pathname === walletLedger &&
@@ -113,6 +119,40 @@ function send(path, { method = "GET", headers = {}, body } = {}) {
 test("production ports are fixed and separate from acceptance", () => {
   assert.equal(ADMIN_PORT, 3222);
   assert.equal(API_ORIGIN, "http://127.0.0.1:3220");
+});
+
+test("new login and device routes are exact and method restricted", () => {
+  assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password"), ["GET", "PUT"]);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password/login"), ["POST"]);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/trusted-devices/accept"), ["POST"]);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/trusted-devices"), ["GET", "POST"]);
+  for (const path of ["/v1/auth/staff-password/reset", "/v1/auth/trusted-devices/all", "/v1/auth/trusted-devices/accept/extra"]) assert.equal(allowedAdminMethods(path), undefined);
+});
+
+test("only one well-formed host device cookie is eligible for forwarding", () => {
+  const token = "x".repeat(43);
+  assert.equal(limitedTrustRequestCookie(`analytics=private; __Host-zydj_staff_trust=${token}`), `__Host-zydj_staff_trust=${token}`);
+  assert.equal(limitedTrustRequestCookie(`__Host-zydj_staff_trust=${token}; __Host-zydj_staff_trust=${token}`), undefined);
+  assert.equal(limitedTrustRequestCookie("__Host-zydj_staff_trust=bad"), undefined);
+  const secure = `__Host-zydj_staff_trust=${token}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict`;
+  assert.equal(permittedTrustResponseCookie(secure), true);
+  for (const unsafe of [secure.replace("; Secure", ""), secure + "; Domain=mtsc.top", secure + "; Max-Age=999999", secure.replace("Strict", "None"), secure.replace("__Host-zydj_staff_trust", "other")]) assert.equal(permittedTrustResponseCookie(unsafe), false);
+});
+
+test("cookie relay is restricted to trusted-device routes without widening other headers", async () => {
+  failure = "trust-cookie";
+  try {
+    const headers = { Cookie: `analytics=private; __Host-zydj_staff_trust=${"x".repeat(43)}`, "User-Agent": "synthetic-fixture-agent", "Content-Type": "application/json", Origin: "https://admin.mtsc.top" };
+    const trusted = await send("/v1/auth/trusted-devices/accept", { method: "POST", headers, body: "{}" });
+    assert.equal(trusted.status, 200);
+    assert.equal(trusted.headers["set-cookie"].length, 1);
+    assert.equal(calls.at(-1).options.headers.Cookie, `__Host-zydj_staff_trust=${"x".repeat(43)}`);
+    assert.equal(calls.at(-1).options.headers["User-Agent"], "synthetic-fixture-agent");
+    const generic = await send("/v1/auth/mfa/verify", { method: "POST", headers, body: '{"code":"123456"}' });
+    assert.equal(generic.headers["set-cookie"], undefined);
+    assert.equal(calls.at(-1).options.headers.Cookie, undefined);
+    assert.equal(calls.at(-1).options.headers["User-Agent"], undefined);
+  } finally { failure = null; }
 });
 test("SPA supports private blob previews and safe static assets", async () => {
   const result = await send("/");

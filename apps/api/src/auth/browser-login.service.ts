@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma, type BrowserLoginChallenge } from "@prisma/client";
+import type { AuthSession } from "@zydj/contracts";
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../database/prisma.service.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
@@ -253,7 +254,7 @@ export class BrowserLoginService {
       return { cancelled: true };
     });
   }
-  async claim(pairCode: string, browserSecret: string, now = new Date()) {
+  async claim(pairCode: string, browserSecret: string, now = new Date()): Promise<AuthSession> {
     this.gate();
     return this.prisma.$transaction(async (tx) => {
       const snapshot = await tx.browserLoginChallenge.findUnique({
@@ -316,6 +317,7 @@ export class BrowserLoginService {
         user: {
           id: user.id,
           displayName: user.displayName,
+          phoneVerified: Boolean(user.phoneEncrypted && user.phoneVerifiedAt),
           memberships: user.memberships.map((m) => ({
             organizationId: m.organizationId,
             role: m.role,

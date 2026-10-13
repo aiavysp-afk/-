@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, Injectable, Optional, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IdentityProvider, MembershipStatus, UserRole } from "@prisma/client";
 import type {
@@ -10,6 +10,7 @@ import { PrismaService } from "../database/prisma.service.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
 import type { AuthPrincipal } from "./auth.types.js";
 import { WechatMiniappClient, type WechatIdentityResult } from "./wechat-miniapp.client.js";
+import { TrustedDeviceService } from "./trusted-device.service.js";
 
 @Injectable()
 export class AuthService {
@@ -18,6 +19,7 @@ export class AuthService {
     private readonly crypto: AuthCryptoService,
     private readonly wechat: WechatMiniappClient,
     private readonly config: ConfigService<AppEnv, true>,
+    @Optional() private readonly trustedDevices?: TrustedDeviceService,
   ) {}
 
   async loginWithWechat(code: string): Promise<AuthSession> {
@@ -237,6 +239,46 @@ export class AuthService {
     ) {
       throw new UnauthorizedException("登录状态已失效，请重新登录");
     }
+    const now = new Date();
+    let staffVerifiedUntil: Date | null = null;
+    let staffVerificationMethod: string | null = null;
+    if (session.authProvider === "staff-password") {
+      if (
+        this.config.get("STAFF_PASSWORD_LOGIN_ENABLED", { infer: true }) !== "true" ||
+        session.authChannel !== "ADMIN_BROWSER" ||
+        !["PASSWORD_SMS", "TRUSTED_DEVICE"].includes(session.staffVerificationMethod ?? "") ||
+        !session.user.phoneEncrypted || !session.user.phoneVerifiedAt ||
+        !session.user.memberships.some((membership) => membership.role !== "CUSTOMER")
+      ) throw new UnauthorizedException("账号密码登录已失效，请使用微信重新登录");
+      const credential = await this.prisma.staffPasswordCredential.findUnique({
+        where: { userId: session.userId },
+        select: { version: true, phoneHash: true },
+      });
+      let phoneHash: string;
+      try {
+        phoneHash = this.crypto.hashPhoneVerification("phone", this.crypto.decrypt(session.user.phoneEncrypted));
+      } catch {
+        throw new UnauthorizedException("账户安全信息已变更，请重新登录");
+      }
+      if (
+        !credential || credential.version !== session.staffPasswordVersion ||
+        credential.phoneHash !== phoneHash
+      ) throw new UnauthorizedException("账户安全信息已变更，请重新登录");
+    }
+    if (
+      session.authChannel === "ADMIN_BROWSER" && session.staffVerifiedUntil &&
+      session.staffVerifiedUntil > now &&
+      session.user.memberships.some((membership) => membership.role !== "CUSTOMER")
+    ) {
+      const passwordVerified = session.authProvider === "staff-password" && session.staffVerificationMethod === "PASSWORD_SMS";
+      const deviceVerified = session.staffVerificationMethod === "TRUSTED_DEVICE" &&
+        !!this.trustedDevices &&
+        await this.trustedDevices.validateSessionTrust(session, session.user, now);
+      if (passwordVerified || deviceVerified) {
+        staffVerifiedUntil = new Date(Math.min(session.staffVerifiedUntil.getTime(), session.expiresAt.getTime()));
+        staffVerificationMethod = session.staffVerificationMethod;
+      }
+    }
     await this.prisma.session.update({
       where: { id: session.id },
       data: { lastSeenAt: new Date() },
@@ -246,6 +288,10 @@ export class AuthService {
       userId: session.user.id,
       displayName: session.user.displayName,
       mfaVerifiedUntil: session.mfaVerifiedUntil,
+      staffVerifiedUntil,
+      staffVerificationMethod,
+      staffPasswordVersion: session.staffPasswordVersion,
+      trustedDeviceId: staffVerificationMethod === "TRUSTED_DEVICE" ? session.trustedDeviceId : null,
       authChannel: session.authChannel,
       authProvider: session.authProvider,
       phoneVerified: Boolean(session.user.phoneEncrypted && session.user.phoneVerifiedAt),

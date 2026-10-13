@@ -48,11 +48,25 @@ export class AccessControlService {
     const required =
       this.config?.get("NODE_ENV") === "production" ||
       this.config?.get("STAFF_MFA_REQUIRED") === "true";
-    if (
-      required &&
-      (!principal.mfaVerifiedUntil ||
-        principal.mfaVerifiedUntil.getTime() <= Date.now())
-    )
+    const now = Date.now();
+    const freshMfa = Boolean(
+      principal.mfaVerifiedUntil && principal.mfaVerifiedUntil.getTime() > now,
+    );
+    const loginAssurance = Boolean(
+      principal.authChannel === "ADMIN_BROWSER" &&
+      principal.staffVerifiedUntil &&
+      principal.staffVerifiedUntil.getTime() > now &&
+      (principal.staffVerificationMethod === "PASSWORD_SMS" ||
+        principal.staffVerificationMethod === "TRUSTED_DEVICE"),
+    );
+    // Remembered devices and password+SMS establish login assurance, never a
+    // fresh financial or IAM approval. Mutating admin routes also step up in
+    // SessionAuthGuard regardless of the permission's read/write naming.
+    const sensitive =
+      permission === "finance.request" ||
+      permission === "finance.approve" ||
+      permission === "iam.manage";
+    if (required && !freshMfa && (sensitive || !loginAssurance))
       return false;
     return principal.memberships.some((membership) => {
       if (organizationId && membership.organizationId !== organizationId)

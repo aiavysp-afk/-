@@ -53,6 +53,8 @@ const EnvSchema = z.object({
   // Production always requires staff MFA; this flag also exercises it in private tests.
   STAFF_MFA_REQUIRED: z.enum(["false", "true"]).default("false"),
   STAFF_BROWSER_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
+  STAFF_PASSWORD_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
+  STAFF_TRUSTED_DEVICE_ENABLED: z.enum(["false", "true"]).default("false"),
   AUTH_SESSION_TTL_SECONDS: z.coerce
     .number()
     .int()

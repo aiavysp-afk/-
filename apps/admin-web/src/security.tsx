@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AuthSession } from "@zydj/contracts";
 import { BrowserLogin } from "./browser-login";
+import { StaffSecurity } from "./staff-security";
+import { hasFreshTotp } from "./login-state";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 type MfaStatus = {
@@ -8,6 +10,8 @@ type MfaStatus = {
   enrollmentPending: boolean;
   lockedUntil: string | null;
   verifiedUntil: string | null;
+  loginVerifiedUntil?: string | null;
+  loginMethod?: string | null;
   required: boolean;
   staffEligible: boolean;
 };
@@ -51,8 +55,9 @@ export function SecurityWorkspace({
       method: body === undefined ? "GET" : "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
+      credentials: "include",
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const json = await response.json();
@@ -77,11 +82,7 @@ export function SecurityWorkspace({
         .filter((membership) => membership.role === "ADMIN")
         .map((membership) => membership.organizationId);
       let queue: RecoveryRequest[] = [];
-      if (
-        data.verifiedUntil &&
-        new Date(data.verifiedUntil).getTime() > Date.now() &&
-        organizations.length
-      ) {
+      if (hasFreshTotp(data) && organizations.length) {
         queue = (
           await Promise.all(
             organizations.map((organizationId) =>
@@ -98,8 +99,12 @@ export function SecurityWorkspace({
         setRecoveries(queue);
       }
     } catch (e) {
-      if (currentToken.current === identity)
+      if (currentToken.current === identity) {
+        setStatus(null);
+        setReviewOrganizations([]);
+        setRecoveries([]);
         setError(e instanceof Error ? e.message : "读取失败");
+      }
     }
   }
   useEffect(() => {
@@ -184,7 +189,8 @@ export function SecurityWorkspace({
       <p className="eyebrow">ACCOUNT SECURITY</p>
       <h2>后台安全验证</h2>
       <p>
-        第一层是微信身份会话，第二层是独立验证器动态码。后台人员生产操作必须通过两层验证。
+        微信确认 + 动态码为主方式，也可使用本人账号密码 +
+        手机短信。常用设备信任只简化登录，敏感操作仍须独立验证器动态码。
       </p>
       {!token ? (
         <BrowserLogin onSession={onSession} />
@@ -218,14 +224,30 @@ export function SecurityWorkspace({
                 {status.required ? "强制MFA" : "私有开发模式（生产仍强制）"}
               </p>
               <p>
-                当前会话验证有效至：
+                敏感操作动态码有效至：
                 {status.verifiedUntil
                   ? new Date(status.verifiedUntil).toLocaleString("zh-CN", {
                       timeZone: "Asia/Shanghai",
                     })
                   : "尚未验证"}
-                。过期后后台会拒绝操作，请重新验证。
+                。到期后审核、发布和账号安全等敏感操作会要求重新验证。
               </p>
+              {status.loginVerifiedUntil && (
+                <p>
+                  登录二次验证：
+                  {status.loginMethod === "PASSWORD_SMS" ||
+                  status.loginMethod === "SMS"
+                    ? "手机短信"
+                    : status.loginMethod === "TRUSTED_DEVICE"
+                      ? "已登记常用设备"
+                      : "已完成"}
+                  · 有效至{" "}
+                  {new Date(status.loginVerifiedUntil).toLocaleString("zh-CN", {
+                    timeZone: "Asia/Shanghai",
+                  })}
+                  。 这不是新的动态码验证，不能代替敏感操作授权。
+                </p>
+              )}
               {!status.staffEligible ? (
                 <p>当前身份没有已授权后台/技师成员资格，不能绑定验证器。</p>
               ) : (
@@ -291,8 +313,7 @@ export function SecurityWorkspace({
                 <h3>验证器丢失恢复复核</h3>
                 {!reviewOrganizations.length ? (
                   <p>只有同组织管理员可以复核恢复申请。</p>
-                ) : !status.verifiedUntil ||
-                  new Date(status.verifiedUntil).getTime() <= Date.now() ? (
+                ) : !hasFreshTotp(status) ? (
                   <p>请先用自己的验证器完成当前会话MFA，再读取待复核申请。</p>
                 ) : recoveries.filter((item) => item.status === "PENDING")
                     .length ? (
@@ -329,6 +350,14 @@ export function SecurityWorkspace({
                   <p>当前没有待复核的恢复申请。</p>
                 )}
               </div>
+              {status.staffEligible && (
+                <StaffSecurity
+                  key={token}
+                  token={token}
+                  verifiedUntil={status.verifiedUntil}
+                  onSecurityChange={refresh}
+                />
+              )}
             </>
           )}
         </>

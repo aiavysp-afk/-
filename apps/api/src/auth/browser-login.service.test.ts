@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
+import { AuthSessionSchema } from "@zydj/contracts";
 import { BrowserLoginService } from "./browser-login.service.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
 import type { PrismaService } from "../database/prisma.service.js";
@@ -28,6 +29,7 @@ function fixture(values: Record<string, string> = {}) {
       config,
     ),
     crypto,
+    config,
     db,
   };
 }
@@ -116,4 +118,66 @@ describe("browser login boundaries", () => {
     });
     expect(f.db.browserLoginRateLimit.deleteMany).toHaveBeenCalled();
   });
+  it.each([true, false])(
+    "claims a contract-compatible browser session with phoneVerified=%s",
+    async (phoneVerified) => {
+      const f = fixture();
+      const now = new Date("2026-10-13T12:00:00Z");
+      const browserSecret = f.crypto.createSessionToken();
+      const sourceSession = {
+        id: "source-session",
+        userId: "staff-user",
+        authChannel: "WECHAT_MINIAPP",
+        authProvider: "mock",
+        revokedAt: null,
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 600_000),
+      };
+      const user = {
+        id: sourceSession.userId,
+        status: "ACTIVE",
+        displayName: "Authorized staff fixture",
+        phoneEncrypted: phoneVerified ? "encrypted-fixture-phone" : null,
+        phoneVerifiedAt: phoneVerified ? now : null,
+        memberships: [
+          { organizationId: "staff-org", role: "OPERATOR", status: "ACTIVE" },
+        ],
+      };
+      const challenge = {
+        id: "fixture-pair-code",
+        status: "APPROVED",
+        approvedUserId: user.id,
+        approvedSessionId: sourceSession.id,
+        browserSecretHash: f.crypto.hashBrowserLogin("device", browserSecret),
+        expiresAt: new Date(now.getTime() + 180_000),
+      };
+      const database = {
+        ...f.db,
+        $queryRaw: vi.fn(async () => []),
+        user: { findUnique: vi.fn(async () => user) },
+        session: {
+          findUnique: vi.fn(async () => sourceSession),
+          create: vi.fn(async () => ({ id: "claimed-browser-session" })),
+        },
+        browserLoginChallenge: {
+          ...f.db.browserLoginChallenge,
+          findUnique: vi.fn(async () => challenge),
+          update: vi.fn(async () => ({})),
+        },
+        auditLog: { create: vi.fn(async () => ({})) },
+      };
+      const transaction = {
+        ...database,
+        $transaction: vi.fn(async (run: (tx: typeof database) => unknown) => run(database)),
+      };
+      const service = new BrowserLoginService(
+        transaction as unknown as PrismaService,
+        f.crypto,
+        f.config,
+      );
+      const session = await service.claim(challenge.id, browserSecret, now);
+      expect(AuthSessionSchema.parse(session).user.phoneVerified).toBe(phoneVerified);
+      expect(database.session.create).toHaveBeenCalledTimes(1);
+    },
+  );
 });

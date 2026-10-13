@@ -18,6 +18,26 @@ const principal = (
 describe("AccessControlService", () => {
   const access = new AccessControlService();
 
+  it.each(["PASSWORD_SMS", "TRUSTED_DEVICE"])("accepts %s login assurance for scoped staff reads but never finance or IAM", (method) => {
+    const required = new AccessControlService(new ConfigService({ NODE_ENV: "production" }));
+    const actor = { ...principal(UserRole.ADMIN), authChannel: "ADMIN_BROWSER", staffVerificationMethod: method, staffVerifiedUntil: new Date(Date.now() + 60_000) };
+    expect(required.hasPermission(actor, "technicians.manage", "org-a")).toBe(true);
+    expect(required.hasPermission(actor, "technicians.manage", "org-b")).toBe(false);
+    expect(required.hasPermission(actor, "finance.approve", "org-a")).toBe(false);
+    expect(required.hasPermission(actor, "iam.manage", "org-a")).toBe(false);
+    actor.staffVerifiedUntil = new Date(Date.now() - 1);
+    expect(required.hasPermission(actor, "technicians.manage", "org-a")).toBe(false);
+  });
+
+  it("does not trust assurance from an unknown method or a miniapp channel", () => {
+    const required = new AccessControlService(new ConfigService({ NODE_ENV: "production" }));
+    const actor = { ...principal(UserRole.OPERATOR), authChannel: "WECHAT_MINIAPP", staffVerificationMethod: "TRUSTED_DEVICE", staffVerifiedUntil: new Date(Date.now() + 60_000) };
+    expect(required.hasPermission(actor, "technicians.manage", "org-a")).toBe(false);
+    actor.authChannel = "ADMIN_BROWSER";
+    actor.staffVerificationMethod = "unchecked-local-storage";
+    expect(required.hasPermission(actor, "technicians.manage", "org-a")).toBe(false);
+  });
+
   it("requires recent MFA in production even if the development flag is false", () => {
     const required = new AccessControlService(
       new ConfigService({

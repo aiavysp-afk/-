@@ -28,6 +28,10 @@ export interface AuthPrincipal {
   displayName: string;
   memberships: AuthMembership[];
   mfaVerifiedUntil?: Date | null;
+  staffVerifiedUntil?: Date | null;
+  staffVerificationMethod?: string | null;
+  staffPasswordVersion?: number | null;
+  trustedDeviceId?: string | null;
   authChannel?: string;
   authProvider?: string;
   phoneVerified?: boolean;
