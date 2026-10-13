@@ -182,7 +182,7 @@ test("production nginx evaluates the private-network gate against the URI path",
   );
 });
 
-test("admin TLS vhost exposes the UI only behind unchanged private-network protection", () => {
+test("admin TLS vhost remains default-deny with owner-approved per-host exceptions", () => {
   const admin = config.slice(config.lastIndexOf("\nserver {"));
   assert.ok(admin.includes("server_name admin.mtsc.top;"));
   assert.ok(
@@ -206,6 +206,9 @@ test("admin TLS vhost exposes the UI only behind unchanged private-network prote
   assert.equal(
     geo.trim(),
     `geo $zydj_admin_network_allowed {
+    # Host /32 exceptions require explicit owner approval. The deploy script
+    # creates an empty root-owned file by default; never commit workstation IPs.
+    include /etc/nginx/zhongyuan-daojia-admin-allowlist.conf;
     default 0;
     127.0.0.1/32 1;
     ::1/128 1;

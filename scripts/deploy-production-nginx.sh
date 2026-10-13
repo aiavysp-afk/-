@@ -54,6 +54,17 @@ done < <(
   exit 1
 }
 
+# Geo-module includes are exact filenames, not glob patterns. Provision an
+# empty deny-by-default host file on new hosts, preserving explicitly approved
+# /32 entries on existing hosts. This step never grants a network exception.
+host_allowlist=/etc/nginx/zhongyuan-daojia-admin-allowlist.conf
+[[ ! -L "$host_allowlist" && ( ! -e "$host_allowlist" || -f "$host_allowlist" ) ]] || exit 1
+if [[ ! -e "$host_allowlist" ]]; then
+  install -o root -g root -m 0600 /dev/null "$host_allowlist"
+fi
+[[ $(stat -c '%u' "$host_allowlist") == 0 ]] || exit 1
+[[ $(stat -c '%a' "$host_allowlist") =~ ^(400|440|600|640)$ ]] || exit 1
+
 target_dir=$(dirname "$target")
 target_name=$(basename "$target")
 candidate="$target_dir/.$target_name.candidate-$release_id"
