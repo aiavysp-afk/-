@@ -18,6 +18,7 @@ Page({
     statusLabel: "",
   },
   async onShow() {
+    wx.showShareMenu?.({ menus: ["shareAppMessage"] });
     if (!requireVerifiedCustomerAccess(ENTRY)) return;
     await this.load();
   },
@@ -27,12 +28,19 @@ Page({
     try {
       let application = await api<TechnicianOnboarding>(
         "/technician/onboarding",
+        "GET",
+        undefined,
+        undefined,
+        ENTRY,
       );
+      const firstRegistration = !application.profile;
       if (!application.profile)
         application = await api<TechnicianOnboarding>(
           "/technician/onboarding",
           "POST",
           {},
+          undefined,
+          ENTRY,
         );
       this.setData({
         application,
@@ -42,6 +50,8 @@ Page({
       });
       if (application.canEnterWorkbench)
         wx.redirectTo({ url: "/pages/technician-workbench/index" });
+      else if (firstRegistration && application.profile?.status === "DRAFT")
+        wx.redirectTo({ url: "/pages/technician-application/index" });
     } catch (error) {
       this.setData({
         error:
@@ -52,6 +62,9 @@ Page({
     }
   },
   editProfile() {
-    wx.navigateTo({ url: "/pages/technician-photos/index" });
+    wx.navigateTo({ url: "/pages/technician-application/index" });
+  },
+  onShareAppMessage() {
+    return { title: "中原到家 · 技师微信入驻", path: ENTRY };
   },
 });

@@ -207,6 +207,18 @@ export class TechniciansService {
     principal: AuthPrincipal,
   ): Promise<TechnicianH5OnboardingStatus> {
     this.assertH5Principal(principal, false);
+    return this.applicationStatus(principal);
+  }
+
+  async miniappApplicationStatus(principal: AuthPrincipal) {
+    this.assertMiniappApplicant(principal, false);
+    return this.applicationStatus(principal);
+  }
+
+  private async applicationStatus(
+    principal: AuthPrincipal,
+  ): Promise<TechnicianH5OnboardingStatus> {
+    this.assertWechatRegistration(principal, false);
     if (!this.crypto)
       throw new InternalServerErrorException("身份加密服务未就绪");
     const [user, profile] = await Promise.all([
@@ -258,6 +270,22 @@ export class TechniciansService {
     input: TechnicianH5ProfileUpdate,
   ): Promise<TechnicianH5OnboardingStatus> {
     this.assertH5Principal(principal, true);
+    return this.updateApplicationProfile(principal, input);
+  }
+
+  async updateMiniappApplication(
+    principal: AuthPrincipal,
+    input: TechnicianH5ProfileUpdate,
+  ) {
+    this.assertMiniappApplicant(principal, true);
+    return this.updateApplicationProfile(principal, input);
+  }
+
+  private async updateApplicationProfile(
+    principal: AuthPrincipal,
+    input: TechnicianH5ProfileUpdate,
+  ): Promise<TechnicianH5OnboardingStatus> {
+    this.assertWechatRegistration(principal);
     if (!this.crypto)
       throw new InternalServerErrorException("身份加密服务未就绪");
     const current = await this.getH5ApplicationRecord(principal);
@@ -326,7 +354,10 @@ export class TechniciansService {
         data: {
           actorId: principal.userId,
           organizationId: current.organizationId,
-          action: "TECHNICIAN_H5_PROFILE_UPDATED",
+          action:
+            principal.authChannel === "WECHAT_H5"
+              ? "TECHNICIAN_H5_PROFILE_UPDATED"
+              : "TECHNICIAN_MINIAPP_APPLICATION_UPDATED",
           resourceType: "TechnicianProfile",
           resourceId: current.id,
           metadata: {
@@ -342,7 +373,7 @@ export class TechniciansService {
         },
       });
     });
-    return this.h5OnboardingStatus(principal);
+    return this.applicationStatus(principal);
   }
 
   async uploadH5Photo(
@@ -350,6 +381,22 @@ export class TechniciansService {
     input: TechnicianH5PhotoUpload,
   ): Promise<TechnicianH5OnboardingStatus> {
     this.assertH5Principal(principal, true);
+    return this.uploadApplicationPhoto(principal, input);
+  }
+
+  async uploadMiniappApplicationPhoto(
+    principal: AuthPrincipal,
+    input: TechnicianH5PhotoUpload,
+  ) {
+    this.assertMiniappApplicant(principal, true);
+    return this.uploadApplicationPhoto(principal, input);
+  }
+
+  private async uploadApplicationPhoto(
+    principal: AuthPrincipal,
+    input: TechnicianH5PhotoUpload,
+  ): Promise<TechnicianH5OnboardingStatus> {
+    this.assertWechatRegistration(principal);
     const current = await this.getH5ApplicationRecord(principal);
     this.assertH5Editable(current);
     await this.savePhoto(
@@ -359,7 +406,7 @@ export class TechniciansService {
       false,
       true,
     );
-    return this.h5OnboardingStatus(principal);
+    return this.applicationStatus(principal);
   }
 
   async uploadH5IdentityDocument(
@@ -367,6 +414,22 @@ export class TechniciansService {
     input: TechnicianIdentityDocumentUpload,
   ): Promise<TechnicianH5OnboardingStatus> {
     this.assertH5Principal(principal, true);
+    return this.uploadApplicationIdentityDocument(principal, input);
+  }
+
+  async uploadMiniappIdentityDocument(
+    principal: AuthPrincipal,
+    input: TechnicianIdentityDocumentUpload,
+  ) {
+    this.assertMiniappApplicant(principal, true);
+    return this.uploadApplicationIdentityDocument(principal, input);
+  }
+
+  private async uploadApplicationIdentityDocument(
+    principal: AuthPrincipal,
+    input: TechnicianIdentityDocumentUpload,
+  ): Promise<TechnicianH5OnboardingStatus> {
+    this.assertWechatRegistration(principal);
     if (!this.photos || !this.crypto)
       throw new InternalServerErrorException("证件处理服务未就绪");
     const current = await this.getH5ApplicationRecord(principal);
@@ -443,16 +506,28 @@ export class TechniciansService {
         },
       });
     });
-    return this.h5OnboardingStatus(principal);
+    return this.applicationStatus(principal);
   }
 
   async submitH5Application(
     principal: AuthPrincipal,
   ): Promise<TechnicianH5OnboardingStatus> {
     this.assertH5Principal(principal, true);
+    return this.submitApplication(principal);
+  }
+
+  async submitMiniappApplication(principal: AuthPrincipal) {
+    this.assertMiniappApplicant(principal, true);
+    return this.submitApplication(principal);
+  }
+
+  private async submitApplication(
+    principal: AuthPrincipal,
+  ): Promise<TechnicianH5OnboardingStatus> {
+    this.assertWechatRegistration(principal);
     const current = await this.getH5ApplicationRecord(principal);
     if (current.status === TechnicianProfileStatus.PENDING_REVIEW) {
-      return this.h5OnboardingStatus(principal);
+      return this.applicationStatus(principal);
     }
     this.assertH5Editable(current);
     await this.assertH5ApplicationComplete(current);
@@ -460,9 +535,11 @@ export class TechniciansService {
       principal,
       current,
       TechnicianProfileStatus.PENDING_REVIEW,
-      "TECHNICIAN_H5_APPLICATION_SUBMITTED",
+      principal.authChannel === "WECHAT_H5"
+        ? "TECHNICIAN_H5_APPLICATION_SUBMITTED"
+        : "TECHNICIAN_MINIAPP_APPLICATION_SUBMITTED",
     );
-    return this.h5OnboardingStatus(principal);
+    return this.applicationStatus(principal);
   }
 
   async getAdminIdentityDocument(
@@ -1554,6 +1631,16 @@ export class TechniciansService {
     if (requirePhone && !principal.phoneVerified) {
       throw new ForbiddenException("请先完成本人手机号短信验证");
     }
+  }
+
+  private assertMiniappApplicant(
+    principal: AuthPrincipal,
+    requirePhone: boolean,
+  ) {
+    if (principal.authChannel !== "WECHAT_MINIAPP") {
+      throw new ForbiddenException("请通过本人微信小程序授权登录");
+    }
+    this.assertWechatRegistration(principal, requirePhone);
   }
 
   private async getH5ApplicationRecord(

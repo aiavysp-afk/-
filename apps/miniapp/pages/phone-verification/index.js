@@ -21,14 +21,21 @@ Page({
         wechatReady: false,
         requiredEntry: false,
         friendPaymentReturn: false,
+        technicianReturn: false,
     },
     returnPath: "",
     countdownTimer: undefined,
     onLoad(options) {
         this.returnPath = (0, login_return_1.safeLoginReturnPath)(options.returnPath);
-        this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean((0, friend_payment_1.safeFriendPaymentReturnPath)(options.returnPath)) });
+        this.setData({
+            requiredEntry: options.required === "1",
+            friendPaymentReturn: Boolean((0, friend_payment_1.safeFriendPaymentReturnPath)(options.returnPath)),
+            technicianReturn: this.returnPath.startsWith("/pages/technician-"),
+        });
         const session = (0, auth_1.getStoredSession)();
-        if (!this.data.friendPaymentReturn && session && !(0, auth_1.needsPhoneVerification)(session)) {
+        if (!this.data.friendPaymentReturn &&
+            session &&
+            !(0, auth_1.needsPhoneVerification)(session)) {
             this.setData({ completed: true, wechatReady: true });
             this.returnToTechnician();
         }
@@ -61,8 +68,9 @@ Page({
             loginMode: "WECHAT",
         });
         try {
-            const session = this.returnPath ? await (0, auth_1.loginWithWechat)()
-                : (_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (await (0, auth_1.loginWithWechat)());
+            const session = this.returnPath
+                ? await (0, auth_1.loginWithWechat)()
+                : ((_a = (0, auth_1.getStoredSession)()) !== null && _a !== void 0 ? _a : (await (0, auth_1.loginWithWechat)()));
             // Paying for a friend needs this app's real WeChat identity, not their
             // phone number. All original booking/customer phone guards stay intact.
             if (this.data.friendPaymentReturn || !(0, auth_1.needsPhoneVerification)(session)) {

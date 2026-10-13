@@ -255,9 +255,16 @@ test("production nginx exposes dashboard, dispatch, staffing, area and readiness
 });
 
 test("autonomous technician registration is an exact session resource with HEAD explicitly closed", () => {
-  assertAllowedMethods("= /v1/technician/onboarding", ["GET", "POST", "OPTIONS"]);
+  assertAllowedMethods("= /v1/technician/onboarding", [
+    "GET",
+    "POST",
+    "OPTIONS",
+  ]);
   const block = locationBlock("= /v1/technician/onboarding");
-  assert.match(block, /if \(\$request_method !~ \^\(GET\|POST\|OPTIONS\)\$\) \{ return 404; \}/);
+  assert.match(
+    block,
+    /if \(\$request_method !~ \^\(GET\|POST\|OPTIONS\)\$\) \{ return 404; \}/,
+  );
   assert.doesNotMatch(config, /location\s+\/v1\/technician\//);
 });
 
@@ -277,10 +284,10 @@ test("technician H5 onboarding exposes only its concrete OAuth and application r
     ),
   );
   assert.ok(oauthNavigation.includes("limit_req_status 429;"));
-  assertAllowedMethods(
-    "= /v1/technician/h5-onboarding/wechat/exchange",
-    ["POST", "OPTIONS"],
-  );
+  assertAllowedMethods("= /v1/technician/h5-onboarding/wechat/exchange", [
+    "POST",
+    "OPTIONS",
+  ]);
   assertAllowedMethods("= /v1/technician/h5-onboarding/status", [
     "GET",
     "OPTIONS",
@@ -293,7 +300,27 @@ test("technician H5 onboarding exposes only its concrete OAuth and application r
     "PATCH",
     "OPTIONS",
   ]);
-  assert.doesNotMatch(config, /location\s+\^~\s+\/v1\/technician\/h5-onboarding/);
+  assert.doesNotMatch(
+    config,
+    /location\s+\^~\s+\/v1\/technician\/h5-onboarding/,
+  );
+});
+
+test("native miniapp application routes expose only authenticated concrete operations", () => {
+  const profile = assertAllowedMethods(
+    "= /v1/technician/onboarding/application",
+    ["GET", "PATCH", "OPTIONS"],
+  );
+  assert.match(
+    profile,
+    /if \(\$request_method !~ \^\(GET\|PATCH\|OPTIONS\)\$\)/,
+  );
+  const uploads = assertAllowedMethods(
+    "~ ^/v1/technician/onboarding/application/(?:photos|documents|submit)$",
+    ["POST", "OPTIONS"],
+  );
+  assert.match(uploads, /if \(\$request_method !~ \^\(POST\|OPTIONS\)\$\)/);
+  assert.doesNotMatch(config, /location\s+\^~\s+\/v1\/technician\/onboarding/);
 });
 
 test("technician identity documents remain an exact private audited resource", () => {

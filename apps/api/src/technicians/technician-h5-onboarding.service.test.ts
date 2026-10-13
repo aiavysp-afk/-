@@ -50,9 +50,9 @@ const profile = (overrides = {}) => ({
 
 function fixture() {
   const current = profile();
-  const documentFindMany = vi.fn().mockResolvedValue([
-    { kind: TechnicianIdentityDocumentKind.ID_FRONT },
-  ]);
+  const documentFindMany = vi
+    .fn()
+    .mockResolvedValue([{ kind: TechnicianIdentityDocumentKind.ID_FRONT }]);
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([]),
     technicianIdentityDocument: {
@@ -82,6 +82,13 @@ function fixture() {
     auditLog: { create: vi.fn().mockResolvedValue({ id: "audit" }) },
   };
   const prisma = {
+    technicianReview: {
+      aggregate: vi
+        .fn()
+        .mockResolvedValue({ _avg: { rating: null }, _count: { _all: 0 } }),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    order: { count: vi.fn().mockResolvedValue(0) },
     technicianProfile: {
       findFirst: vi.fn().mockResolvedValue(current),
     },
@@ -142,6 +149,128 @@ function fixture() {
 }
 
 describe("技师H5入驻私密资料", () => {
+  const miniappApplicant = { ...h5Applicant, authChannel: "WECHAT_MINIAPP" };
+
+  it("verified native applicants can upload portraits before receiving any therapist membership", async () => {
+    const f = fixture();
+    f.tx.technicianPhoto.findUnique.mockResolvedValue(null as never);
+    f.tx.technicianPhoto.count.mockResolvedValue(0 as never);
+    f.tx.technicianPhoto.create.mockResolvedValue({ id: "photo" } as never);
+    f.tx.technicianProfile.update.mockResolvedValue(
+      profile({ registrationChannel: "WECHAT_MINIAPP" }) as never,
+    );
+    const result = await f.service.uploadMiniappApplicationPhoto(
+      miniappApplicant,
+      { kind: "AVATAR", contentBase64: "AAAA", consentConfirmed: true },
+    );
+    expect(result.application).toMatchObject({
+      status: "DRAFT",
+      hasIdFront: true,
+    });
+    expect(f.prisma.staffMembership.findFirst).not.toHaveBeenCalled();
+    expect(f.prisma.technicianProfile.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          technicianId: "applicant",
+          selfRegistered: true,
+          technician: { status: "ACTIVE" },
+        },
+      }),
+    );
+    expect(f.tx.technicianPhoto.create).toHaveBeenCalled();
+  });
+
+  it("native identity uploads use the encrypted private document table, never the portrait table", async () => {
+    const f = fixture();
+    const result = await f.service.uploadMiniappIdentityDocument(
+      miniappApplicant,
+      { kind: "ID_FRONT", contentBase64: "AAAA" },
+    );
+    expect(result.application?.hasIdFront).toBe(true);
+    expect(f.tx.technicianIdentityDocument.upsert).toHaveBeenCalled();
+    expect(f.tx.technicianPhoto.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain("encrypted-document");
+  });
+
+  it.each([
+    { ...miniappApplicant, phoneVerified: false },
+    { ...miniappApplicant, authProvider: "mock" },
+    { ...miniappApplicant, authChannel: "PASSWORD" },
+    h5Applicant,
+  ])(
+    "native upload denies incorrect identity or unverified phone before reading photos: %j",
+    async (principal) => {
+      const f = fixture();
+      await expect(
+        f.service.uploadMiniappIdentityDocument(principal, {
+          kind: "ID_FRONT",
+          contentBase64: "AAAA",
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(f.photos.normalize).not.toHaveBeenCalled();
+      expect(f.prisma.technicianProfile.findFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  it("H5-only endpoints continue to reject native sessions", async () => {
+    const f = fixture();
+    await expect(
+      f.service.h5OnboardingStatus(miniappApplicant),
+    ).rejects.toThrow(ForbiddenException);
+    expect(f.prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("native submitted applications are locked before upload or profile modification", async () => {
+    const f = fixture();
+    f.prisma.technicianProfile.findFirst.mockResolvedValue(
+      profile({ status: "PENDING_REVIEW" }),
+    );
+    await expect(
+      f.service.uploadMiniappIdentityDocument(miniappApplicant, {
+        kind: "ID_FRONT",
+        contentBase64: "AAAA",
+      }),
+    ).rejects.toThrow("已提交审核");
+    expect(f.photos.normalize).not.toHaveBeenCalled();
+  });
+
+  it("native submission rejects missing ID back without creating approval or changing status", async () => {
+    const f = fixture();
+    await expect(
+      f.service.submitMiniappApplication(miniappApplicant),
+    ).rejects.toThrow("身份证正反面");
+    expect(f.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("native full profile saves validated catalog services and scoped encrypted real name", async () => {
+    const f = fixture();
+    const result = await f.service.updateMiniappApplication(miniappApplicant, {
+      realName: "张三",
+      serviceCity: "郑州市",
+      serviceAreas: ["金水区"],
+      availableTimeSlots: ["MON:09:00-18:00"],
+      bio: "专注肩颈放松与经络调理多年。",
+      serviceIds: ["service-1"],
+    });
+    expect(f.crypto.encryptScoped).toHaveBeenCalledWith(
+      "technician-real-name:profile",
+      "张三",
+    );
+    expect(f.tx.technicianProfile.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          serviceIds: ["service-1"],
+          specialties: ["肩颈舒缓"],
+          realNameEncrypted: "encrypted-document",
+        }),
+      }),
+    );
+    expect(result.application?.realName).toBe("张三");
+    expect(JSON.stringify(f.tx.auditLog.create.mock.calls)).not.toContain(
+      "张三",
+    );
+  });
+
   it("allows an existing self-registered miniapp profile to resume through H5", async () => {
     const f = fixture();
     f.prisma.technicianProfile.findFirst.mockResolvedValue(
@@ -151,7 +280,9 @@ describe("技师H5入驻私密资料", () => {
       }),
     );
 
-    await expect(f.service.h5OnboardingStatus(h5Applicant)).resolves.toMatchObject({
+    await expect(
+      f.service.h5OnboardingStatus(h5Applicant),
+    ).resolves.toMatchObject({
       stage: "PENDING_REVIEW",
       phoneMasked: "138****8000",
       application: {
@@ -162,7 +293,9 @@ describe("技师H5入驻私密资料", () => {
     });
     expect(f.prisma.technicianProfile.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.not.objectContaining({ registrationChannel: "WECHAT_H5" }),
+        where: expect.not.objectContaining({
+          registrationChannel: "WECHAT_H5",
+        }),
       }),
     );
   });

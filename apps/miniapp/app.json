@@ -10,6 +10,7 @@
     "pages/settings/index",
     "pages/account-security/index",
     "pages/technician-onboarding/index",
+    "pages/technician-application/index",
     "pages/technician-workbench/index",
     "pages/technician-photos/index",
     "pages/addresses/index",

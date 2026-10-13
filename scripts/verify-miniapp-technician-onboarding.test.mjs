@@ -84,10 +84,13 @@ test("first registration creates an empty owner draft without invitation or pair
     ],
   );
   assert.deepEqual(Object.keys(f.calls[1].data), []);
-  assert.equal(f.routes.length, 0);
+  assert.deepEqual(f.routes, ["/pages/technician-application/index"]);
   assert.equal(f.page.data.statusLabel, "填写入驻资料");
   f.page.editProfile();
-  assert.deepEqual(f.routes, ["/pages/technician-photos/index"]);
+  assert.deepEqual(f.routes, [
+    "/pages/technician-application/index",
+    "/pages/technician-application/index",
+  ]);
 });
 test("pending/rejected applications stay on review status; approved login directly opens workbench", async () => {
   for (const status of ["PENDING_REVIEW", "REJECTED", "APPROVED"]) {

@@ -29,14 +29,25 @@ Page({
     wechatReady: false,
     requiredEntry: false,
     friendPaymentReturn: false,
+    technicianReturn: false,
   },
   returnPath: "",
   countdownTimer: undefined as number | undefined,
   onLoad(options: { required?: string; returnPath?: string }) {
     this.returnPath = safeLoginReturnPath(options.returnPath);
-    this.setData({ requiredEntry: options.required === "1", friendPaymentReturn: Boolean(safeFriendPaymentReturnPath(options.returnPath)) });
+    this.setData({
+      requiredEntry: options.required === "1",
+      friendPaymentReturn: Boolean(
+        safeFriendPaymentReturnPath(options.returnPath),
+      ),
+      technicianReturn: this.returnPath.startsWith("/pages/technician-"),
+    });
     const session = getStoredSession();
-    if (!this.data.friendPaymentReturn && session && !needsPhoneVerification(session)) {
+    if (
+      !this.data.friendPaymentReturn &&
+      session &&
+      !needsPhoneVerification(session)
+    ) {
       this.setData({ completed: true, wechatReady: true });
       this.returnToTechnician();
     } else if (!this.data.friendPaymentReturn && session) {
@@ -47,7 +58,8 @@ Page({
     if (this.countdownTimer) clearInterval(this.countdownTimer);
   },
   returnToTechnician() {
-    if (this.returnPath.startsWith("/pages/technician-") && this.data.completed) wx.redirectTo({ url: this.returnPath });
+    if (this.returnPath.startsWith("/pages/technician-") && this.data.completed)
+      wx.redirectTo({ url: this.returnPath });
   },
   ensureAgreementAccepted() {
     if (this.data.accepted) return true;
@@ -63,8 +75,9 @@ Page({
       loginMode: "WECHAT",
     });
     try {
-      const session = this.returnPath ? await loginWithWechat()
-        : getStoredSession() ?? (await loginWithWechat());
+      const session = this.returnPath
+        ? await loginWithWechat()
+        : (getStoredSession() ?? (await loginWithWechat()));
       // Paying for a friend needs this app's real WeChat identity, not their
       // phone number. All original booking/customer phone guards stay intact.
       if (this.data.friendPaymentReturn || !needsPhoneVerification(session)) {

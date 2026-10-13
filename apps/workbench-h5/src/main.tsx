@@ -52,7 +52,10 @@ import { workbenchPaymentSummary } from "./order-payment";
 import { technicianShiftSummary } from "./shift-summary";
 import { MfaSession } from "./mfa-session";
 import { MfaGate } from "./mfa-gate";
-import { TechnicianH5Onboarding } from "./h5-onboarding-page";
+import {
+  TechnicianH5Onboarding,
+  TechnicianMiniappEntry,
+} from "./h5-onboarding-page";
 import { isOnboardingRoute } from "./h5-onboarding";
 
 const API_BASE_URL =
@@ -692,52 +695,62 @@ function App() {
             <ShieldAlert size={24} />
             <h2>需要技师身份</h2>
             <h3>微信入驻与登录，无需配对码</h3>
-            <p>在微信搜索“中原到家”小程序 → 我的 → 设置 → 技师入驻与登录，完成本人微信授权和手机号验证，直接填写照片与资料并提交后台审核。</p>
-            <p>审核通过后，同一微信账号再次进入该入口即可登录小程序技师工作台。待审核时只能查看本人申请，不能接单。</p>
-            <p>姓名、年龄段可以先留空；照片、介绍、擅长与审核进度自动同步管理后台。此网页为辅助工作台，小程序才是无配对码主入口。</p>
+            <p>
+              扫描平台小程序二维码，或在微信搜索“静享松弛桌游馆”小程序（中原到家）→
+              我的 → 设置 →
+              技师入驻与登录，完成本人微信授权和手机号验证，填写资料并提交后台审核。
+            </p>
+            <p>
+              审核通过后，同一微信账号再次进入该入口即可登录小程序技师工作台。待审核时只能查看本人申请，不能接单。
+            </p>
+            <p>
+              真实姓名、接单区域和时段、介绍、擅长项目、形象照及证件仅按入驻审核用途处理；公开称呼、年龄段可由后台补录。资料和审核进度自动同步管理后台。
+            </p>
             <details>
               <summary>已绑定技师的网页辅助登录（可选）</summary>
-            {error && (
-              <p className="error-banner" role="alert">
-                {error}
-              </p>
-            )}
-            {!loginChallenge && (
-              <button
-                onClick={() => void startWechatLogin()}
-                disabled={loginBusy}
-              >
-                {loginBusy ? "正在生成辅助登录码…" : "确认登录网页辅助工作台"}
-              </button>
-            )}
-            {loginChallenge && (
-              <div className="pairing-card">
-                <strong>请在“中原到家”小程序确认</strong>
-                <span>仅用于本人主动发起的网页辅助登录；小程序入驻与登录不使用配对码。</span>
-                <label>配对码</label>
-                <code>{loginChallenge.pairCode}</code>
-                <label>六位核对数字</label>
-                <b>{loginChallenge.confirmationCode}</b>
-                <small>确认后本页会自动登录，无需刷新。</small>
+              {error && (
+                <p className="error-banner" role="alert">
+                  {error}
+                </p>
+              )}
+              {!loginChallenge && (
                 <button
-                  className="secondary"
-                  onClick={() => {
-                    loginAttempt.current++;
-                    setLoginChallenge(null);
-                  }}
+                  onClick={() => void startWechatLogin()}
+                  disabled={loginBusy}
                 >
-                  取消本次登录
+                  {loginBusy ? "正在生成辅助登录码…" : "确认登录网页辅助工作台"}
                 </button>
-              </div>
-            )}
-            {import.meta.env.DEV && (
-              <button
-                onClick={() => void developmentLogin()}
-                disabled={loading}
-              >
-                {loading ? "登录中…" : "登录本地技师账号"}
-              </button>
-            )}
+              )}
+              {loginChallenge && (
+                <div className="pairing-card">
+                  <strong>请在“中原到家”小程序确认</strong>
+                  <span>
+                    仅用于本人主动发起的网页辅助登录；小程序入驻与登录不使用配对码。
+                  </span>
+                  <label>配对码</label>
+                  <code>{loginChallenge.pairCode}</code>
+                  <label>六位核对数字</label>
+                  <b>{loginChallenge.confirmationCode}</b>
+                  <small>确认后本页会自动登录，无需刷新。</small>
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      loginAttempt.current++;
+                      setLoginChallenge(null);
+                    }}
+                  >
+                    取消本次登录
+                  </button>
+                </div>
+              )}
+              {import.meta.env.DEV && (
+                <button
+                  onClick={() => void developmentLogin()}
+                  disabled={loading}
+                >
+                  {loading ? "登录中…" : "登录本地技师账号"}
+                </button>
+              )}
             </details>
           </section>
         )}
@@ -1772,7 +1785,11 @@ function NextOrder({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {isOnboardingRoute(window.location.pathname, window.location.hash) ? (
-      <TechnicianH5Onboarding />
+      import.meta.env.VITE_TECHNICIAN_ONBOARDING_CHANNEL === "h5" ? (
+        <TechnicianH5Onboarding />
+      ) : (
+        <TechnicianMiniappEntry />
+      )
     ) : (
       <App />
     )}

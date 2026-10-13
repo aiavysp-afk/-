@@ -31,7 +31,8 @@ import { TechniciansService } from "./technicians.service.js";
 import type { FastifyReply } from "fastify";
 
 function sendPhoto(reply: FastifyReply, content: Uint8Array) {
-  return reply.type("image/jpeg")
+  return reply
+    .type("image/jpeg")
     .header("Cache-Control", "private, no-store")
     .header("X-Content-Type-Options", "nosniff")
     .header("Content-Security-Policy", "default-src 'none'")
@@ -86,7 +87,9 @@ export class TechnicianH5OnboardingController {
   ) {
     const parsed = TechnicianH5PhotoUploadSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException("请选择本人授权的JPG或PNG形象照，单张不超过512KB");
+      throw new BadRequestException(
+        "请选择本人授权的JPG或PNG形象照，单张不超过512KB",
+      );
     }
     return {
       data: await this.technicians.uploadH5Photo(principal, parsed.data),
@@ -100,7 +103,9 @@ export class TechnicianH5OnboardingController {
   ) {
     const parsed = TechnicianIdentityDocumentUploadSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException("请上传清晰的JPG或PNG身份证照片，单张不超过512KB");
+      throw new BadRequestException(
+        "请上传清晰的JPG或PNG身份证照片，单张不超过512KB",
+      );
     }
     return {
       data: await this.technicians.uploadH5IdentityDocument(
@@ -128,6 +133,70 @@ export class TechnicianOnboardingController {
   async register(@CurrentPrincipal() principal: AuthPrincipal) {
     return { data: await this.technicians.register(principal) };
   }
+
+  @Get("application")
+  async application(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.miniappApplicationStatus(principal) };
+  }
+
+  @Patch("application")
+  async updateApplication(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianH5ProfileUpdateSchema.safeParse(body);
+    if (!parsed.success)
+      throw new BadRequestException(
+        "请填写完整姓名、城市、区域、时段、简介和擅长项目",
+      );
+    return {
+      data: await this.technicians.updateMiniappApplication(
+        principal,
+        parsed.data,
+      ),
+    };
+  }
+
+  @Post("application/photos")
+  async applicationPhoto(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianH5PhotoUploadSchema.safeParse(body);
+    if (!parsed.success)
+      throw new BadRequestException(
+        "请选择本人授权的JPG或PNG形象照，单张不超过512KB",
+      );
+    return {
+      data: await this.technicians.uploadMiniappApplicationPhoto(
+        principal,
+        parsed.data,
+      ),
+    };
+  }
+
+  @Post("application/documents")
+  async applicationDocument(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    const parsed = TechnicianIdentityDocumentUploadSchema.safeParse(body);
+    if (!parsed.success)
+      throw new BadRequestException(
+        "请上传清晰的JPG或PNG身份证照片，单张不超过512KB",
+      );
+    return {
+      data: await this.technicians.uploadMiniappIdentityDocument(
+        principal,
+        parsed.data,
+      ),
+    };
+  }
+
+  @Post("application/submit")
+  async submitApplication(@CurrentPrincipal() principal: AuthPrincipal) {
+    return { data: await this.technicians.submitMiniappApplication(principal) };
+  }
 }
 
 @Controller("admin/organizations/:organizationId/technician-applications")
@@ -135,8 +204,14 @@ export class TechnicianOnboardingController {
 export class AdminTechnicianApplicationsController {
   constructor(private readonly technicians: TechniciansService) {}
   @Get()
-  async list(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string) {
-    const data = await this.technicians.listApplications(principal, organizationId);
+  async list(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+  ) {
+    const data = await this.technicians.listApplications(
+      principal,
+      organizationId,
+    );
     return { data, meta: { total: data.length } };
   }
 
@@ -171,16 +246,15 @@ export class TechnicianInvitationsController {
     @Body() body: unknown,
   ) {
     const parsed = TechnicianInvitationClaimSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException("请输入有效的12位邀请码");
+    if (!parsed.success)
+      throw new BadRequestException("请输入有效的12位邀请码");
     return {
       data: await this.invitations.claim(principal, parsed.data.code),
     };
   }
 }
 
-@Controller(
-  "admin/organizations/:organizationId/technician-invitations",
-)
+@Controller("admin/organizations/:organizationId/technician-invitations")
 @UseGuards(SessionAuthGuard)
 export class AdminTechnicianInvitationsController {
   constructor(private readonly invitations: TechnicianInvitationsService) {}
@@ -244,7 +318,11 @@ export class PublicTechniciansController {
   }
 
   @Get(":technicianId/photos/:photoId")
-  async photo(@Param("technicianId") technicianId: string, @Param("photoId") photoId: string, @Res() reply: FastifyReply) {
+  async photo(
+    @Param("technicianId") technicianId: string,
+    @Param("photoId") photoId: string,
+    @Res() reply: FastifyReply,
+  ) {
     const photo = await this.technicians.getPublicPhoto(technicianId, photoId);
     return sendPhoto(reply, photo.content);
   }
@@ -283,14 +361,26 @@ export class TechnicianProfileController {
   }
 
   @Post("photos")
-  async uploadPhoto(@CurrentPrincipal() principal: AuthPrincipal, @Body() body: unknown) {
+  async uploadPhoto(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
     const parsed = TechnicianPhotoUploadSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException("请选择本人授权的JPG或PNG照片，单张不超过512KB");
-    return { data: await this.technicians.uploadOwnPhoto(principal, parsed.data) };
+    if (!parsed.success)
+      throw new BadRequestException(
+        "请选择本人授权的JPG或PNG照片，单张不超过512KB",
+      );
+    return {
+      data: await this.technicians.uploadOwnPhoto(principal, parsed.data),
+    };
   }
 
   @Get("photos/:photoId")
-  async photo(@CurrentPrincipal() principal: AuthPrincipal, @Param("photoId") photoId: string, @Res() reply: FastifyReply) {
+  async photo(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("photoId") photoId: string,
+    @Res() reply: FastifyReply,
+  ) {
     const photo = await this.technicians.getOwnPhoto(principal, photoId);
     return sendPhoto(reply, photo.content);
   }
@@ -338,8 +428,18 @@ export class AdminTechnicianProfileController {
   }
 
   @Post("submit-review")
-  async submit(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string) {
-    return { data: await this.technicians.submitAdminProfile(principal, organizationId, technicianId) };
+  async submit(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("technicianId") technicianId: string,
+  ) {
+    return {
+      data: await this.technicians.submitAdminProfile(
+        principal,
+        organizationId,
+        technicianId,
+      ),
+    };
   }
 
   @Post("approve")
@@ -350,7 +450,8 @@ export class AdminTechnicianProfileController {
     @Body() body: unknown,
   ) {
     const parsed = TechnicianProfileApproveSchema.safeParse(body ?? {});
-    if (!parsed.success) throw new BadRequestException("审核版本无效，请刷新资料");
+    if (!parsed.success)
+      throw new BadRequestException("审核版本无效，请刷新资料");
     return {
       data: await this.technicians.approve(
         principal,
@@ -362,22 +463,62 @@ export class AdminTechnicianProfileController {
   }
 
   @Post("reject")
-  async reject(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string, @Body() body: unknown) {
+  async reject(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("technicianId") technicianId: string,
+    @Body() body: unknown,
+  ) {
     const parsed = TechnicianProfileRejectSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException("请填写2至500字退回原因");
-    return { data: await this.technicians.reject(principal, organizationId, technicianId, parsed.data.reason, parsed.data.expectedVersion) };
+    if (!parsed.success)
+      throw new BadRequestException("请填写2至500字退回原因");
+    return {
+      data: await this.technicians.reject(
+        principal,
+        organizationId,
+        technicianId,
+        parsed.data.reason,
+        parsed.data.expectedVersion,
+      ),
+    };
   }
 
   @Post("photos")
-  async uploadPhoto(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string, @Body() body: unknown) {
+  async uploadPhoto(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("technicianId") technicianId: string,
+    @Body() body: unknown,
+  ) {
     const parsed = TechnicianPhotoUploadSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException("照片参数无效，请确认照片授权且单张不超过512KB");
-    return { data: await this.technicians.uploadAdminPhoto(principal, organizationId, technicianId, parsed.data) };
+    if (!parsed.success)
+      throw new BadRequestException(
+        "照片参数无效，请确认照片授权且单张不超过512KB",
+      );
+    return {
+      data: await this.technicians.uploadAdminPhoto(
+        principal,
+        organizationId,
+        technicianId,
+        parsed.data,
+      ),
+    };
   }
 
   @Get("photos/:photoId")
-  async photo(@CurrentPrincipal() principal: AuthPrincipal, @Param("organizationId") organizationId: string, @Param("technicianId") technicianId: string, @Param("photoId") photoId: string, @Res() reply: FastifyReply) {
-    const photo = await this.technicians.getAdminPhoto(principal, organizationId, technicianId, photoId);
+  async photo(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("technicianId") technicianId: string,
+    @Param("photoId") photoId: string,
+    @Res() reply: FastifyReply,
+  ) {
+    const photo = await this.technicians.getAdminPhoto(
+      principal,
+      organizationId,
+      technicianId,
+      photoId,
+    );
     return sendPhoto(reply, photo.content);
   }
 

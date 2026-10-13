@@ -8,11 +8,12 @@
     <block wx:if="{{application.profile}}">
       <text wx:if="{{application.profile.status === 'PENDING_REVIEW'}}" class="note">资料已同步管理后台。审核前不能接单；审核通过后，使用同一微信账号再次登录即可进入技师工作台。</text>
       <text wx:if="{{application.profile.rejectionReason}}" class="error">退回原因：{{application.profile.rejectionReason}}</text>
-      <text wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" class="note">请上传本人授权照片、填写真实介绍和擅长项目。姓名和年龄段可暂留空，由后台补录。</text>
+      <text wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" class="note">填写真实姓名、接单区域和时段，选择擅长项目，上传形象照及身份证正反面后提交审核。公开称呼和年龄段可由后台补录。</text>
       <button wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" bindtap="editProfile">填写入驻资料</button>
       <text wx:if="{{(application.profile.status === 'APPROVED' || application.profile.status === 'PUBLISHED') && !application.canEnterWorkbench}}" class="error">技师身份当前不可用，请联系后台核验，不会自动恢复停用资格。</text>
     </block>
     <button class="secondary" loading="{{busy}}" disabled="{{busy}}" bindtap="load">刷新审核结果</button>
+    <button class="secondary" open-type="share">分享技师入驻入口</button>
   </view>
   <view class="rules"><text>入驻说明</text><text>· 无需邀请码、配对码或复制登录令牌</text><text>· 微信身份与验证手机号自动绑定本人申请</text><text>· 后台审核通过后开通本人工作台；公开展示仍需后台发布及安排排班</text><text>· 禁止使用他人照片、代注册或填报虚假资质</text></view>
 </view>
