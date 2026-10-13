@@ -32,7 +32,7 @@
     <view class="success-mark">✓</view>
     <text class="login-title">登录成功</text>
     <text class="login-subtitle">{{friendPaymentReturn?'微信身份已确认，可继续好友代付':maskedPhone || '微信账号与手机号均已完成验证'}}</text>
-    <button class="primary-button" bindtap="enterHome">{{friendPaymentReturn?'返回好友代付':'进入中原到家'}}</button>
+    <button class="primary-button" bindtap="enterHome">{{friendPaymentReturn?'返回好友代付':technicianReturn?'继续技师入驻':'进入中原到家'}}</button>
   </view>
 
   <view wx:elif="{{!wechatReady}}" class="login-card wechat-card">
@@ -63,6 +63,8 @@
       disabled="{{busy}}"
     >{{busy && loginMode === 'WECHAT_PHONE' ? '正在验证…' : '微信手机号一键验证'}}</button>
 
+    <view wx:if="{{technicianReturn}}" class="flow-note"><text>✓</text><text>完成微信手机号一键验证后即可填写入驻资料。</text></view>
+    <block wx:if="{{!technicianReturn}}">
     <view class="method-divider"><view /><text>或使用短信验证码</text><view /></view>
 
     <view class="field-shell {{phoneFocused ? 'is-focused' : ''}}">
@@ -100,6 +102,7 @@
       loading="{{busy && loginMode === 'SMS'}}"
       disabled="{{busy}}"
     >{{busy && loginMode === 'SMS' ? (smsRequested ? '正在校验…' : '正在发送…') : (smsRequested ? '确认验证码并登录' : '获取短信验证码')}}</button>
+    </block>
 
     <text wx:if="{{actionStatus}}" class="action-status">{{actionStatus}}</text>
     <text wx:if="{{error}}" class="error-message">{{error}}</text>

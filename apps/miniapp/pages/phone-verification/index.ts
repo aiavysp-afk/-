@@ -113,9 +113,12 @@ Page({
     const code = event.detail.code?.trim();
     if (!code) {
       const cancelled = /deny|cancel/i.test(event.detail.errMsg ?? "");
+      const retryHint = this.data.technicianReturn
+        ? "请重新点击微信手机号一键验证"
+        : "可重试或改用短信验证码";
       const message = cancelled
-        ? "你已取消微信手机号授权，可重试或改用短信验证码"
-        : "微信未返回手机号授权凭证，请重试或改用短信验证码";
+        ? `你已取消微信手机号授权，${retryHint}`
+        : `微信未返回手机号授权凭证，${retryHint}`;
       this.setData({
         actionStatus: "微信手机号未验证",
         error: message,
@@ -156,7 +159,9 @@ Page({
       });
       wx.showModal({
         title: "微信手机号验证失败",
-        content: `${message}。你也可以改用短信验证码。`,
+        content: this.data.technicianReturn
+          ? `${message}。请重新点击微信手机号一键验证；如仍失败，请联系平台客服。`
+          : `${message}。你也可以改用短信验证码。`,
         confirmText: "我知道了",
         showCancel: false,
       });

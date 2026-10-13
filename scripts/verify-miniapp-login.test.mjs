@@ -126,6 +126,7 @@ test("technician return cannot inherit friend-pay phone bypass and returns only 
     const page = createPage();
     page.onLoad({ required: "1", returnPath: encodeURIComponent("/pages/technician-onboarding/index") });
     await page.authorizeWechat();
+    assert.equal(page.data.technicianReturn, true);
     assert.equal(page.data.friendPaymentReturn, false);
     assert.equal(page.data.completed, false);
     assert.equal(host.navigations.length, 0);
@@ -151,6 +152,22 @@ test("login page defaults to all three agreements accepted and opens each docume
   } finally {
     host.restore();
   }
+});
+
+test("technician phone cancellation offers native retry without unavailable SMS fallback", async () => {
+  const host = installWx();
+  try {
+    const page = createPage();
+    page.onLoad({ returnPath: encodeURIComponent("/pages/technician-onboarding/index") });
+    await page.authorizeWechat();
+    const requestCount = host.requests.length;
+    await page.authorizeWechatPhone({ detail: { errMsg: "getPhoneNumber:fail user deny" } });
+    assert.equal(host.requests.length, requestCount);
+    assert.equal(page.data.completed, false);
+    assert.match(page.data.error, /重新点击微信手机号一键验证/);
+    assert.doesNotMatch(page.data.error, /短信/);
+    assert.equal(host.navigations.length, 0);
+  } finally { host.restore(); }
 });
 
 test("unchecked agreements stop WeChat authorization before any account request", async () => {
