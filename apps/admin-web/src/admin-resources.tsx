@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   CalendarDays,
   CircleAlert,
@@ -41,6 +48,16 @@ import {
   prepareTechnicianPhoto,
 } from "./technician-photo";
 import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
+import {
+  beginScopedWorkspaceRequest,
+  createWorkspaceContext,
+  emptyTechnicianWorkspace,
+  technicianWorkspaceReducer,
+} from "./technician-workspace-state";
+import {
+  displayedTechnicianReviewVersion,
+  technicianReviewSnapshotMatches,
+} from "./technician-review-snapshot";
 import {
   formatAvailabilityTimeSlot,
   hasIdentityDocument,
@@ -145,22 +162,47 @@ export function TechniciansWorkspace({
   login: () => Promise<void>;
   query: string;
 }) {
-  const [board, setBoard] = useState<AdminTechnicianBoard | null>(null);
+  const scope = `${organizationId}:${token}`;
+  const context = useMemo(createWorkspaceContext, []);
+  const requestContext = context.update(scope);
+  const readBusy = useRef(false);
+  const invitationOperationBusy = useRef(false);
+  const [workspace, dispatchWorkspace] = useReducer(
+    technicianWorkspaceReducer,
+    scope,
+    emptyTechnicianWorkspace,
+  );
+  // Hide the previous context immediately, before its cleanup effect runs.
+  const { board, invitations, applications, loaded } =
+    workspace.scope === scope ? workspace : emptyTechnicianWorkspace(scope);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedTechnicianId, setSelectedTechnicianId] = useState("");
-  const [invitations, setInvitations] = useState<TechnicianInvitation[]>([]);
-  const [applications, setApplications] = useState<
-    TechnicianOnboardingReviewProfile[]
-  >([]);
   const [inviteName, setInviteName] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
-  const [createdInvite, setCreatedInvite] =
-    useState<TechnicianInvitationCreated | null>(null);
+  const [createdInviteRecord, setCreatedInviteRecord] = useState<{
+    context: string;
+    value: TechnicianInvitationCreated;
+  } | null>(null);
+  const createdInvite =
+    createdInviteRecord?.context === requestContext
+      ? createdInviteRecord.value
+      : null;
   const requests = useMemo(createLatestRequest, []);
   const load = useCallback(async () => {
-    if (!token || !organizationId) return;
-    const isCurrent = requests.begin();
+    if (
+      !token ||
+      !organizationId ||
+      readBusy.current ||
+      invitationOperationBusy.current
+    )
+      return false;
+    readBusy.current = true;
+    const isCurrent = beginScopedWorkspaceRequest(
+      requests,
+      requestContext,
+      () => context.current(),
+    );
     setLoading(true);
     setError("");
     try {
@@ -178,19 +220,40 @@ export function TechniciansWorkspace({
           token,
         ),
       ]);
-      if (!isCurrent()) return;
-      setBoard(boardValue);
-      setInvitations(invitationRows);
-      setApplications(applicationRows);
+      if (!isCurrent()) return false;
+      dispatchWorkspace({
+        type: "loaded",
+        scope,
+        board: boardValue,
+        invitations: invitationRows,
+        applications: applicationRows,
+      });
+      return true;
     } catch (caught) {
-      if (!isCurrent()) return;
-      setBoard(null);
+      if (!isCurrent()) return false;
+      dispatchWorkspace({ type: "failed", scope });
+      setSelectedTechnicianId("");
+      setCreatedInviteRecord(null);
       setError(caught instanceof Error ? caught.message : "技师列表加载失败");
+      return false;
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent()) {
+        readBusy.current = false;
+        setLoading(false);
+      }
     }
-  }, [organizationId, token, requests]);
-  useEffect(() => void load(), [load]);
+  }, [organizationId, token, scope, requestContext, context, requests]);
+  useEffect(() => {
+    dispatchWorkspace({ type: "reset", scope });
+    setSelectedTechnicianId("");
+    setCreatedInviteRecord(null);
+    setInviteName("");
+    readBusy.current = false;
+    setLoading(false);
+    invitationOperationBusy.current = false;
+    setInviteBusy(false);
+    void load();
+  }, [load, scope]);
   useEffect(() => () => requests.invalidate(), [requests]);
   useBackgroundRefresh(
     () => void load(),
@@ -216,10 +279,17 @@ export function TechniciansWorkspace({
 
   async function createInvitation() {
     const publicName = inviteName.trim();
-    if ((publicName.length > 0 && publicName.length < 2) || inviteBusy) {
+    if (readBusy.current || loading || invitationOperationBusy.current) return;
+    if (publicName.length > 0 && publicName.length < 2) {
       setError("公开称呼可留空，填写时需2至40字");
       return;
     }
+    invitationOperationBusy.current = true;
+    const isCurrent = beginScopedWorkspaceRequest(
+      requests,
+      requestContext,
+      () => context.current(),
+    );
     setInviteBusy(true);
     setError("");
     try {
@@ -228,23 +298,36 @@ export function TechniciansWorkspace({
         token,
         { publicName, expiresInHours: 72 },
       );
-      setCreatedInvite(result);
+      if (!isCurrent()) return;
+      setCreatedInviteRecord({ context: requestContext, value: result });
       setInviteName("");
-      setInvitations((current) => [
-        result.invitation,
-        ...current.filter((item) => item.id !== result.invitation.id),
-      ]);
+      dispatchWorkspace({
+        type: "invitation-created",
+        scope,
+        invitation: result.invitation,
+      });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "技师邀请创建失败");
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "技师邀请创建失败");
     } finally {
-      setInviteBusy(false);
+      if (isCurrent()) {
+        invitationOperationBusy.current = false;
+        setInviteBusy(false);
+      }
     }
   }
 
   async function revokeInvitation(invitation: TechnicianInvitation) {
+    if (readBusy.current || loading || invitationOperationBusy.current) return;
     if (!window.confirm(`确认撤销“${invitation.publicName}”的一次性邀请？`)) {
       return;
     }
+    invitationOperationBusy.current = true;
+    const isCurrent = beginScopedWorkspaceRequest(
+      requests,
+      requestContext,
+      () => context.current(),
+    );
     setInviteBusy(true);
     setError("");
     try {
@@ -253,14 +336,22 @@ export function TechniciansWorkspace({
         token,
         {},
       );
-      setInvitations((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      if (createdInvite?.invitation.id === updated.id) setCreatedInvite(null);
+      if (!isCurrent()) return;
+      dispatchWorkspace({
+        type: "invitation-updated",
+        scope,
+        invitation: updated,
+      });
+      if (createdInvite?.invitation.id === updated.id)
+        setCreatedInviteRecord(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "技师邀请撤销失败");
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "技师邀请撤销失败");
     } finally {
-      setInviteBusy(false);
+      if (isCurrent()) {
+        invitationOperationBusy.current = false;
+        setInviteBusy(false);
+      }
     }
   }
 
@@ -283,14 +374,30 @@ export function TechniciansWorkspace({
         </div>
         <button
           className="ghost-action"
-          disabled={loading}
+          disabled={loading || inviteBusy}
           onClick={() => void load()}
         >
           <RefreshCw size={15} className={loading ? "spinning" : ""} />
           刷新
         </button>
       </div>
-      {error && <div className="catalog-error">{error}</div>}
+      {error && (
+        <div className="catalog-error" role="alert">
+          <span>{error}</span>
+          {!loaded && (
+            <p>
+              申请队列尚未成功读取，不能据此认定没有申请。已关闭旧审核资料；请检查登录、组织权限和安全验证后重试。
+            </p>
+          )}
+          <button
+            className="ghost-action"
+            disabled={loading || inviteBusy}
+            onClick={() => void load()}
+          >
+            重新读取技师资料
+          </button>
+        </div>
+      )}
       <section className="technician-invite-card">
         <div className="technician-invite-copy">
           <h3>微信自主入驻审核</h3>
@@ -333,7 +440,10 @@ export function TechniciansWorkspace({
               </div>
             );
           })}
-          {!loading && !applications.length && <p>暂无自主入驻申请。</p>}
+          {!loaded && !error && <p role="status">正在读取入驻申请…</p>}
+          {loaded && !loading && !error && !applications.length && (
+            <p>暂无自主入驻申请。</p>
+          )}
         </div>
       </section>
       <section className="technician-invite-card">
@@ -353,7 +463,7 @@ export function TechniciansWorkspace({
           />
           <button
             className="primary-action"
-            disabled={inviteBusy}
+            disabled={inviteBusy || loading}
             onClick={() => void createInvitation()}
           >
             {inviteBusy ? "处理中…" : "生成一次性邀请"}
@@ -416,7 +526,7 @@ export function TechniciansWorkspace({
               )}
             </div>
           ))}
-          {!loading && invitations.length === 0 && (
+          {loaded && !loading && !error && invitations.length === 0 && (
             <p>尚未生成真实技师邀请。</p>
           )}
         </div>
@@ -472,12 +582,12 @@ export function TechniciansWorkspace({
           </article>
         ))}
       </div>
-      {!loading && rows.length === 0 && (
+      {loaded && !loading && !error && rows.length === 0 && (
         <div className="catalog-empty">
           {needle ? "没有匹配的技师" : "当前组织暂无已启用技师"}
         </div>
       )}
-      {selectedTechnicianId && (
+      {loaded && selectedTechnicianId && (
         <AdminTechnicianProfilePanel
           key={`${organizationId}:${selectedTechnicianId}:${token}`}
           token={token}
@@ -486,6 +596,7 @@ export function TechniciansWorkspace({
           application={applications.find(
             (item) => item.technicianId === selectedTechnicianId,
           )}
+          onReloadApplication={load}
           onClose={() => setSelectedTechnicianId("")}
         />
       )}
@@ -498,12 +609,14 @@ function AdminTechnicianProfilePanel({
   organizationId,
   technicianId,
   application,
+  onReloadApplication,
   onClose,
 }: {
   token: string;
   organizationId: string;
   technicianId: string;
   application?: TechnicianOnboardingReviewProfile;
+  onReloadApplication: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [profile, setProfile] = useState<TechnicianProfile | null>(null);
@@ -523,6 +636,7 @@ function AdminTechnicianProfilePanel({
   const [identityPreview, setIdentityPreview] = useState<{
     kind: IdentityDocumentKind;
     url: string;
+    snapshot: string;
   } | null>(null);
   const requests = useMemo(createLatestRequest, []);
   const identityRequests = useMemo(createLatestRequest, []);
@@ -532,6 +646,14 @@ function AdminTechnicianProfilePanel({
     technicianId,
   );
   const { profile: profilePath, reviews: reviewsPath } = profilePaths;
+  const snapshotMatches = technicianReviewSnapshotMatches(profile, application);
+  const applicationSnapshotStale = Boolean(application && !snapshotMatches);
+  const identitySnapshot =
+    profile && application && snapshotMatches
+      ? `${profile.technicianId}:${application.version}`
+      : "";
+  const currentIdentitySnapshot = useRef(identitySnapshot);
+  currentIdentitySnapshot.current = identitySnapshot;
 
   const load = useCallback(async () => {
     if (operationBusy.current) return;
@@ -567,6 +689,13 @@ function AdminTechnicianProfilePanel({
   const dirty = Boolean(
     profile && draft && profileHasUnsavedChanges(profile, draft),
   );
+  async function reloadDisplayedApplication() {
+    if (operationBusy.current || loading || dirty) return;
+    const stillOpen = requests.begin();
+    if (application && !(await onReloadApplication())) return;
+    if (!stillOpen()) return;
+    await load();
+  }
   useBackgroundRefresh(
     () => void load(),
     !dirty && !saving && !reviewSavingId && !loading,
@@ -611,9 +740,19 @@ function AdminTechnicianProfilePanel({
     };
   }, [identityPreview?.url]);
 
+  useEffect(() => {
+    identityRequests.invalidate();
+    setIdentityPreview(null);
+    setIdentityLoadingKind(null);
+  }, [identitySnapshot, identityRequests]);
+
   async function previewIdentityDocument(kind: IdentityDocumentKind) {
-    if (!application || identityLoadingKind) return;
-    const isCurrent = identityRequests.begin();
+    if (!application || !identitySnapshot || identityLoadingKind) return;
+    const isCurrent = beginScopedWorkspaceRequest(
+      identityRequests,
+      identitySnapshot,
+      () => currentIdentitySnapshot.current,
+    );
     setIdentityLoadingKind(kind);
     setError("");
     try {
@@ -628,7 +767,7 @@ function AdminTechnicianProfilePanel({
         URL.revokeObjectURL(url);
         return;
       }
-      setIdentityPreview({ kind, url });
+      setIdentityPreview({ kind, url, snapshot: identitySnapshot });
     } catch (caught) {
       if (isCurrent()) {
         setError(
@@ -719,7 +858,13 @@ function AdminTechnicianProfilePanel({
     action: "submit-review" | "approve" | "reject" | "publish" | "unpublish",
   ) {
     if (!profile || !draft || loading || operationBusy.current) return;
-    if ((action === "approve" || action === "publish" || action === "reject") && dirty) return;
+    const reviewAction =
+      action === "approve" || action === "publish" || action === "reject";
+    if (reviewAction && (dirty || applicationSnapshotStale)) return;
+    const expectedVersion = displayedTechnicianReviewVersion(
+      profile,
+      application,
+    );
     const labels = {
       "submit-review":
         "确认保存当前最新照片和真实资料，并提交后台审核？姓名、年龄段可后补。",
@@ -765,7 +910,11 @@ function AdminTechnicianProfilePanel({
           : await request<TechnicianProfile>(
               profilePaths.profileAction(action),
               token,
-              action === "reject" ? { reason, expectedVersion: profile.version } : action === "approve" ? { expectedVersion: profile.version } : {},
+              action === "reject"
+                ? { reason, expectedVersion }
+                : action === "approve"
+                  ? { expectedVersion }
+                  : {},
             );
       if (!value || !isCurrent()) return;
       setProfile(value);
@@ -781,6 +930,7 @@ function AdminTechnicianProfilePanel({
               ? "资料已公开，客户端将读取同一份资料。"
               : "资料已停止公开，历史订单和评价未删除。",
       );
+      if (application) await onReloadApplication();
     } catch (caught) {
       if (isCurrent())
         setError(caught instanceof Error ? caught.message : "资料状态更新失败");
@@ -849,7 +999,7 @@ function AdminTechnicianProfilePanel({
           <button
             className="ghost-action"
             disabled={loading || saving || Boolean(reviewSavingId) || dirty}
-            onClick={() => void load()}
+            onClick={() => void reloadDisplayedApplication()}
           >
             <RefreshCw size={15} className={loading ? "spinning" : ""} />
             刷新
@@ -862,6 +1012,20 @@ function AdminTechnicianProfilePanel({
       {loading && <div className="catalog-empty">正在读取技师资料…</div>}
       {error && <div className="catalog-error">{error}</div>}
       {message && <div className="profile-admin-success">{message}</div>}
+      {applicationSnapshotStale && profile && (
+        <div className="catalog-error" role="alert">
+          <p>
+            私密入驻资料与当前技师资料版本不一致，已暂停审核通过、退回和发布，并清除旧证件预览。请重新读取申请，再核验当前版本。
+          </p>
+          <button
+            className="ghost-action"
+            disabled={loading || saving || Boolean(reviewSavingId) || dirty}
+            onClick={() => void reloadDisplayedApplication()}
+          >
+            重新读取入驻申请
+          </button>
+        </div>
+      )}
       {profile && draft && !loading && (
         <>
           <div className="profile-admin-summary">
@@ -978,7 +1142,11 @@ function AdminTechnicianProfilePanel({
                         key={kind}
                         type="button"
                         className="ghost-action identity-preview-action"
-                        disabled={!uploaded || Boolean(identityLoadingKind)}
+                        disabled={
+                          applicationSnapshotStale ||
+                          !uploaded ||
+                          Boolean(identityLoadingKind)
+                        }
                         onClick={() => void previewIdentityDocument(kind)}
                       >
                         <IdCard size={15} />
@@ -1216,13 +1384,27 @@ function AdminTechnicianProfilePanel({
                 <button
                   className="primary-action compact"
                   disabled={
-                    saving || dirty || profile.status !== "PENDING_REVIEW"
+                    saving ||
+                    dirty ||
+                    applicationSnapshotStale ||
+                    profile.status !== "PENDING_REVIEW"
                   }
                   onClick={() => void runWorkflowAction("approve")}
                 >
                   审核通过
                 </button>
-                <button className="danger-action" disabled={saving || dirty || profile.status !== "PENDING_REVIEW"} onClick={() => void runWorkflowAction("reject")}>退回修改</button>
+                <button
+                  className="danger-action"
+                  disabled={
+                    saving ||
+                    dirty ||
+                    applicationSnapshotStale ||
+                    profile.status !== "PENDING_REVIEW"
+                  }
+                  onClick={() => void runWorkflowAction("reject")}
+                >
+                  退回修改
+                </button>
                 {profile.status === "PUBLISHED" ? (
                   <button
                     className="danger-action"
@@ -1234,7 +1416,12 @@ function AdminTechnicianProfilePanel({
                 ) : (
                   <button
                     className="primary-action compact"
-                    disabled={saving || dirty || profile.status !== "APPROVED"}
+                    disabled={
+                      saving ||
+                      dirty ||
+                      applicationSnapshotStale ||
+                      profile.status !== "APPROVED"
+                    }
                     onClick={() => void runWorkflowAction("publish")}
                   >
                     发布到客户端
@@ -1329,7 +1516,7 @@ function AdminTechnicianProfilePanel({
               </p>
             </aside>
           </div>
-          {identityPreview && (
+          {identityPreview && identityPreview.snapshot === identitySnapshot && (
             <div
               className="identity-preview-backdrop"
               role="dialog"
