@@ -530,7 +530,7 @@ export class TechniciansService {
       return this.applicationStatus(principal);
     }
     this.assertH5Editable(current);
-    await this.assertH5ApplicationComplete(current);
+    await this.assertApplicationComplete(current);
     await this.changeStatus(
       principal,
       current,
@@ -742,6 +742,7 @@ export class TechniciansService {
       throw new ConflictException("当前资料状态不能重复提交审核");
     }
     this.assertProfileComplete(current);
+    await this.assertSelfRegisteredApplicationComplete(current);
     const updated = await this.changeStatus(
       principal,
       current,
@@ -1025,6 +1026,7 @@ export class TechniciansService {
       throw new ConflictException("当前资料状态不能重复提交审核");
     }
     this.assertProfileComplete(current);
+    await this.assertSelfRegisteredApplicationComplete(current);
     const updated = await this.changeStatus(
       principal,
       current,
@@ -1054,9 +1056,7 @@ export class TechniciansService {
       throw new ConflictException("仅待审核资料可以批准");
     }
     this.assertProfileComplete(current);
-    if (current.registrationChannel === "WECHAT_H5") {
-      await this.assertH5ApplicationComplete(current);
-    }
+    await this.assertSelfRegisteredApplicationComplete(current);
     const updated = await this.changeStatus(
       principal,
       current,
@@ -1084,6 +1084,7 @@ export class TechniciansService {
       throw new ConflictException("仅已批准资料可以发布");
     }
     this.assertProfileComplete(current);
+    await this.assertSelfRegisteredApplicationComplete(current);
     const updated = await this.changeStatus(
       principal,
       current,
@@ -1698,7 +1699,19 @@ export class TechniciansService {
     }
   }
 
-  private async assertH5ApplicationComplete(profile: ProfileRecord) {
+  private async assertSelfRegisteredApplicationComplete(
+    profile: ProfileRecord,
+  ) {
+    if (
+      profile.registrationChannel === "WECHAT_H5" ||
+      (profile.selfRegistered &&
+        profile.registrationChannel === "WECHAT_MINIAPP")
+    ) {
+      await this.assertApplicationComplete(profile);
+    }
+  }
+
+  private async assertApplicationComplete(profile: ProfileRecord) {
     const serviceIds = this.stringArray(profile.serviceIds ?? [], "擅长项目");
     const documents = await this.prisma.technicianIdentityDocument.findMany({
       where: { profileId: profile.id },

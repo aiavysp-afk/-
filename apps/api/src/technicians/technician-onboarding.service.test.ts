@@ -32,6 +32,12 @@ const profile = (overrides = {}) => ({
   certificates: [],
   status: "PENDING_REVIEW",
   selfRegistered: true,
+  registrationChannel: "WECHAT_MINIAPP",
+  realNameEncrypted: "TEST-ENCRYPTED-NAME",
+  serviceCity: "郑州市",
+  serviceAreas: ["金水区"],
+  availableTimeSlots: ["MON:09:00-18:00"],
+  serviceIds: ["service-1"],
   rejectionReason: null,
   version: 4,
   updatedAt: new Date(),
@@ -43,14 +49,12 @@ function fixture() {
   const tx = {
     $queryRaw: vi.fn(),
     user: {
-      findUnique: vi
-        .fn()
-        .mockResolvedValue({
-          status: "ACTIVE",
-          phoneEncrypted: "TEST-ENCRYPTED",
-          phoneVerifiedAt: new Date(),
-          identities: [{ id: "wechat-identity" }],
-        }),
+      findUnique: vi.fn().mockResolvedValue({
+        status: "ACTIVE",
+        phoneEncrypted: "TEST-ENCRYPTED",
+        phoneVerifiedAt: new Date(),
+        identities: [{ id: "wechat-identity" }],
+      }),
     },
     organization: { findMany: vi.fn().mockResolvedValue([{ id: "org" }]) },
     staffMembership: {
@@ -79,6 +83,12 @@ function fixture() {
       upsert: vi.fn().mockResolvedValue(current),
     },
     technicianPhoto: { findFirst: vi.fn().mockResolvedValue({ id: "photo" }) },
+    technicianIdentityDocument: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue([{ kind: "ID_FRONT" }, { kind: "ID_BACK" }]),
+    },
+    service: { count: vi.fn().mockResolvedValue(1) },
     staffMembership: { findFirst: vi.fn().mockResolvedValue(null) },
     technicianReview: {
       aggregate: vi
@@ -235,6 +245,59 @@ describe("微信自主入驻审核", () => {
         where: { id: "profile", status: "PENDING_REVIEW", version: 4 },
       }),
     );
+  });
+  it.each([
+    "submitAdminProfile",
+    "submitOwnProfile",
+    "approve",
+    "publish",
+  ] as const)(
+    "native %s cannot bypass complete private application material through older profile routes",
+    async (action) => {
+      const f = fixture();
+      f.current.status =
+        action === "approve"
+          ? "PENDING_REVIEW"
+          : action === "publish"
+            ? "APPROVED"
+            : "DRAFT";
+      if (action === "submitOwnProfile")
+        f.prisma.staffMembership.findFirst.mockResolvedValue({
+          organizationId: "org",
+        } as never);
+      f.prisma.technicianIdentityDocument.findMany.mockResolvedValue([
+        { kind: "ID_FRONT" },
+      ]);
+      const request =
+        action === "submitOwnProfile"
+          ? f.service.submitOwnProfile(applicant)
+          : action === "approve"
+            ? f.service.approve(administrator, "org", "applicant", 4)
+            : f.service[action](administrator, "org", "applicant");
+      await expect(request).rejects.toThrow("完整入驻资料");
+      expect(f.prisma.$transaction).not.toHaveBeenCalled();
+      expect(f.tx.staffMembership.create).not.toHaveBeenCalled();
+      expect(f.tx.technicianProfile.updateMany).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["realNameEncrypted", "serviceCity"] as const)(
+    "native approval requires %s even when public portrait information is complete",
+    async (field) => {
+      const f = fixture();
+      f.current[field] = "";
+      await expect(
+        f.service.approve(administrator, "org", "applicant", 4),
+      ).rejects.toThrow("完整入驻资料");
+      expect(f.prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
+  it("native approval rechecks that selected services are still published", async () => {
+    const f = fixture();
+    f.prisma.service.count.mockResolvedValue(0);
+    await expect(
+      f.service.approve(administrator, "org", "applicant", 4),
+    ).rejects.toThrow("擅长项目状态已变化");
+    expect(f.prisma.$transaction).not.toHaveBeenCalled();
   });
   it.each([
     { organizationId: "org", status: "SUSPENDED" },
