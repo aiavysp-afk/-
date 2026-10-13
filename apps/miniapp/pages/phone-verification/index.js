@@ -22,6 +22,7 @@ Page({
         requiredEntry: false,
         friendPaymentReturn: false,
         technicianReturn: false,
+        staffReturn: false,
     },
     returnPath: "",
     countdownTimer: undefined,
@@ -31,13 +32,14 @@ Page({
             requiredEntry: options.required === "1",
             friendPaymentReturn: Boolean((0, friend_payment_1.safeFriendPaymentReturnPath)(options.returnPath)),
             technicianReturn: this.returnPath.startsWith("/pages/technician-"),
+            staffReturn: this.returnPath === "/pages/admin-login/index",
         });
         const session = (0, auth_1.getStoredSession)();
         if (!this.data.friendPaymentReturn &&
             session &&
             !(0, auth_1.needsPhoneVerification)(session)) {
             this.setData({ completed: true, wechatReady: true });
-            this.returnToTechnician();
+            this.returnToEntry();
         }
         else if (!this.data.friendPaymentReturn && session) {
             this.setData({ wechatReady: true });
@@ -47,8 +49,16 @@ Page({
         if (this.countdownTimer)
             clearInterval(this.countdownTimer);
     },
-    returnToTechnician() {
-        if (this.returnPath.startsWith("/pages/technician-") && this.data.completed)
+    returnToEntry() {
+        var _a;
+        if (!this.data.completed)
+            return;
+        if (this.returnPath === "/pages/admin-login/index" &&
+            ((_a = (0, auth_1.getStoredSession)()) === null || _a === void 0 ? void 0 : _a.user.phoneVerified) === true) {
+            wx.redirectTo({ url: "/pages/admin-login/index" });
+            return;
+        }
+        if (this.returnPath.startsWith("/pages/technician-"))
             wx.redirectTo({ url: this.returnPath });
     },
     ensureAgreementAccepted() {
@@ -76,7 +86,7 @@ Page({
             if (this.data.friendPaymentReturn || !(0, auth_1.needsPhoneVerification)(session)) {
                 this.setData({ completed: true, wechatReady: true });
                 wx.showToast({ title: "账号已登录", icon: "success" });
-                this.returnToTechnician();
+                this.returnToEntry();
                 return;
             }
             this.setData({ wechatReady: true, phoneFocused: false });
@@ -107,7 +117,7 @@ Page({
         const code = (_a = event.detail.code) === null || _a === void 0 ? void 0 : _a.trim();
         if (!code) {
             const cancelled = /deny|cancel/i.test((_b = event.detail.errMsg) !== null && _b !== void 0 ? _b : "");
-            const retryHint = this.data.technicianReturn
+            const retryHint = this.data.technicianReturn || this.data.staffReturn
                 ? "请重新点击微信手机号一键验证"
                 : "可重试或改用短信验证码";
             const message = cancelled
@@ -143,7 +153,7 @@ Page({
                 actionStatus: "微信手机号验证完成",
             });
             wx.showToast({ title: "登录成功", icon: "success" });
-            this.returnToTechnician();
+            this.returnToEntry();
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "微信手机号验证失败";
@@ -153,7 +163,7 @@ Page({
             });
             wx.showModal({
                 title: "微信手机号验证失败",
-                content: this.data.technicianReturn
+                content: this.data.technicianReturn || this.data.staffReturn
                     ? `${message}。请重新点击微信手机号一键验证；如仍失败，请联系平台客服。`
                     : `${message}。你也可以改用短信验证码。`,
                 confirmText: "我知道了",
@@ -298,7 +308,7 @@ Page({
             const result = await (0, auth_1.confirmSmsPhoneVerification)(this.data.phone, this.data.smsCode);
             this.setData({ completed: true, maskedPhone: result.maskedPhone });
             wx.showToast({ title: "登录成功", icon: "success" });
-            this.returnToTechnician();
+            this.returnToEntry();
         }
         catch (error) {
             const message = error instanceof Error ? error.message : "验证码登录失败";
@@ -318,6 +328,10 @@ Page({
         }
     },
     enterHome() {
+        if (this.data.staffReturn) {
+            this.returnToEntry();
+            return;
+        }
         if (this.returnPath) {
             if (!this.data.completed || !(0, auth_1.getStoredSession)())
                 return;
@@ -327,6 +341,10 @@ Page({
         wx.switchTab({ url: "/pages/home/index" });
     },
     finish() {
+        if (this.data.staffReturn) {
+            this.returnToEntry();
+            return;
+        }
         if (this.returnPath) {
             if (!this.data.completed || !(0, auth_1.getStoredSession)())
                 return;

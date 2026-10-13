@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
 const api_1 = require("../../utils/api");
+const ENTRY = "/pages/admin-login/index";
 Page({
     data: {
         pairCode: "",
@@ -13,7 +14,7 @@ Page({
     },
     sourceToken: "",
     onLoad() {
-        (0, auth_1.requireVerifiedCustomerAccess)();
+        (0, auth_1.requireVerifiedCustomerAccess)(ENTRY);
     },
     onPairInput(event) {
         this.sourceToken = "";
@@ -44,7 +45,9 @@ Page({
             if (!/^[A-Za-z0-9_-]{22}$/.test(this.data.pairCode))
                 throw Error("请输入本人工作人员端显示的22位配对码");
             const session = await (0, auth_1.loginWithWechat)();
-            const preview = await (0, api_1.api)("/auth/browser-login/inspect", "POST", { pairCode: this.data.pairCode });
+            if (!(0, auth_1.requireVerifiedCustomerAccess)(ENTRY))
+                return;
+            const preview = await (0, api_1.api)("/auth/browser-login/inspect", "POST", { pairCode: this.data.pairCode }, undefined, ENTRY);
             this.sourceToken = session.accessToken;
             this.setData({ preview });
         }
@@ -78,7 +81,7 @@ Page({
             await (0, api_1.api)("/auth/browser-login/approve", "POST", {
                 pairCode: this.data.pairCode,
                 confirmationCode: this.data.confirmationCode,
-            });
+            }, undefined, ENTRY);
             this.sourceToken = "";
             this.setData({ approved: true, confirmationCode: "", preview: null });
         }

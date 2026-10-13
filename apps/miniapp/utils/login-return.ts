@@ -8,7 +8,8 @@ export function safeLoginReturnPath(value?: string) {
     return "";
   }
   return decoded === "/pages/technician-onboarding/index" ||
-    decoded === "/pages/technician-workbench/index"
+    decoded === "/pages/technician-workbench/index" ||
+    decoded === "/pages/admin-login/index"
     ? decoded
     : safeFriendPaymentReturnPath(value);
 }

@@ -12,7 +12,8 @@ function safeLoginReturnPath(value) {
         return "";
     }
     return decoded === "/pages/technician-onboarding/index" ||
-        decoded === "/pages/technician-workbench/index"
+        decoded === "/pages/technician-workbench/index" ||
+        decoded === "/pages/admin-login/index"
         ? decoded
         : (0, friend_payment_1.safeFriendPaymentReturnPath)(value);
 }

@@ -30,6 +30,7 @@ Page({
     requiredEntry: false,
     friendPaymentReturn: false,
     technicianReturn: false,
+    staffReturn: false,
   },
   returnPath: "",
   countdownTimer: undefined as number | undefined,
@@ -41,6 +42,7 @@ Page({
         safeFriendPaymentReturnPath(options.returnPath),
       ),
       technicianReturn: this.returnPath.startsWith("/pages/technician-"),
+      staffReturn: this.returnPath === "/pages/admin-login/index",
     });
     const session = getStoredSession();
     if (
@@ -49,7 +51,7 @@ Page({
       !needsPhoneVerification(session)
     ) {
       this.setData({ completed: true, wechatReady: true });
-      this.returnToTechnician();
+      this.returnToEntry();
     } else if (!this.data.friendPaymentReturn && session) {
       this.setData({ wechatReady: true });
     }
@@ -57,8 +59,16 @@ Page({
   onUnload() {
     if (this.countdownTimer) clearInterval(this.countdownTimer);
   },
-  returnToTechnician() {
-    if (this.returnPath.startsWith("/pages/technician-") && this.data.completed)
+  returnToEntry() {
+    if (!this.data.completed) return;
+    if (
+      this.returnPath === "/pages/admin-login/index" &&
+      getStoredSession()?.user.phoneVerified === true
+    ) {
+      wx.redirectTo({ url: "/pages/admin-login/index" });
+      return;
+    }
+    if (this.returnPath.startsWith("/pages/technician-"))
       wx.redirectTo({ url: this.returnPath });
   },
   ensureAgreementAccepted() {
@@ -83,7 +93,7 @@ Page({
       if (this.data.friendPaymentReturn || !needsPhoneVerification(session)) {
         this.setData({ completed: true, wechatReady: true });
         wx.showToast({ title: "账号已登录", icon: "success" });
-        this.returnToTechnician();
+        this.returnToEntry();
         return;
       }
       this.setData({ wechatReady: true, phoneFocused: false });
@@ -113,7 +123,7 @@ Page({
     const code = event.detail.code?.trim();
     if (!code) {
       const cancelled = /deny|cancel/i.test(event.detail.errMsg ?? "");
-      const retryHint = this.data.technicianReturn
+      const retryHint = this.data.technicianReturn || this.data.staffReturn
         ? "请重新点击微信手机号一键验证"
         : "可重试或改用短信验证码";
       const message = cancelled
@@ -149,7 +159,7 @@ Page({
         actionStatus: "微信手机号验证完成",
       });
       wx.showToast({ title: "登录成功", icon: "success" });
-      this.returnToTechnician();
+      this.returnToEntry();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "微信手机号验证失败";
@@ -159,7 +169,7 @@ Page({
       });
       wx.showModal({
         title: "微信手机号验证失败",
-        content: this.data.technicianReturn
+        content: this.data.technicianReturn || this.data.staffReturn
           ? `${message}。请重新点击微信手机号一键验证；如仍失败，请联系平台客服。`
           : `${message}。你也可以改用短信验证码。`,
         confirmText: "我知道了",
@@ -303,7 +313,7 @@ Page({
       );
       this.setData({ completed: true, maskedPhone: result.maskedPhone });
       wx.showToast({ title: "登录成功", icon: "success" });
-      this.returnToTechnician();
+      this.returnToEntry();
     } catch (error) {
       const message = error instanceof Error ? error.message : "验证码登录失败";
       this.setData({
@@ -321,6 +331,10 @@ Page({
     }
   },
   enterHome() {
+    if (this.data.staffReturn) {
+      this.returnToEntry();
+      return;
+    }
     if (this.returnPath) {
       if (!this.data.completed || !getStoredSession()) return;
       wx.redirectTo({ url: this.returnPath });
@@ -329,6 +343,10 @@ Page({
     wx.switchTab({ url: "/pages/home/index" });
   },
   finish() {
+    if (this.data.staffReturn) {
+      this.returnToEntry();
+      return;
+    }
     if (this.returnPath) {
       if (!this.data.completed || !getStoredSession()) return;
       wx.redirectTo({ url: this.returnPath });

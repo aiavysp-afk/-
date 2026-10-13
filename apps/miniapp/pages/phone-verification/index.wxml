@@ -2,7 +2,7 @@
   <view class="nav-bar">
     <text wx:if="{{!requiredEntry}}" class="nav-back" bindtap="finish">‹</text>
     <view wx:else class="nav-space" />
-    <text class="nav-title">{{technicianReturn ? '技师入驻登录' : '客户登录'}}</text>
+    <text class="nav-title">{{staffReturn ? '工作人员身份验证' : technicianReturn ? '技师入驻登录' : '客户登录'}}</text>
     <view class="nav-space" />
   </view>
 
@@ -32,20 +32,20 @@
     <view class="success-mark">✓</view>
     <text class="login-title">登录成功</text>
     <text class="login-subtitle">{{friendPaymentReturn?'微信身份已确认，可继续好友代付':maskedPhone || '微信账号与手机号均已完成验证'}}</text>
-    <button class="primary-button" bindtap="enterHome">{{friendPaymentReturn?'返回好友代付':technicianReturn?'继续技师入驻':'进入中原到家'}}</button>
+    <button class="primary-button" bindtap="enterHome">{{staffReturn?'继续本人设备登录确认':friendPaymentReturn?'返回好友代付':technicianReturn?'继续技师入驻':'进入中原到家'}}</button>
   </view>
 
   <view wx:elif="{{!wechatReady}}" class="login-card wechat-card">
     <text class="stage-kicker">第一步</text>
     <text class="login-title">微信授权登录</text>
-    <text class="login-subtitle">{{technicianReturn ? '用于识别本人入驻申请；无需设置密码或填写配对码' : '用于识别你的订单账号；新用户授权后自动创建账号'}}</text>
+    <text class="login-subtitle">{{staffReturn ? '用于确认本人微信身份；只有已授权工作人员可以继续后台登录' : technicianReturn ? '用于识别本人入驻申请；无需设置密码或填写配对码' : '用于识别你的订单账号；新用户授权后自动创建账号'}}</text>
     <button
       class="primary-button"
       bindtap="authorizeWechat"
       loading="{{busy && loginMode === 'WECHAT'}}"
       disabled="{{busy}}"
     >微信授权登录</button>
-    <view class="flow-note"><text>1</text><text>{{friendPaymentReturn?'重新确认当前小程序的微信身份后，可直接返回好友代付，无需授权手机号。':technicianReturn?'微信手机号验证后直接进入入驻资料页。':'完成授权后可一键验证微信手机号，或使用短信验证码。'}}</text></view>
+    <view class="flow-note"><text>1</text><text>{{staffReturn?'完成本人微信身份和手机号验证后，返回工作人员登录确认页。不会新增管理权限，也不会自动确认配对。':friendPaymentReturn?'重新确认当前小程序的微信身份后，可直接返回好友代付，无需授权手机号。':technicianReturn?'微信手机号验证后直接进入入驻资料页。':'完成授权后可一键验证微信手机号，或使用短信验证码。'}}</text></view>
     <text wx:if="{{error}}" class="error-message">{{error}}</text>
   </view>
 
@@ -53,7 +53,7 @@
     <view class="stage-ready"><text>✓</text><text>微信授权已完成</text></view>
     <text class="stage-kicker">第二步</text>
     <text class="login-title">验证联系手机号</text>
-    <text class="login-subtitle">{{technicianReturn ? '验证本人手机号后继续填写入驻资料，无需设置密码' : '手机号用于预约联系、订单通知与售后核验'}}</text>
+    <text class="login-subtitle">{{staffReturn ? '验证本人手机号后继续后台登录确认；不向客服提供验证码或动态码' : technicianReturn ? '验证本人手机号后继续填写入驻资料，无需设置密码' : '手机号用于预约联系、订单通知与售后核验'}}</text>
 
     <button
       class="wechat-phone-button"
@@ -64,7 +64,8 @@
     >{{busy && loginMode === 'WECHAT_PHONE' ? '正在验证…' : '微信手机号一键验证'}}</button>
 
     <view wx:if="{{technicianReturn}}" class="flow-note"><text>✓</text><text>完成微信手机号一键验证后即可填写入驻资料。</text></view>
-    <block wx:if="{{!technicianReturn}}">
+    <view wx:if="{{staffReturn}}" class="flow-note"><text>✓</text><text>完成本人手机号验证后返回登录确认页；后台仍按已有角色和动态码规则核验。</text></view>
+    <block wx:if="{{!technicianReturn && !staffReturn}}">
     <view class="method-divider"><view /><text>或使用短信验证码</text><view /></view>
 
     <view class="field-shell {{phoneFocused ? 'is-focused' : ''}}">

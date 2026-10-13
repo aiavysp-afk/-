@@ -5,6 +5,7 @@ import {
 } from "../../utils/auth";
 import { api } from "../../utils/api";
 type Preview = { audience: string; expiresAt: string; provider: string };
+const ENTRY = "/pages/admin-login/index";
 Page({
   data: {
     pairCode: "",
@@ -16,7 +17,7 @@ Page({
   },
   sourceToken: "",
   onLoad() {
-    requireVerifiedCustomerAccess();
+    requireVerifiedCustomerAccess(ENTRY);
   },
   onPairInput(event: { detail: { value: string } }) {
     this.sourceToken = "";
@@ -46,10 +47,13 @@ Page({
       if (!/^[A-Za-z0-9_-]{22}$/.test(this.data.pairCode))
         throw Error("请输入本人工作人员端显示的22位配对码");
       const session = await loginWithWechat();
+      if (!requireVerifiedCustomerAccess(ENTRY)) return;
       const preview = await api<Preview>(
         "/auth/browser-login/inspect",
         "POST",
         { pairCode: this.data.pairCode },
+        undefined,
+        ENTRY,
       );
       this.sourceToken = session.accessToken;
       this.setData({ preview });
@@ -78,10 +82,16 @@ Page({
       if (!confirmed) return;
       if (getStoredSession()?.accessToken !== this.sourceToken)
         throw Error("微信会话已变化，请重新读取并核验");
-      await api("/auth/browser-login/approve", "POST", {
-        pairCode: this.data.pairCode,
-        confirmationCode: this.data.confirmationCode,
-      });
+      await api(
+        "/auth/browser-login/approve",
+        "POST",
+        {
+          pairCode: this.data.pairCode,
+          confirmationCode: this.data.confirmationCode,
+        },
+        undefined,
+        ENTRY,
+      );
       this.sourceToken = "";
       this.setData({ approved: true, confirmationCode: "", preview: null });
     } catch (e) {
