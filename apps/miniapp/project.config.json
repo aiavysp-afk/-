@@ -1,7 +1,10 @@
 {
   "description": "中原到家微信小程序",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": ".turbo" }
+    ],
     "include": []
   },
   "setting": {
