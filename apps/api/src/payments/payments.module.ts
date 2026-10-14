@@ -21,6 +21,7 @@ import { StoredValueRechargesService } from "./stored-value-recharges.service.js
 import { StoredValueRechargeRecoveryWorker } from "./stored-value-recharge-recovery.worker.js";
 import { FriendPaymentsController } from "./friend-payments.controller.js";
 import { FriendPaymentsService } from "./friend-payments.service.js";
+import { WechatPayerResolver } from "./wechat-payer-resolver.service.js";
 
 @Module({
   imports: [AuthModule, OrdersModule],
@@ -38,6 +39,7 @@ import { FriendPaymentsService } from "./friend-payments.service.js";
     PaymentExpiryWorker,
     WechatPayClient,
     WechatPrepayService,
+    WechatPayerResolver,
     WechatPaymentsService,
     WechatRecoveryService,
     WechatRecoveryWorker,

@@ -8,6 +8,142 @@ import { AuthService } from "./auth.service.js";
 import type { WechatMiniappClient } from "./wechat-miniapp.client.js";
 
 describe("AuthService", () => {
+  it("SMS sessions cannot inherit a canonical user's staff roles, MFA grants or WeChat payer identity", async () => {
+    const session = {
+      id: "sms",
+      authChannel: "CUSTOMER_SMS",
+      authProvider: "customer-sms",
+      wechatIdentityId: null,
+      customerPhoneHash: "verified-phone-hash",
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      mfaVerifiedUntil: new Date(Date.now() + 60_000),
+      user: {
+        id: "user",
+        status: "ACTIVE",
+        displayName: "客户",
+        phoneEncrypted: "encrypted",
+        phoneVerifiedAt: new Date(),
+        memberships: [
+          { organizationId: "org", role: UserRole.ADMIN },
+          { organizationId: "org", role: UserRole.CUSTOMER },
+        ],
+      },
+    };
+    const prisma = {
+      session: {
+        findUnique: vi.fn().mockResolvedValue(session),
+        update: vi.fn(),
+      },
+    };
+    const config = new ConfigService({
+      CUSTOMER_SMS_LOGIN_ENABLED: "true",
+    }) as ConfigService<AppEnv, true>;
+    const service = new AuthService(
+      prisma as never,
+      {
+        hashSessionToken: () => "hash",
+        decrypt: () => "13800138000",
+        hashPhoneVerification: () => "verified-phone-hash",
+      } as never,
+      {} as never,
+      config,
+    );
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({
+      authProvider: "customer-sms",
+      wechatIdentityId: null,
+      memberships: [{ organizationId: "org", role: UserRole.CUSTOMER }],
+      mfaVerifiedUntil: null,
+      staffVerifiedUntil: null,
+      trustedDeviceId: null,
+    });
+    session.wechatIdentityId = "forged" as never;
+    await expect(service.authenticate("x".repeat(40))).rejects.toThrow(
+      "手机号登录状态无效",
+    );
+  });
+  it("SMS phone hash snapshot invalidates changed reverified phones but allows same-phone timestamp refresh", async () => {
+    const session = {
+      id: "sms",
+      authChannel: "CUSTOMER_SMS",
+      authProvider: "customer-sms",
+      wechatIdentityId: null,
+      customerPhoneHash: "hash:13800138000",
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      user: {
+        id: "user",
+        status: "ACTIVE",
+        displayName: "客户",
+        phoneEncrypted: "13800138000",
+        phoneVerifiedAt: new Date(),
+        memberships: [],
+      },
+    };
+    const service = new AuthService(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue(session),
+          update: vi.fn(),
+        },
+      } as never,
+      {
+        hashSessionToken: () => "hash",
+        decrypt: (phone: string) => phone,
+        hashPhoneVerification: (_scope: string, phone: string) =>
+          `hash:${phone}`,
+      } as never,
+      {} as never,
+      new ConfigService({ CUSTOMER_SMS_LOGIN_ENABLED: "true" }) as never,
+    );
+    session.user.phoneVerifiedAt = new Date(Date.now() + 1000);
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({
+      phoneVerified: true,
+    });
+    session.user.phoneEncrypted = "13900139000";
+    await expect(service.authenticate("x".repeat(40))).rejects.toThrow(
+      "已变更",
+    );
+    session.user.phoneVerifiedAt = null as never;
+    await expect(service.authenticate("x".repeat(40))).rejects.toThrow(
+      "手机号登录状态无效",
+    );
+  });
+  it("turning customer SMS login off invalidates its existing sessions without affecting WeChat", async () => {
+    const session = {
+      id: "sms",
+      authChannel: "CUSTOMER_SMS",
+      authProvider: "customer-sms",
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      user: {
+        id: "user",
+        status: "ACTIVE",
+        phoneEncrypted: "encrypted",
+        phoneVerifiedAt: new Date(),
+        memberships: [],
+      },
+    };
+    const service = new AuthService(
+      {
+        session: {
+          findUnique: vi.fn().mockResolvedValue(session),
+          update: vi.fn(),
+        },
+      } as never,
+      { hashSessionToken: () => "hash" } as never,
+      {} as never,
+      new ConfigService({ CUSTOMER_SMS_LOGIN_ENABLED: "false" }) as never,
+    );
+    await expect(service.authenticate("x".repeat(40))).rejects.toThrow(
+      "手机号登录状态无效",
+    );
+    session.authChannel = "WECHAT_MINIAPP";
+    session.authProvider = "wechat";
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({
+      authProvider: "wechat",
+    });
+  });
   it("refuses H5 identity binding without a UnionID", async () => {
     const auth = new AuthService(
       {} as never,
@@ -99,8 +235,8 @@ describe("AuthService", () => {
     };
     const auth = new AuthService(
       {
-        $transaction: vi.fn(
-          async (callback: (client: typeof tx) => unknown) => callback(tx),
+        $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx),
         ),
       } as never,
       {
@@ -125,13 +261,52 @@ describe("AuthService", () => {
   });
 
   it("takes native authentication provenance and phone verification only from the stored session/user", async () => {
-    const session = { id: "session", authChannel: "WECHAT_MINIAPP", authProvider: "wechat", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, mfaVerifiedUntil: null, user: { id: "user", status: "ACTIVE", displayName: "微信用户", phoneEncrypted: "encrypted-fixture", phoneVerifiedAt: new Date(), memberships: [{ organizationId: "org", role: UserRole.THERAPIST }] } };
-    const prisma = { session: { findUnique: vi.fn().mockResolvedValue(session), update: vi.fn() } };
-    const service = new AuthService(prisma as never, { hashSessionToken: () => "hash" } as never, {} as never, {} as never);
-    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({ authChannel: "WECHAT_MINIAPP", authProvider: "wechat", phoneVerified: true });
-    session.authChannel = "BROWSER"; session.user.phoneVerifiedAt = null as never;
-    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({ authChannel: "BROWSER", phoneVerified: false });
-    expect(prisma.session.findUnique).toHaveBeenCalledWith(expect.objectContaining({ include: { user: { include: { memberships: { where: { status: "ACTIVE" } } } } } }));
+    const session = {
+      id: "session",
+      authChannel: "WECHAT_MINIAPP",
+      authProvider: "wechat",
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      mfaVerifiedUntil: null,
+      user: {
+        id: "user",
+        status: "ACTIVE",
+        displayName: "微信用户",
+        phoneEncrypted: "encrypted-fixture",
+        phoneVerifiedAt: new Date(),
+        memberships: [{ organizationId: "org", role: UserRole.THERAPIST }],
+      },
+    };
+    const prisma = {
+      session: {
+        findUnique: vi.fn().mockResolvedValue(session),
+        update: vi.fn(),
+      },
+    };
+    const service = new AuthService(
+      prisma as never,
+      { hashSessionToken: () => "hash" } as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({
+      authChannel: "WECHAT_MINIAPP",
+      authProvider: "wechat",
+      phoneVerified: true,
+    });
+    session.authChannel = "BROWSER";
+    session.user.phoneVerifiedAt = null as never;
+    await expect(service.authenticate("x".repeat(40))).resolves.toMatchObject({
+      authChannel: "BROWSER",
+      phoneVerified: false,
+    });
+    expect(prisma.session.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          user: { include: { memberships: { where: { status: "ACTIVE" } } } },
+        },
+      }),
+    );
   });
   it("creates every new miniapp identity as a customer and returns only an opaque session token", async () => {
     const tx = {
@@ -196,7 +371,9 @@ describe("AuthService", () => {
     const prisma = {
       user: { update: vi.fn().mockResolvedValue({ id: "user-1" }) },
       auditLog: { create: auditCreate },
-      $transaction: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn(async (callback) =>
+        callback({ $executeRaw: vi.fn(), auditLog: { create: auditCreate } }),
+      ),
     } as unknown as PrismaService;
     const crypto = {
       encrypt: vi.fn().mockReturnValue("encrypted-phone"),
@@ -211,6 +388,8 @@ describe("AuthService", () => {
       crypto,
       wechat,
       new ConfigService({}) as ConfigService<AppEnv, true>,
+      undefined,
+      { bindVerifiedPhone: vi.fn() } as never,
     );
     const result = await auth.verifyWechatPhone(
       {
@@ -225,9 +404,11 @@ describe("AuthService", () => {
       phoneVerified: true,
       maskedPhone: "138****8000",
     });
-    expect(crypto.encrypt).toHaveBeenCalledWith("13800138000");
-    expect(JSON.stringify(auditCreate.mock.calls)).not.toContain(
-      "13800138000",
-    );
+    // The shared phone registry owns encryption and canonical-account validation.
+    expect(JSON.stringify(auditCreate.mock.calls)).not.toContain("13800138000");
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: 15000,
+      maxWait: 5000,
+    });
   });
 });

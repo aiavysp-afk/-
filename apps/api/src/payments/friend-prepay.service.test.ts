@@ -7,6 +7,8 @@ const owner: AuthPrincipal = {
   sessionId: "session",
   displayName: "客户",
   memberships: [],
+  authChannel: "WECHAT_MINIAPP",
+  authProvider: "wechat",
 };
 const friend = { ...owner, userId: "friend" };
 function setup() {
@@ -108,6 +110,23 @@ function setup() {
   };
 }
 describe("friend payment durable binding", () => {
+  it("refuses customer SMS payers before friend-payment claims or external I/O", async () => {
+    const f = setup();
+    await expect(
+      f.service.createFriendIntent(
+        {
+          ...friend,
+          authProvider: "customer-sms",
+          authChannel: "CUSTOMER_SMS",
+        },
+        "order",
+        "share",
+      ),
+    ).rejects.toThrow("切换微信一键登录");
+    expect(f.tx.payment.create).not.toHaveBeenCalled();
+    expect(f.client.prepay).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-09T08:00:00Z"));

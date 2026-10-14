@@ -42,6 +42,43 @@ test("production nginx exposes every customer authentication route", () => {
   assertAllowedMethods("= /v1/auth/logout", ["POST", "OPTIONS"]);
 });
 
+test("single-popup customer login exposes only four exact resources and rejects implicit HEAD", () => {
+  const routes = [
+    ["/v1/auth/customer-login/capabilities", "GET"],
+    ["/v1/auth/customer-login/wechat-phone", "POST"],
+    ["/v1/auth/customer-login/sms/request", "POST"],
+    ["/v1/auth/customer-login/sms/confirm", "POST"],
+  ];
+  assert.deepEqual(
+    config
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^location .*\/v1\/auth\/customer-login/.test(line)),
+    routes.map(([path]) => `location = ${path} {`),
+  );
+  for (const [path, method] of routes) {
+    const block = assertAllowedMethods(`= ${path}`, [method, "OPTIONS"]);
+    assert.ok(
+      block.includes(
+        `if ($request_method !~ ^(${method}|OPTIONS)$) { return 404; }`,
+      ),
+    );
+    assert.ok(block.includes("access_log off;"));
+    assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
+    assert.ok(block.includes("proxy_set_header X-Real-IP $remote_addr;"));
+    assert.ok(
+      block.includes(
+        "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+      ),
+    );
+    assert.doesNotMatch(
+      block,
+      /auth_request|proxy_set_header (?:Authorization|Origin)|add_header/,
+    );
+  }
+  assert.doesNotMatch(config, /location (?:\^~ |~[^\n]*)?\/v1\/auth\/\s*\{/);
+});
+
 test("production nginx exposes staff pairing and the technician workbench without opening a catch-all API", () => {
   assertAllowedMethods("= /v1/auth/browser-login/config", ["GET", "OPTIONS"]);
   assertAllowedMethods(

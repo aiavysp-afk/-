@@ -49,6 +49,7 @@
 | SMS_PROVIDER                              | mock                     | aliyun；只是渠道选择，不会自动授权真实发送                                                                                                                                                                 |
 | SMS_SEND_ENABLED                          | false                    | 阿里云短信底层提交开关；仅受控渠道验收时开启                                                                                                                                                               |
 | PHONE_VERIFICATION_SMS_ENABLED            | false                    | 登录/手机号绑定短信备用通道独立开关；不授权安全告警短信                                                                                                                                                    |
+| CUSTOMER_SMS_LOGIN_ENABLED                | false                    | 匿名客户短信登录独立门禁；还要求上行发送门禁、手机号验证码门禁、已审核签名/验证码模板与服务端受限凭据全部就绪，不授予工作人员登录或资金权限 |
 | SAFETY_NOTIFICATION_DISPATCH_ENABLED      | false                    | 安全Outbox自动投递独立开关；要求aliyun、SMS发送及真人值班门禁均通过                                                                                                                                        |
 | SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED | false                    | 已受理短信只读送达查询；要求aliyun及受限查询权限，不授权发送或重发                                                                                                                                         |
 | ALIYUN_SMS_ACCESS_KEY_ID / SECRET         | 空                       | 受限RAM身份，只放服务端受控配置，不提交Git或前端                                                                                                                                                           |
@@ -90,3 +91,19 @@
 | MFA_RECOVERY_TEST_DATABASE_URL | 受审恢复专项HTTP/DB自测；允许目标与MFA_TEST_DATABASE_URL相同，脚本拒绝普通远程库和生产库。                                                |
 
 MFA密钥沿用DATA_ENCRYPTION_KEY_BASE64加密，禁止更换该主密钥而不做受审迁移。没有默认验证器密钥、通用恢复码、关闭MFA或重置快捷变量；受审恢复也没有生产开关或复核绕过变量。详见[MFA交付](STAFF_MFA_IMPLEMENTATION.md)和[恢复交付](MFA_RECOVERY_IMPLEMENTATION.md)。
+
+## 客户单弹窗登录增量
+
+客户端普通客户入口为 `pages/phone-verification/index`，同一绿白弹窗纵向提供微信一键登录和手机号码登录。协议默认未勾选，只有明确勾选后才渲染原生 `getPhoneNumber` 按钮；微信登录码和用户授权的手机号码一起提交 `/auth/customer-login/wechat-phone`。后台以已验证手机号的服务端键控哈希复用原 `User.id`，不重写或叠加订单、余额、优惠券、消费流水；两个已经存在的不同用户 ID 或历史重复手机号必须人工核对，不能自动退休空壳账号。
+
+客户短信登录使用独立的 `/auth/customer-login/sms/request` 与 `/sms/confirm`，不依赖微信会话。真实发送缺凭据时保持关闭，客户端可以查看手机号码表单，但不能发送验证码或伪造成功。验证码五分钟过期、六十秒冷却、最多五次错误、单次消费；手机号/IP/全局发送预算和服务器可信代理链限制成本与暴力尝试。`UNKNOWN` 只是发送结果不确定，不代表已送达。
+
+短信会话仅拥有客户业务能力，绑定登录时的手机号哈希；后台换号后旧会话失效，同号验证时间刷新不使其失效。它不继承该用户的工作人员/MFA/技师能力，也不能借用旧微信 OpenID 支付。本人支付或充值时可显式进入 `forceChoice=1` 微信登录选择；旧待付订单和钱包保持不变。微信支付按本次会话的准确身份校验，而不是用户关联的第一条微信身份。工作人员、技师入驻及好友代付的原有本人确认和安全返程不变。
+
+第 `20261014050000_customer_single_step_login` 批迁移是增量表/字段，不包含用户或资金记录改写。上线应先完成隔离数据库验收、本人微信真机验证及官方代码上传；不能只更新客户端、忘记部署接口和迁移。`CUSTOMER_AUTH_ACCEPTANCE_DATABASE_URL` 只接受 loopback 上专用 `zydj_customer_auth_acceptance_*` 空库；不得使用生产 `DATABASE_URL` 兜底。既有 `scripts/verify-staff-auth-isolated.ps1` 可用 `-Acceptance customer` 创建并清理独立数据库与随机受限角色，无真实短信发送、微信付款或用户资产变更。
+
+2026-10-14 开发验收：API 906 项、小程序 250 项、契约 49 项测试通过，相关类型检查与构建通过；全部 37 批迁移在专用空 PostgreSQL 库应用成功，客户登录 15 组真实数据库验收通过。验证覆盖原用户订单/钱包/优惠券/流水逐字节保留、同手机号并发绑定、短信单次消费与费用门禁、历史重复账户拒绝自动合并、短信会话不能取得工作人员权限。并发遇到有限等待的 `LOGIN_BUSY` 时，只允许以新的微信登录码和手机号授权码重新尝试，不能重用已消费授权码。测试库与随机测试角色已清理，正式库与线上版本没有因此更改。
+
+尚未完成：官方微信工具中的弹窗视觉检查、本人真机微信手机号授权、真实短信渠道受控验收、生产迁移/API 部署和本轮小程序上传。短信凭据与签名/模板未就绪时继续保持 `CUSTOMER_SMS_LOGIN_ENABLED=false`，不能把本地测试通过表述为已上线或短信可用。部署前保留正式库备份与旧版本回退点，增量迁移先于新版 API，再核对匿名能力接口与现有会话兼容性，最后上传配套小程序；不回删增量字段，也不在回退时改写客户资产。
+
+配套生产网关必须部署本轮 `infra/nginx.production.conf` 的四个精确客户登录路由。只更新 API 或小程序会被旧网关的默认 404 拦截。新版发布脚本要求四个路由标记，并用能力 GET、缺字段的空 JSON POST、错误方法与未知子路径检查代理边界；探针不提交微信授权码、不发短信、不创建用户。既有后台来源网段、MFA 和财务路由保持不变；Nginx 发布还要求配套私有后台为同一提交版本，不能跳过该版本检查。2026-10-14 本地网关及发布回归通过，正式 Nginx 尚未切换。

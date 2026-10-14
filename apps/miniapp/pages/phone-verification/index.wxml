@@ -1,124 +1,76 @@
 <view class="login-page">
   <view class="nav-bar">
-    <text wx:if="{{!requiredEntry}}" class="nav-back" bindtap="finish">‹</text>
+    <text wx:if="{{!requiredEntry}}" class="nav-back" bindtap="finish" aria-label="返回">‹</text>
     <view wx:else class="nav-space" />
-    <text class="nav-title">{{staffReturn ? '工作人员身份验证' : technicianReturn ? '技师入驻登录' : '客户登录'}}</text>
+    <text class="nav-title">{{staffReturn ? '工作人员身份验证' : technicianReturn ? '技师入驻登录' : friendPaymentReturn ? '好友代付登录' : '客户登录'}}</text>
     <view class="nav-space" />
   </view>
 
-  <view class="hero">
-    <view class="art-halo halo-one" />
-    <view class="art-halo halo-two" />
-    <view class="massage-art" aria-label="按摩放松主题插画">
-      <view class="art-head" />
-      <view class="art-body" />
-      <view class="art-shoulder" />
-      <view class="art-hand hand-left"><view class="art-finger" /><view class="art-finger" /><view class="art-finger" /></view>
-      <view class="art-hand hand-right"><view class="art-finger" /><view class="art-finger" /><view class="art-finger" /></view>
-      <view class="art-wave wave-one" />
-      <view class="art-wave wave-two" />
-    </view>
+  <view class="brand-heading">
+    <view class="brand-mark">中</view>
     <text class="brand">中原到家</text>
     <text class="slogan">安心上门 · 悦享松弛</text>
   </view>
 
-  <view wx:if="{{!completed && !friendPaymentReturn}}" class="step-bar">
-    <view class="step {{wechatReady?'done':'active'}}"><text>{{wechatReady?'✓':'1'}}</text><view><text>微信授权</text><text>{{wechatReady?'已完成':'当前步骤'}}</text></view></view>
-    <view class="step-line {{wechatReady?'active':''}}" />
-    <view class="step {{wechatReady?'active':''}}"><text>2</text><view><text>手机验证</text><text>{{wechatReady?'当前步骤':'下一步骤'}}</text></view></view>
-  </view>
-
-  <view wx:if="{{completed}}" class="login-card success-card">
-    <view class="success-mark">✓</view>
-    <text class="login-title">登录成功</text>
-    <text class="login-subtitle">{{friendPaymentReturn?'微信身份已确认，可继续好友代付':maskedPhone || '微信账号与手机号均已完成验证'}}</text>
-    <button class="primary-button" bindtap="enterHome">{{staffReturn?'继续本人设备登录确认':friendPaymentReturn?'返回好友代付':technicianReturn?'继续技师入驻':'进入中原到家'}}</button>
-  </view>
-
-  <view wx:elif="{{!wechatReady}}" class="login-card wechat-card">
-    <text class="stage-kicker">第一步</text>
-    <text class="login-title">微信授权登录</text>
-    <text class="login-subtitle">{{staffReturn ? '用于确认本人微信身份；只有已授权工作人员可以继续后台登录' : technicianReturn ? '用于识别本人入驻申请；无需设置密码或填写配对码' : '用于识别你的订单账号；新用户授权后自动创建账号'}}</text>
-    <button
-      class="primary-button"
-      bindtap="authorizeWechat"
-      loading="{{busy && loginMode === 'WECHAT'}}"
-      disabled="{{busy}}"
-    >微信授权登录</button>
-    <view class="flow-note"><text>1</text><text>{{staffReturn?'完成本人微信身份和手机号验证后，返回工作人员登录确认页。不会新增管理权限，也不会自动确认配对。':friendPaymentReturn?'重新确认当前小程序的微信身份后，可直接返回好友代付，无需授权手机号。':technicianReturn?'微信手机号验证后直接进入入驻资料页。':'完成授权后可一键验证微信手机号，或使用短信验证码。'}}</text></view>
-    <text wx:if="{{error}}" class="error-message">{{error}}</text>
-  </view>
-
-  <view wx:else class="login-card sms-card">
-    <view class="stage-ready"><text>✓</text><text>微信授权已完成</text></view>
-    <text class="stage-kicker">第二步</text>
-    <text class="login-title">验证联系手机号</text>
-    <text class="login-subtitle">{{staffReturn ? '验证本人手机号后继续后台登录确认；不向客服提供验证码或动态码' : technicianReturn ? '验证本人手机号后继续填写入驻资料，无需设置密码' : '手机号用于预约联系、订单通知与售后核验'}}</text>
-
-    <button
-      class="wechat-phone-button"
-      open-type="getPhoneNumber"
-      bindgetphonenumber="authorizeWechatPhone"
-      loading="{{busy && loginMode === 'WECHAT_PHONE'}}"
-      disabled="{{busy}}"
-    >{{busy && loginMode === 'WECHAT_PHONE' ? '正在验证…' : '微信手机号一键验证'}}</button>
-
-    <view wx:if="{{technicianReturn}}" class="flow-note"><text>✓</text><text>完成微信手机号一键验证后即可填写入驻资料。</text></view>
-    <view wx:if="{{staffReturn}}" class="flow-note"><text>✓</text><text>完成本人手机号验证后返回登录确认页；后台仍按已有角色和动态码规则核验。</text></view>
-    <block wx:if="{{!technicianReturn && !staffReturn}}">
-    <view class="method-divider"><view /><text>或使用短信验证码</text><view /></view>
-
-    <view class="field-shell {{phoneFocused ? 'is-focused' : ''}}">
-      <text class="field-prefix">+86</text>
-      <input
-        class="field-input"
-        type="number"
-        maxlength="11"
-        value="{{phone}}"
-        bindinput="updatePhone"
-        bindfocus="focusPhone"
-        bindblur="blurPhone"
-        focus="{{phoneFocused}}"
-        placeholder="请输入本人手机号"
-        placeholder-class="field-placeholder"
-      />
-    </view>
-    <view wx:if="{{smsRequested}}" class="field-shell code-shell {{codeFocused ? 'is-focused' : ''}}">
-      <input
-        class="field-input"
-        type="number"
-        maxlength="6"
-        value="{{smsCode}}"
-        bindinput="updateSmsCode"
-        bindfocus="focusCode"
-        bindblur="blurCode"
-        placeholder="请输入短信验证码"
-        placeholder-class="field-placeholder"
-      />
-      <button class="resend-button" bindtap="requestSmsCode" disabled="{{busy || smsCountdown > 0}}">{{smsCountdown > 0 ? smsCountdown + 's' : '重新获取'}}</button>
-    </view>
-    <button
-      class="sms-button primary-sms"
-      bindtap="handleSmsAction"
-      loading="{{busy && loginMode === 'SMS'}}"
-      disabled="{{busy}}"
-    >{{busy && loginMode === 'SMS' ? (smsRequested ? '正在校验…' : '正在发送…') : (smsRequested ? '确认验证码并登录' : '获取短信验证码')}}</button>
+  <view class="login-dialog" aria-role="dialog" aria-label="选择登录方式">
+    <block wx:if="{{completed}}">
+      <view class="success-mark">✓</view>
+      <text class="login-title">登录成功</text>
+      <text class="login-subtitle">{{staffReturn ? '本人身份已验证，可继续工作人员登录确认' : technicianReturn ? '本人手机号已验证，可继续技师入驻' : friendPaymentReturn ? '微信身份已确认，可继续好友代付' : '欢迎来到中原到家'}}</text>
+      <button class="primary-button" bindtap="enterHome">{{staffReturn ? '继续本人设备登录确认' : technicianReturn ? '继续技师入驻' : friendPaymentReturn ? '返回好友代付' : '进入首页'}}</button>
     </block>
 
-    <text wx:if="{{actionStatus}}" class="action-status">{{actionStatus}}</text>
-    <text wx:if="{{error}}" class="error-message">{{error}}</text>
+    <block wx:else>
+      <text class="login-title">欢迎来到中原到家</text>
+      <text class="login-subtitle">{{staffReturn ? '核验本人微信与手机号，继续后台登录' : technicianReturn ? '无需密码，验证本人身份后填写入驻资料' : friendPaymentReturn ? '确认本人微信身份，无需授权手机号' : '请选择登录方式，新用户验证后自动注册'}}</text>
+
+      <view class="login-actions">
+        <button wx:if="{{friendPaymentReturn}}" class="primary-button wechat-button" bindtap="authorizeWechat" loading="{{busy && loginMode === 'WECHAT'}}" disabled="{{busy}}">微信一键登录</button>
+        <button wx:elif="{{!accepted}}" class="primary-button wechat-button" bindtap="handleWechatChoice" disabled="{{busy}}">微信一键登录</button>
+        <button wx:else class="primary-button wechat-button" open-type="getPhoneNumber" bindgetphonenumber="authorizeWechatPhone" loading="{{busy && loginMode === 'WECHAT_PHONE'}}" disabled="{{busy || !capabilitiesReady || !wechatPhoneLoginEnabled}}">微信一键登录</button>
+
+        <button wx:if="{{!friendPaymentReturn && !technicianReturn && !staffReturn}}" class="secondary-button" bindtap="openSmsLogin" disabled="{{busy}}">手机号码登录</button>
+      </view>
+
+      <view wx:if="{{smsFormOpen && !friendPaymentReturn && !technicianReturn && !staffReturn}}" class="sms-form">
+        <text class="form-title">手机号码登录</text>
+        <text wx:if="{{!capabilitiesReady}}" class="availability-note">正在获取短信服务状态…</text>
+        <text wx:elif="{{!smsLoginEnabled}}" class="availability-note">{{smsUnavailableReason}}</text>
+        <view class="field-shell {{phoneFocused ? 'is-focused' : ''}}">
+          <text class="field-prefix">+86</text>
+          <input class="field-input" type="number" maxlength="11" value="{{phone}}" bindinput="updatePhone" bindfocus="focusPhone" bindblur="blurPhone" disabled="{{busy}}" placeholder="请输入本人手机号" placeholder-class="field-placeholder" aria-label="本人手机号" />
+        </view>
+        <view class="field-shell code-shell {{codeFocused ? 'is-focused' : ''}}">
+          <input class="field-input" type="number" maxlength="6" value="{{smsCode}}" bindinput="updateSmsCode" bindfocus="focusCode" bindblur="blurCode" disabled="{{busy}}" placeholder="请输入短信验证码" placeholder-class="field-placeholder" aria-label="短信验证码" />
+          <button class="resend-button" bindtap="requestSmsCode" disabled="{{busy || !accepted || !capabilitiesReady || !smsLoginEnabled || smsCountdown > 0}}">{{smsCountdown > 0 ? smsCountdown + 's后重发' : '获取验证码'}}</button>
+        </view>
+        <button class="primary-button sms-login-button" bindtap="confirmSmsCode" loading="{{busy && loginMode === 'SMS'}}" disabled="{{busy || !accepted || !smsLoginEnabled || !smsRequested || !smsChallengeId}}">登录 / 注册</button>
+        <text class="phone-help">同一手机号登录，继续使用原有订单及账户权益</text>
+      </view>
+
+      <view wx:if="{{!friendPaymentReturn && (capabilitiesLoading || (capabilitiesReady && !wechatPhoneLoginEnabled))}}" class="capabilities-status">
+        <text class="availability-note">{{capabilitiesLoading ? '正在检测登录服务状态…' : '微信手机号登录暂时不可用，请重新检测'}}</text>
+        <button class="capabilities-retry" bindtap="loadLoginCapabilities" loading="{{capabilitiesLoading}}" disabled="{{busy || capabilitiesLoading}}">{{capabilitiesLoading ? '正在检测…' : '重新检测登录服务'}}</button>
+      </view>
+      <view wx:if="{{staffReturn}}" class="flow-note">本人身份验证不会新增管理权限，也不会自动确认配对；后台继续按已有角色和动态码规则核验。</view>
+      <view wx:if="{{technicianReturn}}" class="flow-note">完成本人手机号验证后填写入驻资料，由后台审核；无需匹配码或密码。</view>
+      <view wx:if="{{friendPaymentReturn}}" class="flow-note">登录仅用于好友付款身份确认，订单权益仍归下单人。</view>
+      <text wx:if="{{actionStatus}}" class="action-status">{{actionStatus}}</text>
+      <text wx:if="{{error}}" class="error-message" aria-role="alert">{{error}}</text>
+
+      <view class="agreement-row">
+        <view class="agreement-check {{accepted ? 'checked' : ''}}" bindtap="toggleAccepted" aria-role="checkbox" aria-checked="{{accepted}}" aria-label="同意用户协议、隐私政策与上门服务公约"><text wx:if="{{accepted}}">✓</text></view>
+        <view class="agreement-copy">
+          <text bindtap="toggleAccepted">我已阅读并同意</text>
+          <text class="agreement-link" data-type="user" bindtap="openAgreement">《用户协议》</text>
+          <text class="agreement-link" data-type="privacy" bindtap="openAgreement">《隐私政策》</text>
+          <text>及</text>
+          <text class="agreement-link" data-type="service" bindtap="openAgreement">《上门服务公约》</text>
+        </view>
+      </view>
+    </block>
   </view>
 
-  <view wx:if="{{!completed}}" class="agreement-row">
-    <view class="agreement-check {{accepted ? 'checked' : ''}}" bindtap="toggleAccepted"><text wx:if="{{accepted}}">✓</text></view>
-    <view class="agreement-copy">
-      <text bindtap="toggleAccepted">我已阅读并同意</text>
-      <text class="agreement-link" data-type="user" bindtap="openAgreement">《用户协议》</text>
-      <text class="agreement-link" data-type="privacy" bindtap="openAgreement">《隐私政策》</text>
-      <text>及</text>
-      <text class="agreement-link" data-type="service" bindtap="openAgreement">《上门服务公约》</text>
-    </view>
-  </view>
-
-  <view class="security-note"><text class="security-icon">◇</text><text>手机号需本人明确授权，不会自动读取</text></view>
+  <view class="security-note">手机号需本人明确授权，不会自动读取</view>
+  <text class="service-note">平台提供保健放松服务，非医疗服务</text>
 </view>

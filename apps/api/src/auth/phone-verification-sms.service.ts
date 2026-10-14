@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { randomInt, randomUUID, timingSafeEqual } from "node:crypto";
@@ -17,6 +18,8 @@ import { PrismaService } from "../database/prisma.service.js";
 import { AliyunSmsClient } from "../integrations/aliyun-sms.client.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
 import type { AuthPrincipal } from "./auth.types.js";
+import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.js";
+import { withBoundedAuthTransaction } from "./bounded-auth-transaction.js";
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1_000;
 const RESEND_COOLDOWN_MS = 60 * 1_000;
@@ -30,6 +33,7 @@ export class PhoneVerificationSmsService {
     private readonly prisma: PrismaService,
     private readonly crypto: AuthCryptoService,
     private readonly sms: AliyunSmsClient,
+    @Optional() private readonly phones?: CustomerPhoneIdentityService,
   ) {}
 
   async request(
@@ -48,7 +52,9 @@ export class PhoneVerificationSmsService {
         select: { phoneVerifiedAt: true },
       });
       if (user.phoneVerifiedAt)
-        throw new ConflictException("手机号已经完成验证，如需更换请联系人工客服");
+        throw new ConflictException(
+          "手机号已经完成验证，如需更换请联系人工客服",
+        );
 
       const recent = await tx.phoneVerificationChallenge.findFirst({
         where: {
@@ -130,7 +136,9 @@ export class PhoneVerificationSmsService {
       });
     });
 
-    let submission: Awaited<ReturnType<AliyunSmsClient["submitPhoneVerification"]>>;
+    let submission: Awaited<
+      ReturnType<AliyunSmsClient["submitPhoneVerification"]>
+    >;
     try {
       submission = await this.sms.submitPhoneVerification({
         phone: input.phone,
@@ -222,14 +230,15 @@ export class PhoneVerificationSmsService {
       throw new BadRequestException("验证码不正确");
     }
 
-    const phoneEncrypted = this.crypto.encrypt(input.phone);
-    await this.prisma.$transaction(async (tx) => {
-      const userUpdate = await tx.user.updateMany({
-        where: { id: principal.userId, phoneVerifiedAt: null },
-        data: { phoneEncrypted, phoneVerifiedAt: now },
-      });
-      if (userUpdate.count !== 1)
-        throw new ConflictException("手机号验证状态已变更，请刷新后重试");
+    if (!this.phones)
+      throw new ServiceUnavailableException("手机号身份绑定服务未就绪");
+    await withBoundedAuthTransaction(this.prisma, async (tx) => {
+      await this.phones!.bindVerifiedPhone(
+        tx,
+        principal.userId,
+        input.phone,
+        now,
+      );
       const challengeUpdate = await tx.phoneVerificationChallenge.updateMany({
         where: {
           id: challenge.id,

@@ -43,9 +43,27 @@ export class SafetyNotificationService {
     });
     if (!membership) throw new NotFoundException("安全值班人员不存在或已停用");
     await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { phoneEncrypted: true, phoneVerifiedAt: true },
+      });
+      let unchangedVerifiedPhone = false;
+      try {
+        unchangedVerifiedPhone = Boolean(
+          user.phoneVerifiedAt &&
+            user.phoneEncrypted &&
+            this.crypto.decrypt(user.phoneEncrypted) === input.phone,
+        );
+      } catch {
+        // Contact maintenance cannot validate an unreadable login credential.
+      }
       await tx.user.update({
         where: { id: userId },
-        data: { phoneEncrypted: this.crypto.encrypt(input.phone) },
+        data: {
+          phoneEncrypted: this.crypto.encrypt(input.phone),
+          ...(!unchangedVerifiedPhone ? { phoneVerifiedAt: null } : {}),
+        },
       });
       await tx.auditLog.create({
         data: {
@@ -54,7 +72,10 @@ export class SafetyNotificationService {
           action: "SAFETY_DUTY_CONTACT_UPDATED",
           resourceType: "User",
           resourceId: userId,
-          metadata: { phoneConfigured: true },
+          metadata: {
+            phoneConfigured: true,
+            phoneVerificationPreserved: unchangedVerifiedPhone,
+          },
         },
       });
     });

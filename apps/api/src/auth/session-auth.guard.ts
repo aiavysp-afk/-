@@ -18,6 +18,30 @@ export function requiresAdminStepUp(method: string, route: string) {
   );
 }
 
+export function customerSmsRouteAllowed(method: string, route: string) {
+  const path = route.replace(/^\/v1(?=\/)/, "").split("?")[0];
+  const verb = method.toUpperCase();
+  // Deliberately enumerate customer resource families rather than deny only
+  // today's staff paths. A future staff capability is not implicitly granted
+  // merely because an existing phone customer also has a staff membership.
+  if (
+    (path === "/auth/me" && verb === "GET") ||
+    (path === "/auth/logout" && verb === "POST")
+  )
+    return true;
+  if (
+    /^\/(?:orders|customer-center|booking-holds|locations|friend-payments)(?:\/|$)/.test(
+      path ?? "",
+    )
+  )
+    return true;
+  if (path === "/payments/notifications" && verb === "GET") return true;
+  return (
+    verb === "GET" &&
+    /^\/(?:catalog|availability|technicians)(?:\/|$)/.test(path ?? "")
+  );
+}
+
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
   constructor(
@@ -33,6 +57,17 @@ export class SessionAuthGuard implements CanActivate {
     const match = authorization?.match(/^Bearer\s+([^\s]+)$/i);
     if (!match?.[1]) throw new UnauthorizedException("请先登录");
     request.authPrincipal = await this.auth.authenticate(match[1]);
+    if (
+      (request.authPrincipal.authProvider === "customer-sms" ||
+        request.authPrincipal.authChannel === "CUSTOMER_SMS") &&
+      !customerSmsRouteAllowed(
+        request.method,
+        request.routeOptions?.url ?? request.url,
+      )
+    )
+      throw new ForbiddenException(
+        "手机号登录仅用于客户业务，工作人员功能请切换微信一键登录",
+      );
     // Use Fastify's resolved route, not a caller-controlled URL spelling. A
     // seven-day remembered device does not authorize an admin mutation.
     if (
@@ -41,7 +76,10 @@ export class SessionAuthGuard implements CanActivate {
         request.authPrincipal.staffVerificationMethod === "PASSWORD_SMS" ||
         request.authPrincipal.staffVerificationMethod === "TRUSTED_DEVICE") &&
       request.authPrincipal.authChannel === "ADMIN_BROWSER" &&
-      requiresAdminStepUp(request.method, request.routeOptions?.url ?? request.url) &&
+      requiresAdminStepUp(
+        request.method,
+        request.routeOptions?.url ?? request.url,
+      ) &&
       (!request.authPrincipal.mfaVerifiedUntil ||
         request.authPrincipal.mfaVerifiedUntil.getTime() <= Date.now())
     ) {

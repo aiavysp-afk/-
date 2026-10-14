@@ -45,6 +45,10 @@ function fixture(path, options = {}) {
     guards = [];
   const auth = {
     getStoredSession: () => stored,
+    getCustomerLoginCapabilities: async () => ({
+      wechatPhoneLoginEnabled: true,
+      smsLoginEnabled: false,
+    }),
     needsPhoneVerification: (value = stored) =>
       Boolean(value && value.user.phoneVerified !== true),
     loginWithWechat: async () => {
@@ -116,7 +120,10 @@ function fixture(path, options = {}) {
 
 test("staff login return allows the exact local page and no pairing or approval parameters", () => {
   assert.equal(loginReturn.safeLoginReturnPath(ENTRY), ENTRY);
-  assert.equal(loginReturn.safeLoginReturnPath(encodeURIComponent(ENTRY)), ENTRY);
+  assert.equal(
+    loginReturn.safeLoginReturnPath(encodeURIComponent(ENTRY)),
+    ENTRY,
+  );
   for (const path of [
     `${ENTRY}?pairCode=${"a".repeat(22)}`,
     `${ENTRY}?approved=1`,
@@ -132,12 +139,13 @@ test("staff login return allows the exact local page and no pairing or approval 
     assert.equal(loginReturn.safeLoginReturnPath(path), "", path);
 });
 
-test("fresh WeChat identity still requires phone verification before returning to staff confirmation", async () => {
+test("one-click staff login still verifies the original WeChat phone subject before returning", async () => {
   const f = fixture("pages/phone-verification/index.ts");
   f.page.onLoad({ required: "1", returnPath: encodeURIComponent(ENTRY) });
   assert.equal(f.page.data.staffReturn, true);
-  await f.page.authorizeWechat();
-  assert.equal(f.page.data.wechatReady, true);
+  await f.page.loadLoginCapabilities();
+  f.page.toggleAccepted();
+  assert.equal(f.page.data.wechatReady, false);
   assert.equal(f.page.data.completed, false);
   f.page.enterHome();
   f.page.finish();
@@ -153,7 +161,9 @@ test("fresh WeChat login with an already verified phone returns to the exact sta
     loginSession: session(true),
   });
   f.page.onLoad({ required: "1", returnPath: ENTRY });
-  await f.page.authorizeWechat();
+  await f.page.loadLoginCapabilities();
+  f.page.toggleAccepted();
+  await f.page.authorizeWechatPhone({ detail: { code: "fixture-phone-code" } });
   assert.equal(f.page.data.completed, true);
   assert.deepEqual(f.calls, ["wechat-login"]);
   assert.deepEqual(f.routes, [ENTRY]);
@@ -173,13 +183,23 @@ test("cancelled phone consent and denied WeChat login never return to staff conf
     stored: session(false),
   });
   f.page.onLoad({ required: "1", returnPath: ENTRY });
-  await f.page.authorizeWechatPhone({ detail: { errMsg: "getPhoneNumber:fail deny" } });
+  await f.page.loadLoginCapabilities();
+  f.page.toggleAccepted();
+  await f.page.authorizeWechatPhone({
+    detail: { errMsg: "getPhoneNumber:fail deny" },
+  });
   assert.equal(f.page.data.completed, false);
   assert.deepEqual(f.routes, []);
   assert.deepEqual(f.calls, []);
-  const denied = fixture("pages/phone-verification/index.ts", { loginError: true });
+  const denied = fixture("pages/phone-verification/index.ts", {
+    loginError: true,
+  });
   denied.page.onLoad({ required: "1", returnPath: ENTRY });
-  await denied.page.authorizeWechat();
+  await denied.page.loadLoginCapabilities();
+  denied.page.toggleAccepted();
+  await denied.page.authorizeWechatPhone({
+    detail: { code: "fixture-phone-code" },
+  });
   assert.equal(denied.page.data.completed, false);
   assert.deepEqual(denied.routes, []);
 });
@@ -244,7 +264,11 @@ test("server non-staff denial cannot reveal a preview or auto-approve login", as
 
 test("opening the staff page with query arguments does not populate secrets or authorize anything", () => {
   const f = fixture("pages/admin-login/index.ts", { stored: session(true) });
-  f.page.onLoad({ pairCode: "a".repeat(22), confirmationCode: "123456", approved: "1" });
+  f.page.onLoad({
+    pairCode: "a".repeat(22),
+    confirmationCode: "123456",
+    approved: "1",
+  });
   assert.equal(f.page.data.pairCode, "");
   assert.equal(f.page.data.confirmationCode, "");
   assert.equal(f.page.data.approved, false);

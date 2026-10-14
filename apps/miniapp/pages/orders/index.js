@@ -332,7 +332,7 @@ Page({
         }
     },
     async action(e) {
-        var _a;
+        var _a, _b;
         if (this.data.busy)
             return;
         const { id, action } = e.currentTarget.dataset;
@@ -349,6 +349,11 @@ Page({
                 const order = this.data.orders.find((row) => row.id === id);
                 if (!order || order.status !== "PENDING_PAYMENT")
                     throw new Error("请刷新订单，确认仍待支付后再操作");
+                if (((_a = (0, auth_1.getStoredSession)()) === null || _a === void 0 ? void 0 : _a.loginMethod) === "PHONE_SMS") {
+                    wx.showToast({ title: "请微信登录后支付，原订单保留", icon: "none" });
+                    (0, auth_1.goToPhoneVerification)();
+                    return;
+                }
                 const intent = await (0, api_1.api)(`/orders/${id}/payment-intent`, "POST", {});
                 if (!intent ||
                     typeof intent.id !== "string" ||
@@ -494,7 +499,7 @@ Page({
                 const order = this.data.orders.find((row) => row.id === id);
                 const location = order === null || order === void 0 ? void 0 : order.technicianLocation.location;
                 if (!location)
-                    throw new Error((_a = order === null || order === void 0 ? void 0 : order.technicianLocationLabel) !== null && _a !== void 0 ? _a : "技师位置暂不可用");
+                    throw new Error((_b = order === null || order === void 0 ? void 0 : order.technicianLocationLabel) !== null && _b !== void 0 ? _b : "技师位置暂不可用");
                 wx.openLocation({
                     latitude: location.latitude,
                     longitude: location.longitude,

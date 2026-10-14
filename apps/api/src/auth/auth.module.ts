@@ -21,6 +21,9 @@ import { StaffPasswordController } from "./staff-password.controller.js";
 import { StaffPasswordService } from "./staff-password.service.js";
 import { TrustedDeviceController } from "./trusted-device.controller.js";
 import { TrustedDeviceService } from "./trusted-device.service.js";
+import { CustomerLoginController } from "./customer-login.controller.js";
+import { CustomerLoginService } from "./customer-login.service.js";
+import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.js";
 
 @Module({
   imports: [IntegrationsModule],
@@ -33,6 +36,7 @@ import { TrustedDeviceService } from "./trusted-device.service.js";
     TechnicianH5AuthController,
     StaffPasswordController,
     TrustedDeviceController,
+    CustomerLoginController,
   ],
   providers: [
     AuthService,
@@ -48,6 +52,8 @@ import { TrustedDeviceService } from "./trusted-device.service.js";
     TechnicianH5AuthService,
     StaffPasswordService,
     TrustedDeviceService,
+    CustomerLoginService,
+    CustomerPhoneIdentityService,
   ],
   exports: [
     AuthService,

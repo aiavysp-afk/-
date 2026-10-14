@@ -96,6 +96,10 @@ for marker in \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'location = /v1/technician/onboarding' \
+  'location = /v1/auth/customer-login/capabilities {' \
+  'location = /v1/auth/customer-login/wechat-phone {' \
+  'location = /v1/auth/customer-login/sms/request {' \
+  'location = /v1/auth/customer-login/sms/confirm {' \
   'limit_req_zone $binary_remote_addr zone=technician_h5_oauth:10m rate=30r/m;' \
   'location ~ ^/v1/technician/h5-onboarding/wechat/(?:start|callback)$' \
   'location = /v1/technician/h5-onboarding/status' \
@@ -260,9 +264,46 @@ verify_mfa_gateway() {
 }
 # End session MFA gateway probe helpers.
 
+# Customer login gateway probe helpers. Invalid empty JSON must fail schema
+# validation before consuming WeChat codes, sending SMS, or creating a user.
+customer_login_gateway_status() {
+  local method=$1 path=$2 remaining=$((customer_login_deadline - SECONDS)) timeout=2
+  if (( remaining <= 0 )); then printf '%s' deadline-expired; return 0; fi
+  (( remaining >= timeout )) || timeout=$remaining
+  local args=(--silent --show-error --connect-timeout 1 --max-time "$timeout"
+    --http1.1 --header 'Connection: close' --noproxy '*'
+    --output /dev/null --write-out '%{http_code}'
+    --resolve api.mtsc.top:443:127.0.0.1)
+  if [[ $method == HEAD ]]; then args+=(--head); else args+=(--request "$method"); fi
+  if [[ $method == POST ]]; then args+=(--header 'Content-Type: application/json' --data '{}'); fi
+  curl "${args[@]}" "https://api.mtsc.top$path"
+}
+
+verify_customer_login_gateway() {
+  local customer_login_deadline=$((SECONDS + 30)) index path method status
+  local paths=(/v1/auth/customer-login/capabilities /v1/auth/customer-login/wechat-phone
+    /v1/auth/customer-login/sms/request /v1/auth/customer-login/sms/confirm)
+  local allowed=(GET POST POST POST) expected=(200 400 400 400) rejected=(POST GET GET GET)
+  for index in "${!paths[@]}"; do
+    path=${paths[$index]}
+    status=$(customer_login_gateway_status "${allowed[$index]}" "$path") || status=transport-error
+    [[ $status == "${expected[$index]}" ]] || { printf 'Customer login route failed: %s %s status=%s\n' "${allowed[$index]}" "$path" "$status" >&2; return 1; }
+    for method in "${rejected[$index]}" HEAD PATCH; do
+      status=$(customer_login_gateway_status "$method" "$path") || status=transport-error
+      [[ $status == 403 || $status == 404 ]] || { printf 'Customer login method gate failed: %s %s status=%s\n' "$method" "$path" "$status" >&2; return 1; }
+    done
+  done
+  for path in /v1/auth/customer-login/ /v1/auth/customer-login/sms /v1/auth/customer-login/wechat-phone/extra; do
+    status=$(customer_login_gateway_status GET "$path") || status=transport-error
+    [[ $status == 403 || $status == 404 ]] || { printf 'Unexpected customer login path is exposed: %s status=%s\n' "$path" "$status" >&2; return 1; }
+  done
+}
+# End customer login gateway probe helpers.
+
 # Failure remains a top-level error, invoking the existing exact-vhost rollback.
 wait_for_private_gateway
 verify_mfa_gateway 127.0.0.1
+verify_customer_login_gateway
 # Autonomous registration is session-only; no anonymous draft or identity grant.
 for onboarding_method in GET POST; do
   onboarding_status=$(curl --silent --show-error --max-time 10 \

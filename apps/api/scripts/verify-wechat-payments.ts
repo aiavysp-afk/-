@@ -194,6 +194,8 @@ try {
       sessionId: prefix,
       displayName: "验证",
       memberships: [],
+      authProvider: "wechat",
+      authChannel: "WECHAT_MINIAPP",
     };
     const createdAt = new Date(Date.now() - 3600_000);
     const expiresAt = new Date(Date.now() + (expired ? -60_000 : 900_000));

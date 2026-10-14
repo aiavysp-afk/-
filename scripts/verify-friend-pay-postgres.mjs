@@ -194,6 +194,8 @@ const principal = (name) => ({
   sessionId: `${runId}-session-${name}`,
   displayName: `隔离测试 ${name}`,
   memberships: [],
+  authProvider: "wechat",
+  authChannel: "WECHAT_MINIAPP",
 });
 
 function signedNotification(transaction, eventId) {

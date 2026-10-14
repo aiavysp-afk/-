@@ -34,5 +34,6 @@ export interface AuthPrincipal {
   trustedDeviceId?: string | null;
   authChannel?: string;
   authProvider?: string;
+  wechatIdentityId?: string | null;
   phoneVerified?: boolean;
 }

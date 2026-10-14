@@ -61,6 +61,8 @@ describe("production safety gate", () => {
       MAP_PROVIDER: "amap",
     });
     expect(env.SMS_SEND_ENABLED).toBe("false");
+    expect(env.CUSTOMER_SMS_LOGIN_ENABLED).toBe("false");
+    expect(() => validateEnv({ CUSTOMER_SMS_LOGIN_ENABLED: "yes" })).toThrow();
     expect(env.SAFETY_NOTIFICATION_DISPATCH_ENABLED).toBe("false");
     expect(env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED).toBe("false");
     expect(env.MAP_GEOCODING_ENABLED).toBe("false");

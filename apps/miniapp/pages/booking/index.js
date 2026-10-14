@@ -12,7 +12,9 @@ const categoryNames = {
     FOOT_CARE: "足部养护",
 };
 function definitiveOrderRejection(error) {
-    if (!(error instanceof api_1.ApiError) || error.path !== "/orders" || error.method !== "POST")
+    if (!(error instanceof api_1.ApiError) ||
+        error.path !== "/orders" ||
+        error.method !== "POST")
         return null;
     // These exact create errors occur after a rollback/no-order result and the
     // server's idempotency/reservation-order recheck. Never unlock for an existing
@@ -365,13 +367,17 @@ Page({
         });
     },
     openServiceDetail() {
-        if (!this.data.service || this.data.busy || this.data.orderSubmissionAttempted)
+        if (!this.data.service ||
+            this.data.busy ||
+            this.data.orderSubmissionAttempted)
             return;
         const slug = encodeURIComponent(this.data.service.slug);
         const therapist = this.data.preferredTherapistId
             ? `&therapistId=${encodeURIComponent(this.data.preferredTherapistId)}`
             : "";
-        wx.navigateTo({ url: `/pages/service-detail/index?slug=${slug}${therapist}` });
+        wx.navigateTo({
+            url: `/pages/service-detail/index?slug=${slug}${therapist}`,
+        });
     },
     select(e) {
         var _a, _b;
@@ -406,7 +412,8 @@ Page({
     input(e) {
         const field = e.currentTarget.dataset.field;
         if (["contactName", "phone", "detail", "doorNumber"].includes(field) &&
-            !this.data.orderSubmissionAttempted && !this.data.busy) {
+            !this.data.orderSubmissionAttempted &&
+            !this.data.busy) {
             const addressFieldChanged = ["detail", "doorNumber"].includes(field);
             this.setData({
                 [field]: e.detail.value,
@@ -425,14 +432,18 @@ Page({
         }
     },
     async locateAddress() {
-        if (this.data.locationBusy || this.data.busy || this.data.orderSubmissionAttempted)
+        if (this.data.locationBusy ||
+            this.data.busy ||
+            this.data.orderSubmissionAttempted)
             return;
         this.setData({ locationBusy: true, error: "", suggestions: [] });
         const revision = this.quoteRevision;
         try {
             const point = await (0, amap_1.getGcj02Location)();
             const address = await (0, amap_1.reverseGeocode)(this.data.amapMiniappKey, point);
-            if (this.pageClosed || revision !== this.quoteRevision || this.data.orderSubmissionAttempted)
+            if (this.pageClosed ||
+                revision !== this.quoteRevision ||
+                this.data.orderSubmissionAttempted)
                 return;
             this.setData({
                 selectedAddressId: "",
@@ -456,8 +467,8 @@ Page({
     async searchAddress() {
         if (this.data.suggestionBusy ||
             !this.data.addressSuggestionAvailable ||
-            this.data.orderSubmissionAttempted
-            || this.data.busy)
+            this.data.orderSubmissionAttempted ||
+            this.data.busy)
             return;
         const keyword = this.data.detail.trim();
         if (keyword.length < 2 || keyword.length > 32) {
@@ -467,7 +478,9 @@ Page({
         this.setData({ suggestionBusy: true, error: "", suggestions: [] });
         try {
             const suggestions = await (0, amap_1.suggestAddress)(this.data.amapMiniappKey, keyword, this.data.serviceCity);
-            if (this.pageClosed || this.data.detail.trim() !== keyword || this.data.orderSubmissionAttempted)
+            if (this.pageClosed ||
+                this.data.detail.trim() !== keyword ||
+                this.data.orderSubmissionAttempted)
                 return;
             this.setData({ suggestions });
             if (!suggestions.length)
@@ -547,7 +560,9 @@ Page({
             const coupons = await (0, api_1.api)((0, customer_center_1.customerCenterPath)("/customer-center/coupons"));
             if (this.pageClosed)
                 return;
-            this.setData({ coupons: (0, booking_1.bookingCouponRows)(coupons, (_b = (_a = this.data.service) === null || _a === void 0 ? void 0 : _a.priceFen) !== null && _b !== void 0 ? _b : 0) });
+            this.setData({
+                coupons: (0, booking_1.bookingCouponRows)(coupons, (_b = (_a = this.data.service) === null || _a === void 0 ? void 0 : _a.priceFen) !== null && _b !== void 0 ? _b : 0),
+            });
         }
         catch (error) {
             if (!this.pageClosed)
@@ -574,15 +589,17 @@ Page({
         if (this.data.busy || this.data.orderSubmissionAttempted)
             return;
         const couponChoice = event.currentTarget.dataset.id;
-        if (!["auto", "none"].includes(couponChoice)
-            && !this.data.coupons.some((row) => row.id === couponChoice && row.eligible))
+        if (!["auto", "none"].includes(couponChoice) &&
+            !this.data.coupons.some((row) => row.id === couponChoice && row.eligible))
             return;
         this.setData({ couponChoice, couponPickerOpen: false });
         this.invalidateQuote();
     },
     async refreshQuote(force = false) {
         var _a, _b;
-        if (this.pageClosed || this.data.orderSubmissionAttempted || (this.data.busy && !force))
+        if (this.pageClosed ||
+            this.data.orderSubmissionAttempted ||
+            (this.data.busy && !force))
             return false;
         if (this.data.quoteLoading) {
             this.quoteRefreshQueued = true;
@@ -605,23 +622,34 @@ Page({
         const couponChoice = this.data.couponChoice;
         this.setData({ quoteLoading: true, quoteError: "", quoteDetails: null });
         try {
-            if (this.data.reservationId && (this.data.reservationSlotKey !== slotKey
-                || Date.parse(this.data.reservationExpiresAt) <= Date.now())) {
+            if (this.data.reservationId &&
+                (this.data.reservationSlotKey !== slotKey ||
+                    Date.parse(this.data.reservationExpiresAt) <= Date.now())) {
                 const oldId = this.data.reservationId;
                 if (Date.parse(this.data.reservationExpiresAt) > Date.now()) {
                     await (0, api_1.api)(`/booking-holds/${encodeURIComponent(oldId)}/release`, "POST", {});
                 }
-                this.setData({ reservationId: "", reservationSlotKey: "", reservationExpiresAt: "", addressVerificationId: "" });
+                this.setData({
+                    reservationId: "",
+                    reservationSlotKey: "",
+                    reservationExpiresAt: "",
+                    addressVerificationId: "",
+                });
             }
             if (!this.data.reservationId) {
                 // A hold is real capacity, not an invented technician/time. Keep only
                 // one active hold and release it before changing the chosen slot.
                 const hold = await (0, api_1.api)("/booking-holds", "POST", {
-                    serviceId: service.id, therapistId: slot.therapistId, startsAt: slot.startsAt,
+                    serviceId: service.id,
+                    therapistId: slot.therapistId,
+                    startsAt: slot.startsAt,
                 });
                 this.setData({
-                    reservationId: hold.id, reservationSlotKey: slotKey,
-                    reservationExpiresAt: hold.expiresAt, orderKey: (0, api_1.newKey)(), addressVerificationId: "",
+                    reservationId: hold.id,
+                    reservationSlotKey: slotKey,
+                    reservationExpiresAt: hold.expiresAt,
+                    orderKey: (0, api_1.newKey)(),
+                    addressVerificationId: "",
                 });
                 if (this.pageClosed) {
                     await (0, api_1.api)(`/booking-holds/${encodeURIComponent(hold.id)}/release`, "POST", {});
@@ -631,7 +659,9 @@ Page({
             const reservationId = this.data.reservationId;
             const quote = await (0, api_1.api)("/orders/quote", "POST", {
                 reservationId,
-                ...(couponChoice === "auto" ? {} : { couponId: couponChoice === "none" ? null : couponChoice }),
+                ...(couponChoice === "auto"
+                    ? {}
+                    : { couponId: couponChoice === "none" ? null : couponChoice }),
             });
             (0, booking_1.assertServerQuote)(quote, reservationId);
             if (quote.travelFeeFen !== 0)
@@ -640,23 +670,28 @@ Page({
                 await (0, api_1.api)(`/booking-holds/${encodeURIComponent(reservationId)}/release`, "POST", {});
                 return false;
             }
-            if (revision !== this.quoteRevision || fingerprint !== this.draftFingerprint())
+            if (revision !== this.quoteRevision ||
+                fingerprint !== this.draftFingerprint())
                 return false;
             const appliedCoupon = this.data.coupons.find((row) => row.id === quote.couponId);
             this.setData({
-                quoteDetails: (0, booking_1.quoteDisplay)(quote), quoteCouponId: (_a = quote.couponId) !== null && _a !== void 0 ? _a : null,
+                quoteDetails: (0, booking_1.quoteDisplay)(quote),
+                quoteCouponId: (_a = quote.couponId) !== null && _a !== void 0 ? _a : null,
                 quoteFingerprint: fingerprint,
                 coupons: (0, booking_1.bookingCouponRows)(this.data.coupons, quote.serviceAmountFen),
                 couponSummary: quote.discountFen > 0
                     ? `${(_b = appliedCoupon === null || appliedCoupon === void 0 ? void 0 : appliedCoupon.title) !== null && _b !== void 0 ? _b : "已使用优惠券"} · 减 ¥${(0, api_1.money)(quote.discountFen)}`
-                    : couponChoice === "none" ? "本单不使用优惠券" : "暂无符合项目费门槛的优惠券",
+                    : couponChoice === "none"
+                        ? "本单不使用优惠券"
+                        : "暂无符合项目费门槛的优惠券",
             });
             return true;
         }
         catch (error) {
             if (!this.pageClosed && revision === this.quoteRevision)
                 this.setData({
-                    quoteDetails: null, quoteFingerprint: "",
+                    quoteDetails: null,
+                    quoteFingerprint: "",
                     quoteError: error instanceof Error ? error.message : "实时价格读取失败，请重试",
                 });
             return false;
@@ -708,7 +743,10 @@ Page({
         return { service, slot };
     },
     async prepareOrder() {
-        if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy)
+        if (this.data.busy ||
+            this.data.quoteLoading ||
+            this.data.locationBusy ||
+            this.data.suggestionBusy)
             return;
         const draft = this.validDraft();
         if (!draft)
@@ -729,7 +767,7 @@ Page({
                 return;
             }
             const addressPoint = await this.ensureAddressCoordinates();
-            if (!await this.refreshQuote(true)) {
+            if (!(await this.refreshQuote(true))) {
                 this.fail(new Error(this.data.quoteError || "服务器价格尚未确认，请稍后重试"));
                 return;
             }
@@ -753,7 +791,10 @@ Page({
         }
     },
     async create() {
-        if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy)
+        if (this.data.busy ||
+            this.data.quoteLoading ||
+            this.data.locationBusy ||
+            this.data.suggestionBusy)
             return;
         const retryingUncertainSubmission = this.data.orderSubmissionAttempted;
         if (!this.data.quoteDetails) {
@@ -766,8 +807,12 @@ Page({
             await this.prepareOrder();
             if (this.data.error || !this.data.quoteDetails)
                 return;
-            if (this.data.quoteDetails.payable !== shownPayable || this.data.quoteCouponId !== shownCoupon) {
-                wx.showToast({ title: "优惠或价格已更新，请核对后再提交", icon: "none" });
+            if (this.data.quoteDetails.payable !== shownPayable ||
+                this.data.quoteCouponId !== shownCoupon) {
+                wx.showToast({
+                    title: "优惠或价格已更新，请核对后再提交",
+                    icon: "none",
+                });
                 return;
             }
             if (this.data.quoteFingerprint !== this.draftFingerprint())
@@ -810,11 +855,12 @@ Page({
             }, this.data.orderKey);
             if (this.pageClosed)
                 return;
-            if (order.travelFeeFen !== 0
-                || !this.data.quoteDetails
-                || (0, api_1.money)(order.serviceAmountFen) !== this.data.quoteDetails.serviceAmount
-                || (0, api_1.money)(order.discountFen) !== this.data.quoteDetails.discount
-                || (0, api_1.money)(order.payableFen) !== this.data.quoteDetails.payable) {
+            if (order.travelFeeFen !== 0 ||
+                !this.data.quoteDetails ||
+                (0, api_1.money)(order.serviceAmountFen) !==
+                    this.data.quoteDetails.serviceAmount ||
+                (0, api_1.money)(order.discountFen) !== this.data.quoteDetails.discount ||
+                (0, api_1.money)(order.payableFen) !== this.data.quoteDetails.payable) {
                 wx.showModal({
                     title: "订单价格异常",
                     content: "该订单未通过金额复核，不会调起支付。请在订单页核对金额或联系客服处理。",
@@ -837,22 +883,32 @@ Page({
                 await this.shareCreatedOrder(order);
                 return;
             }
-            await this.payCreatedOrder(order);
+            const continueToOrders = await this.payCreatedOrder(order);
+            if (continueToOrders === false)
+                return;
             wx.redirectTo({ url: "/pages/orders/index" });
         }
         catch (error) {
             const rejection = definitiveOrderRejection(error);
-            if (this.data.orderSubmissionAttempted && !retryingUncertainSubmission && rejection) {
+            if (this.data.orderSubmissionAttempted &&
+                !retryingUncertainSubmission &&
+                rejection) {
                 // A prior uncertain request may still be in flight. Only a first, known
                 // rejected submission can safely return to an editable draft.
                 this.setData({
                     orderSubmissionAttempted: false,
                     orderKey: (0, api_1.newKey)(),
                     addressVerificationId: "",
-                    ...(rejection === "hold" ? {
-                        reservationId: "", reservationSlotKey: "", reservationExpiresAt: "",
-                    } : {}),
-                    ...(rejection === "address" ? { addressVerificationRequired: true } : {}),
+                    ...(rejection === "hold"
+                        ? {
+                            reservationId: "",
+                            reservationSlotKey: "",
+                            reservationExpiresAt: "",
+                        }
+                        : {}),
+                    ...(rejection === "address"
+                        ? { addressVerificationRequired: true }
+                        : {}),
                 });
                 this.invalidateQuote(false);
                 void this.loadCoupons();
@@ -891,8 +947,14 @@ Page({
         }
     },
     async payCreatedOrder(order) {
+        var _a;
         if (order.status !== "PENDING_PAYMENT")
             return;
+        if (((_a = (0, auth_1.getStoredSession)()) === null || _a === void 0 ? void 0 : _a.loginMethod) === "PHONE_SMS") {
+            wx.showToast({ title: "订单已保存，请微信登录后继续支付", icon: "none" });
+            (0, auth_1.goToPhoneVerification)();
+            return false;
+        }
         let intent;
         try {
             intent = await (0, api_1.api)(`/orders/${order.id}/payment-intent`, "POST", {});
@@ -985,7 +1047,9 @@ Page({
         ++this.slotsRevision;
         if (this.quoteTimer)
             clearTimeout(this.quoteTimer);
-        if (this.data.reservationId && !this.data.orderSubmissionAttempted && !this.data.quoteLoading) {
+        if (this.data.reservationId &&
+            !this.data.orderSubmissionAttempted &&
+            !this.data.quoteLoading) {
             void (0, api_1.api)(`/booking-holds/${encodeURIComponent(this.data.reservationId)}/release`, "POST", {}).catch(() => undefined);
         }
         this.setData({

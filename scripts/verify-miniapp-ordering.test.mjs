@@ -24,7 +24,7 @@ test("production miniapp targets the new mtsc API", () => {
   );
 });
 
-test("first login exposes native phone authorization with an isolated SMS fallback", () => {
+test("first login exposes one-click phone authorization and independent SMS choice", () => {
   const app = JSON.parse(
     readFileSync(new URL("../apps/miniapp/app.json", import.meta.url), "utf8"),
   );
@@ -46,10 +46,12 @@ test("first login exposes native phone authorization with an isolated SMS fallba
   assert.ok(app.pages.includes("pages/phone-verification/index"));
   assert.match(page, /open-type="getPhoneNumber"/);
   assert.match(page, /bindgetphonenumber="authorizeWechatPhone"/);
-  assert.match(page, /bindtap="handleSmsAction"/);
-  assert.match(auth, /auth\/sms-phone\/request/);
-  assert.match(auth, /auth\/sms-phone\/confirm/);
-  assert.match(auth, /auth\/wechat-phone/);
+  assert.match(page, /bindtap="openSmsLogin"/);
+  assert.match(page, /bindtap="requestSmsCode"/);
+  assert.match(page, /bindtap="confirmSmsCode"/);
+  assert.match(auth, /auth\/customer-login/);
+  assert.match(auth, /loginCustomerWithWechatPhone/);
+  assert.match(auth, /confirmCustomerSmsLogin/);
   assert.match(home, /open-type="contact"/);
 });
 

@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, Optional, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  Optional,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IdentityProvider, MembershipStatus, UserRole } from "@prisma/client";
 import type {
@@ -9,8 +15,13 @@ import type { AppEnv } from "../config/env.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
 import type { AuthPrincipal } from "./auth.types.js";
-import { WechatMiniappClient, type WechatIdentityResult } from "./wechat-miniapp.client.js";
+import {
+  WechatMiniappClient,
+  type WechatIdentityResult,
+} from "./wechat-miniapp.client.js";
 import { TrustedDeviceService } from "./trusted-device.service.js";
+import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.js";
+import { withBoundedAuthTransaction } from "./bounded-auth-transaction.js";
 
 @Injectable()
 export class AuthService {
@@ -20,6 +31,7 @@ export class AuthService {
     private readonly wechat: WechatMiniappClient,
     private readonly config: ConfigService<AppEnv, true>,
     @Optional() private readonly trustedDevices?: TrustedDeviceService,
+    @Optional() private readonly phones?: CustomerPhoneIdentityService,
   ) {}
 
   async loginWithWechat(code: string): Promise<AuthSession> {
@@ -31,7 +43,21 @@ export class AuthService {
         appId,
         { ...identity, unionId: identity.unionId },
       );
-      return this.createSessionForUser(userId, "WECHAT_MINIAPP", "wechat");
+      const external = await this.prisma.externalIdentity.findUniqueOrThrow({
+        where: {
+          provider_subjectHash: {
+            provider: IdentityProvider.WECHAT_MINIAPP,
+            subjectHash: this.crypto.hashIdentity(appId, identity.openId),
+          },
+        },
+        select: { id: true },
+      });
+      return this.createSessionForUser(
+        userId,
+        "WECHAT_MINIAPP",
+        this.config.get("AUTH_PROVIDER", { infer: true }),
+        external.id,
+      );
     }
     const subjectHash = this.crypto.hashIdentity(appId, identity.openId);
     const sessionToken = this.crypto.createSessionToken();
@@ -86,6 +112,7 @@ export class AuthService {
           expiresAt,
           authChannel: "WECHAT_MINIAPP",
           authProvider: this.config.get("AUTH_PROVIDER", { infer: true }),
+          wechatIdentityId: externalIdentity.id,
         },
       });
       await tx.auditLog.create({
@@ -108,9 +135,7 @@ export class AuthService {
       user: {
         id: result.id,
         displayName: result.displayName,
-        phoneVerified: Boolean(
-          result.phoneEncrypted && result.phoneVerifiedAt,
-        ),
+        phoneVerified: Boolean(result.phoneEncrypted && result.phoneVerifiedAt),
         memberships: result.memberships.map((membership) => ({
           organizationId: membership.organizationId,
           role: membership.role,
@@ -121,9 +146,7 @@ export class AuthService {
 
   async identifyWechatH5(identity: WechatIdentityResult): Promise<string> {
     if (!identity.unionId) {
-      throw new UnauthorizedException(
-        "未获取到UnionID，不能安全绑定技师账号",
-      );
+      throw new UnauthorizedException("未获取到UnionID，不能安全绑定技师账号");
     }
     return this.resolveUnionIdentity(
       IdentityProvider.WECHAT_H5,
@@ -136,6 +159,7 @@ export class AuthService {
     userId: string,
     authChannel: "WECHAT_MINIAPP" | "WECHAT_H5",
     authProvider = "wechat",
+    wechatIdentityId?: string,
   ): Promise<AuthSession> {
     const sessionToken = this.crypto.createSessionToken();
     const tokenHash = this.crypto.hashSessionToken(sessionToken);
@@ -160,6 +184,7 @@ export class AuthService {
           expiresAt,
           authChannel,
           authProvider,
+          ...(wechatIdentityId ? { wechatIdentityId } : {}),
         },
       });
       await tx.auditLog.create({
@@ -193,14 +218,17 @@ export class AuthService {
     code: string,
   ): Promise<WechatPhoneVerificationResult> {
     const { phoneNumber } = await this.wechat.exchangePhoneCode(code);
-    const phoneEncrypted = this.crypto.encrypt(phoneNumber);
     const phoneVerifiedAt = new Date();
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: principal.userId },
-        data: { phoneEncrypted, phoneVerifiedAt },
-      }),
-      this.prisma.auditLog.create({
+    if (!this.phones)
+      throw new ServiceUnavailableException("手机号身份绑定服务未就绪");
+    await withBoundedAuthTransaction(this.prisma, async (tx) => {
+      await this.phones!.bindVerifiedPhone(
+        tx,
+        principal.userId,
+        phoneNumber,
+        phoneVerifiedAt,
+      );
+      await tx.auditLog.create({
         data: {
           actorId: principal.userId,
           action: "AUTH_WECHAT_PHONE_VERIFIED",
@@ -208,8 +236,8 @@ export class AuthService {
           resourceId: principal.userId,
           metadata: { provider: IdentityProvider.WECHAT_MINIAPP },
         },
-      }),
-    ]);
+      });
+    });
     return {
       phoneVerified: true,
       maskedPhone: `${phoneNumber.slice(0, 3)}****${phoneNumber.slice(-4)}`,
@@ -240,42 +268,100 @@ export class AuthService {
       throw new UnauthorizedException("登录状态已失效，请重新登录");
     }
     const now = new Date();
+    const customerSms = session.authProvider === "customer-sms";
+    if (
+      customerSms &&
+      (session.authChannel !== "CUSTOMER_SMS" ||
+        session.wechatIdentityId ||
+        !session.user.phoneEncrypted ||
+        !session.user.phoneVerifiedAt ||
+        this.config.get("CUSTOMER_SMS_LOGIN_ENABLED", { infer: true }) !==
+          "true")
+    )
+      throw new UnauthorizedException("手机号登录状态无效，请重新登录");
+    if (session.authChannel === "CUSTOMER_SMS" && !customerSms)
+      throw new UnauthorizedException("登录状态无效");
+    if (customerSms) {
+      let currentPhoneHash: string;
+      try {
+        currentPhoneHash = this.crypto.hashPhoneVerification(
+          "phone",
+          this.crypto.decrypt(session.user.phoneEncrypted!),
+        );
+      } catch {
+        throw new UnauthorizedException("手机号安全资料已变更，请重新登录");
+      }
+      if (
+        !session.customerPhoneHash ||
+        session.customerPhoneHash !== currentPhoneHash
+      )
+        throw new UnauthorizedException("手机号安全资料已变更，请重新登录");
+    }
     let staffVerifiedUntil: Date | null = null;
     let staffVerificationMethod: string | null = null;
     if (session.authProvider === "staff-password") {
       if (
-        this.config.get("STAFF_PASSWORD_LOGIN_ENABLED", { infer: true }) !== "true" ||
+        this.config.get("STAFF_PASSWORD_LOGIN_ENABLED", { infer: true }) !==
+          "true" ||
         session.authChannel !== "ADMIN_BROWSER" ||
-        !["PASSWORD_SMS", "TRUSTED_DEVICE"].includes(session.staffVerificationMethod ?? "") ||
-        !session.user.phoneEncrypted || !session.user.phoneVerifiedAt ||
-        !session.user.memberships.some((membership) => membership.role !== "CUSTOMER")
-      ) throw new UnauthorizedException("账号密码登录已失效，请使用微信重新登录");
+        !["PASSWORD_SMS", "TRUSTED_DEVICE"].includes(
+          session.staffVerificationMethod ?? "",
+        ) ||
+        !session.user.phoneEncrypted ||
+        !session.user.phoneVerifiedAt ||
+        !session.user.memberships.some(
+          (membership) => membership.role !== "CUSTOMER",
+        )
+      )
+        throw new UnauthorizedException(
+          "账号密码登录已失效，请使用微信重新登录",
+        );
       const credential = await this.prisma.staffPasswordCredential.findUnique({
         where: { userId: session.userId },
         select: { version: true, phoneHash: true },
       });
       let phoneHash: string;
       try {
-        phoneHash = this.crypto.hashPhoneVerification("phone", this.crypto.decrypt(session.user.phoneEncrypted));
+        phoneHash = this.crypto.hashPhoneVerification(
+          "phone",
+          this.crypto.decrypt(session.user.phoneEncrypted),
+        );
       } catch {
         throw new UnauthorizedException("账户安全信息已变更，请重新登录");
       }
       if (
-        !credential || credential.version !== session.staffPasswordVersion ||
+        !credential ||
+        credential.version !== session.staffPasswordVersion ||
         credential.phoneHash !== phoneHash
-      ) throw new UnauthorizedException("账户安全信息已变更，请重新登录");
+      )
+        throw new UnauthorizedException("账户安全信息已变更，请重新登录");
     }
     if (
-      session.authChannel === "ADMIN_BROWSER" && session.staffVerifiedUntil &&
+      session.authChannel === "ADMIN_BROWSER" &&
+      session.staffVerifiedUntil &&
       session.staffVerifiedUntil > now &&
-      session.user.memberships.some((membership) => membership.role !== "CUSTOMER")
+      session.user.memberships.some(
+        (membership) => membership.role !== "CUSTOMER",
+      )
     ) {
-      const passwordVerified = session.authProvider === "staff-password" && session.staffVerificationMethod === "PASSWORD_SMS";
-      const deviceVerified = session.staffVerificationMethod === "TRUSTED_DEVICE" &&
+      const passwordVerified =
+        session.authProvider === "staff-password" &&
+        session.staffVerificationMethod === "PASSWORD_SMS";
+      const deviceVerified =
+        session.staffVerificationMethod === "TRUSTED_DEVICE" &&
         !!this.trustedDevices &&
-        await this.trustedDevices.validateSessionTrust(session, session.user, now);
+        (await this.trustedDevices.validateSessionTrust(
+          session,
+          session.user,
+          now,
+        ));
       if (passwordVerified || deviceVerified) {
-        staffVerifiedUntil = new Date(Math.min(session.staffVerifiedUntil.getTime(), session.expiresAt.getTime()));
+        staffVerifiedUntil = new Date(
+          Math.min(
+            session.staffVerifiedUntil.getTime(),
+            session.expiresAt.getTime(),
+          ),
+        );
         staffVerificationMethod = session.staffVerificationMethod;
       }
     }
@@ -287,18 +373,28 @@ export class AuthService {
       sessionId: session.id,
       userId: session.user.id,
       displayName: session.user.displayName,
-      mfaVerifiedUntil: session.mfaVerifiedUntil,
+      mfaVerifiedUntil: customerSms ? null : session.mfaVerifiedUntil,
       staffVerifiedUntil,
       staffVerificationMethod,
-      staffPasswordVersion: session.staffPasswordVersion,
-      trustedDeviceId: staffVerificationMethod === "TRUSTED_DEVICE" ? session.trustedDeviceId : null,
+      staffPasswordVersion: customerSms ? null : session.staffPasswordVersion,
+      trustedDeviceId:
+        staffVerificationMethod === "TRUSTED_DEVICE"
+          ? session.trustedDeviceId
+          : null,
       authChannel: session.authChannel,
       authProvider: session.authProvider,
-      phoneVerified: Boolean(session.user.phoneEncrypted && session.user.phoneVerifiedAt),
-      memberships: session.user.memberships.map((membership) => ({
-        organizationId: membership.organizationId,
-        role: membership.role,
-      })),
+      wechatIdentityId: customerSms ? null : (session.wechatIdentityId ?? null),
+      phoneVerified: Boolean(
+        session.user.phoneEncrypted && session.user.phoneVerifiedAt,
+      ),
+      memberships: session.user.memberships
+        .filter(
+          (membership) => !customerSms || membership.role === UserRole.CUSTOMER,
+        )
+        .map((membership) => ({
+          organizationId: membership.organizationId,
+          role: membership.role,
+        })),
     };
   }
 
@@ -345,10 +441,7 @@ export class AuthService {
         }),
         tx.wechatUnionIdentity.findUnique({ where: { unionIdHash } }),
       ]);
-      if (
-        external?.unionIdHash &&
-        external.unionIdHash !== unionIdHash
-      ) {
+      if (external?.unionIdHash && external.unionIdHash !== unionIdHash) {
         throw new ConflictException("微信身份绑定冲突，请联系平台处理");
       }
       if (external && binding && external.userId !== binding.userId) {

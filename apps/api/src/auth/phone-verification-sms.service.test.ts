@@ -64,7 +64,9 @@ describe("PhoneVerificationSmsService", () => {
     expect(saved.codeHash).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(auditCreate.mock.calls)).not.toContain("13800138000");
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "ACCEPTED" }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "ACCEPTED" }),
+      }),
     );
   });
 
@@ -78,6 +80,7 @@ describe("PhoneVerificationSmsService", () => {
       attempts: 0,
     };
     const tx = {
+      $executeRaw: vi.fn(),
       user: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       phoneVerificationChallenge: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -100,6 +103,7 @@ describe("PhoneVerificationSmsService", () => {
       prisma,
       crypto,
       {} as AliyunSmsClient,
+      { bindVerifiedPhone: vi.fn() } as never,
     );
 
     await expect(
@@ -108,11 +112,16 @@ describe("PhoneVerificationSmsService", () => {
       phoneVerified: true,
       maskedPhone: "138****8000",
     });
-    expect(tx.user.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "user-1", phoneVerifiedAt: null },
-      }),
-    );
+    expect(tx.phoneVerificationChallenge.updateMany).toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: 15000,
+      maxWait: 5000,
+    });
+    expect(tx.$executeRaw.mock.calls.map((call) => call[0].join(""))).toEqual([
+      "SET LOCAL lock_timeout = '10000ms'",
+      "SET LOCAL statement_timeout = '12000ms'",
+      "SET LOCAL idle_in_transaction_session_timeout = '12000ms'",
+    ]);
 
     prisma.user.findUniqueOrThrow = vi.fn().mockResolvedValue({
       phoneEncrypted: "existing",

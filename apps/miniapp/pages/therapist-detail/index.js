@@ -22,6 +22,14 @@ Page({
         tabs: DETAIL_TABS,
         displayedServices: [],
     },
+    onShow() {
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            this.setData({
+                therapist: null,
+                displayedServices: [],
+                canUploadOwnPhotos: false,
+            });
+    },
     async onLoad(options) {
         var _a, _b, _c;
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
@@ -78,6 +86,8 @@ Page({
     },
     selectTab(event) {
         var _a, _b;
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         const activeTab = event.currentTarget.dataset.tab;
         if (!DETAIL_TABS.some((tab) => tab.key === activeTab))
             return;
@@ -93,6 +103,8 @@ Page({
     },
     showAllProjects() {
         var _a, _b;
+        if (!(0, auth_1.requireVerifiedCustomerAccess)())
+            return;
         this.setData({
             activeTab: "all",
             displayedServices: (_b = (_a = this.data.therapist) === null || _a === void 0 ? void 0 : _a.services) !== null && _b !== void 0 ? _b : [],

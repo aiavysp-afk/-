@@ -12,7 +12,11 @@ import {
   customerCenterPath,
   getCustomerCenterOrganizationId,
 } from "../../utils/customer-center";
-import { requireVerifiedCustomerAccess } from "../../utils/auth";
+import {
+  getStoredSession,
+  goToPhoneVerification,
+  requireVerifiedCustomerAccess,
+} from "../../utils/auth";
 
 type CardRow = StoredValueCard & {
   balance: string;
@@ -189,6 +193,11 @@ Page({
   },
   async confirmRecharge() {
     if (this.data.rechargeBusy || !this.data.rechargeEnabled) return;
+    if (getStoredSession()?.loginMethod === "PHONE_SMS") {
+      wx.showToast({ title: "请微信登录后充值，余额不会变更", icon: "none" });
+      goToPhoneVerification();
+      return;
+    }
     const plan = this.data.rechargePlans[this.data.selectedRecharge];
     if (!plan) return;
     const confirmed = await new Promise<boolean>((resolve) =>

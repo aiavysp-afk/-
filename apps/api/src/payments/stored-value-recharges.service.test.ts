@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   InternalServerErrorException,
   ServiceUnavailableException,
 } from "@nestjs/common";
@@ -12,6 +13,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoredValueRechargesService } from "./stored-value-recharges.service.js";
 import type { WechatTransaction } from "./wechat-pay.protocol.js";
+import { createHash } from "node:crypto";
+import type { AuthPrincipal } from "../auth/auth.types.js";
 
 const transaction: WechatTransaction = {
   appid: "app-1",
@@ -28,6 +31,7 @@ const recharge: StoredValueRecharge = {
   id: "recharge-1",
   organizationId: "org-1",
   customerId: "customer-1",
+  payerOpenIdHash: null,
   accountId: "account-1",
   amountFen: 59_900n,
   status: StoredValueRechargeStatus.PENDING,
@@ -124,18 +128,27 @@ function setup(current: StoredValueRecharge = recharge) {
     prepay: vi.fn().mockResolvedValue("new-prepay"),
     paymentParameters: vi.fn().mockReturnValue({}),
   };
+  const prepay = {
+    payerOpenId: vi.fn(async (principal: AuthPrincipal) => {
+      if (principal.authProvider === "customer-sms")
+        throw new ForbiddenException("切换微信一键登录");
+      return "openid-1";
+    }),
+    payerOpenIdHash: vi.fn((openId: string) => `hash:${openId}`),
+  };
   return {
     service: new StoredValueRechargesService(
       prisma as never,
       config as never,
       { buildWechatJsapiRequest: vi.fn().mockReturnValue({}) } as never,
       client as never,
-      { payerOpenId: vi.fn().mockResolvedValue("openid-1") } as never,
+      prepay as never,
     ),
     prisma,
     tx,
     config,
     client,
+    prepay,
   };
 }
 
@@ -276,7 +289,110 @@ describe("StoredValueRechargesService", () => {
     userId: "customer-1",
     displayName: "客户",
     memberships: [],
+    authProvider: "wechat",
+    authChannel: "WECHAT_MINIAPP",
   };
+  it("binds recharge prepay to the actual session identity before external I/O", async () => {
+    const f = setup();
+    f.prisma.storedValueRecharge.findUnique.mockResolvedValue(null as never);
+    await f.service.createIntent(
+      customer,
+      { amountFen: 28_800, organizationId: "org-1" },
+      "identity-recharge-key",
+    );
+    expect(f.prepay.payerOpenId).toHaveBeenCalledWith(customer);
+    expect(f.tx.storedValueRecharge.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customerId: customer.userId,
+        payerOpenIdHash: "hash:openid-1",
+      }),
+    });
+    expect(f.client.prepay).toHaveBeenCalledOnce();
+  });
+  it("rejects SMS recharge creation before a charge or WeChat provider request, including a replay", async () => {
+    const f = setup();
+    await expect(
+      f.service.createIntent(
+        {
+          ...customer,
+          authProvider: "customer-sms",
+          authChannel: "CUSTOMER_SMS",
+        },
+        { amountFen: 59_900, organizationId: "org-1" },
+        "existing-key",
+      ),
+    ).rejects.toThrow("切换微信一键登录");
+    expect(f.prisma.storedValueRecharge.findUnique).not.toHaveBeenCalled();
+    expect(f.tx.storedValueRecharge.create).not.toHaveBeenCalled();
+    expect(f.client.prepay).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
+  it.each([null, "hash:another-openid"])(
+    "does not replay usable SDK parameters for missing or another payer binding %s",
+    async (hash) => {
+      const f = setup({
+        ...recharge,
+        payerOpenIdHash: hash,
+        requestFingerprint: createHash("sha256")
+          .update("org-1:59900")
+          .digest("hex"),
+      });
+      await expect(
+        f.service.createIntent(
+          customer,
+          { amountFen: 59_900, organizationId: "org-1" },
+          "existing-key",
+        ),
+      ).rejects.toThrow("原充值已绑定");
+      expect(f.client.paymentParameters).not.toHaveBeenCalled();
+      expect(f.client.prepay).not.toHaveBeenCalled();
+      expect(f.tx.storedValueRecharge.create).not.toHaveBeenCalled();
+    },
+  );
+  it("keeps own SMS recharge status readable without SDK parameters or provider I/O", async () => {
+    const f = setup({ ...recharge, payerOpenIdHash: "hash:openid-1" });
+    const result = await f.service.reconcile(
+      {
+        ...customer,
+        authProvider: "customer-sms",
+        authChannel: "CUSTOMER_SMS",
+      },
+      recharge.id,
+    );
+    expect(result).toMatchObject({ id: recharge.id, status: "PENDING" });
+    expect(result.wechatPayParameters).toBeUndefined();
+    expect(f.prepay.payerOpenId).not.toHaveBeenCalled();
+    expect(f.client.queryTransaction).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
+  it("keeps another canonical WeChat payer's pending status readable but withholds SDK parameters", async () => {
+    const f = setup({ ...recharge, payerOpenIdHash: "hash:another-openid" });
+    const result = await f.service.reconcile(customer, recharge.id);
+    expect(result.wechatPayParameters).toBeUndefined();
+    expect(f.client.queryTransaction).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
+  it("rejects a signed success with the wrong newly bound payer before any wallet write", async () => {
+    const f = setup({ ...recharge, payerOpenIdHash: "hash:openid-1" });
+    await expect(
+      f.service.applyIfPresent(
+        { ...transaction, payer: { openid: "another-openid" } },
+        "NOTIFICATION",
+      ),
+    ).rejects.toThrow("付款身份");
+    expect(f.prisma.$transaction).not.toHaveBeenCalled();
+    expectNoRecoveryWrites(f);
+  });
+  it("allows a signed success for the exact newly bound payer", async () => {
+    const f = setup({ ...recharge, payerOpenIdHash: "hash:openid-1" });
+    await expect(
+      f.service.applyIfPresent(
+        { ...transaction, payer: { openid: "openid-1" } },
+        "NOTIFICATION",
+      ),
+    ).resolves.toBe(true);
+    expect(f.tx.storedValueTransaction.create).toHaveBeenCalledOnce();
+  });
   const eligibleReward = {
     id: "reward-1",
     accountId: "account-1",

@@ -4,11 +4,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
-  IdentityProvider,
   OrderStatus,
   PaymentKind,
   PaymentProvider,
@@ -25,6 +24,7 @@ import type { AppEnv } from "../config/env.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { PaymentGatewayService } from "./payment-gateway.service.js";
 import { WechatPayClient } from "./wechat-pay.client.js";
+import { WechatPayerResolver } from "./wechat-payer-resolver.service.js";
 
 @Injectable()
 export class WechatPrepayService {
@@ -34,6 +34,7 @@ export class WechatPrepayService {
     private readonly crypto: AuthCryptoService,
     private readonly gateway: PaymentGatewayService,
     private readonly client: WechatPayClient,
+    @Optional() private readonly payerResolver?: WechatPayerResolver,
   ) {}
 
   async createIntent(
@@ -62,7 +63,7 @@ export class WechatPrepayService {
     shareId: string,
   ): Promise<PaymentIntent> {
     this.client.assertPrepayEnabled();
-    const openId = await this.payerOpenId(principal.userId);
+    const openId = await this.payerOpenId(principal);
     const expectedHash = this.crypto.hashIdentity(
       this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true }),
       openId,
@@ -118,7 +119,7 @@ export class WechatPrepayService {
     if (kind === PaymentKind.FRIEND && initial.customerId === principal.userId)
       throw new ForbiddenException("下单人请使用本人微信支付");
     this.client.assertPrepayEnabled();
-    const openId = await this.payerOpenId(principal.userId);
+    const openId = await this.payerOpenId(principal);
     const payerOpenIdHash = this.crypto.hashIdentity(
       this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true }),
       openId,
@@ -305,32 +306,20 @@ export class WechatPrepayService {
     return this.toIntent(current.payment, current.order.paymentExpiresAt!);
   }
 
-  async payerOpenId(userId: string) {
-    const identities = await this.prisma.externalIdentity.findMany({
-      where: { userId, provider: IdentityProvider.WECHAT_MINIAPP },
-      take: 10,
-    });
-    const appId = this.config.get("WECHAT_MINIAPP_APP_ID", { infer: true });
-    const matching: string[] = [];
-    for (const identity of identities) {
-      try {
-        const subject = this.crypto.decrypt(identity.subjectEncrypted);
-        if (
-          this.crypto.hashIdentity(appId, subject) === identity.subjectHash &&
-          subject.length > 0 &&
-          subject.length <= 128 &&
-          !subject.startsWith("mock-")
-        )
-          matching.push(subject);
-      } catch {
-        /* Never expose ciphertext/openid or decryption details. */
-      }
-    }
-    if (matching.length !== 1)
-      throw new ServiceUnavailableException(
-        "当前小程序微信身份未就绪，请重新微信登录",
-      );
-    return matching[0]!;
+  async payerOpenId(principal: AuthPrincipal) {
+    // Direct construction in isolated tests uses the same strict resolver;
+    // production DI registers it, and there is no userId-only fallback.
+    return (
+      this.payerResolver ??
+      new WechatPayerResolver(this.prisma, this.config, this.crypto)
+    ).resolveOpenId(principal);
+  }
+
+  payerOpenIdHash(openId: string) {
+    return (
+      this.payerResolver ??
+      new WechatPayerResolver(this.prisma, this.config, this.crypto)
+    ).hashOpenId(openId);
   }
 
   private assertPayable(
@@ -360,6 +349,7 @@ export class WechatPrepayService {
     if (!Number.isSafeInteger(amountFen) || amountFen <= 0)
       throw new ConflictException("支付金额超出安全范围");
     const ready =
+      !!payment.payerOpenIdHash &&
       !payment.closeRequestedAt &&
       payment.status === PaymentStatus.PENDING &&
       payment.prepayState === WechatPrepayState.READY &&

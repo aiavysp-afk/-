@@ -674,24 +674,36 @@ export const TechnicianH5ProfileUpdateSchema = z
       .trim()
       .min(2)
       .max(40)
-      .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), "真实姓名含无效字符"),
+      .refine(
+        (value) => !/[\u0000-\u001f\u007f]/.test(value),
+        "真实姓名含无效字符",
+      ),
     serviceCity: z.string().trim().min(2).max(32),
     serviceAreas: z
       .array(z.string().trim().min(2).max(40))
       .min(1)
       .max(20)
-      .refine((values) => new Set(values).size === values.length, "接单区域不能重复"),
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "接单区域不能重复",
+      ),
     availableTimeSlots: z
       .array(TechnicianH5TimeSlotSchema)
       .min(1)
       .max(28)
-      .refine((values) => new Set(values).size === values.length, "可接单时段不能重复"),
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "可接单时段不能重复",
+      ),
     bio: z.string().trim().min(10).max(2_000),
     serviceIds: z
       .array(z.string().trim().min(1).max(128))
       .min(1)
       .max(20)
-      .refine((values) => new Set(values).size === values.length, "擅长项目不能重复"),
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "擅长项目不能重复",
+      ),
   })
   .strict();
 
@@ -759,11 +771,15 @@ export const TechnicianApplicationSchema = TechnicianProfileSchema.extend({
     idBackUploaded: z.boolean(),
   }),
 });
-export const TechnicianProfileRejectSchema = z.object({
-  reason: z.string().trim().min(2).max(500),
-  expectedVersion: z.number().int().nonnegative(),
-}).strict();
-export const TechnicianProfileApproveSchema = z.object({ expectedVersion: z.number().int().nonnegative().optional() }).strict();
+export const TechnicianProfileRejectSchema = z
+  .object({
+    reason: z.string().trim().min(2).max(500),
+    expectedVersion: z.number().int().nonnegative(),
+  })
+  .strict();
+export const TechnicianProfileApproveSchema = z
+  .object({ expectedVersion: z.number().int().nonnegative().optional() })
+  .strict();
 export type TechnicianOnboarding = z.infer<typeof TechnicianOnboardingSchema>;
 export type TechnicianH5OnboardingStage = z.infer<
   typeof TechnicianH5OnboardingStageSchema
@@ -789,10 +805,10 @@ export type TechnicianH5Application = z.infer<
 export type TechnicianH5OnboardingStatus = z.infer<
   typeof TechnicianH5OnboardingStatusSchema
 >;
-export type TechnicianApplication = z.infer<
-  typeof TechnicianApplicationSchema
+export type TechnicianApplication = z.infer<typeof TechnicianApplicationSchema>;
+export type TechnicianProfileReject = z.infer<
+  typeof TechnicianProfileRejectSchema
 >;
-export type TechnicianProfileReject = z.infer<typeof TechnicianProfileRejectSchema>;
 
 export type TechnicianPhotoUpload = z.infer<typeof TechnicianPhotoUploadSchema>;
 export type TechnicianPhotoUploadResult = z.infer<
@@ -1185,6 +1201,42 @@ export const SmsPhoneVerificationRequestResultSchema = z.object({
   retryAfterSeconds: z.number().int().positive(),
 });
 
+// Public customer login is independent of the staff SMS/password channel.
+// Neither a client-supplied identity/userId nor implicit consent is accepted.
+export const CustomerWechatPhoneLoginRequestSchema = z
+  .object({
+    code: z.string().trim().min(1).max(128),
+    phoneCode: z.string().trim().min(1).max(128),
+    agreementsAccepted: z.literal(true),
+  })
+  .strict();
+
+export const CustomerSmsLoginRequestSchema = z
+  .object({
+    phone: z.string().regex(/^1[3-9]\d{9}$/),
+    agreementsAccepted: z.literal(true),
+  })
+  .strict();
+
+export const CustomerSmsLoginConfirmSchema =
+  CustomerSmsLoginRequestSchema.extend({
+    challengeId: z.string().trim().min(16).max(128),
+    code: z.string().regex(/^\d{6}$/),
+  }).strict();
+
+export const CustomerSmsLoginRequestResultSchema = z.object({
+  challengeId: z.string().min(16).max(128),
+  status: z.enum(["SENT", "UNKNOWN"]),
+  expiresAt: IsoDateTimeSchema,
+  retryAfterSeconds: z.number().int().positive(),
+});
+
+export const CustomerLoginCapabilitiesSchema = z.object({
+  wechatPhoneLoginEnabled: z.boolean(),
+  smsLoginEnabled: z.boolean(),
+  smsUnavailableReason: z.string().max(160).optional(),
+});
+
 export const UserRoleSchema = z.enum([
   "CUSTOMER",
   "THERAPIST",
@@ -1212,6 +1264,8 @@ export const AuthSessionSchema = z.object({
   accessToken: z.string(),
   expiresAt: z.string().datetime(),
   user: AuthUserSchema,
+  // Presentation hint only; server authorization always uses the stored session.
+  loginMethod: z.enum(["WECHAT", "PHONE_SMS"]).optional(),
 });
 
 export const MfaRecoveryStatusSchema = z.enum([
@@ -1771,6 +1825,21 @@ export type SmsPhoneVerificationConfirm = z.infer<
 >;
 export type SmsPhoneVerificationRequestResult = z.infer<
   typeof SmsPhoneVerificationRequestResultSchema
+>;
+export type CustomerWechatPhoneLoginRequest = z.infer<
+  typeof CustomerWechatPhoneLoginRequestSchema
+>;
+export type CustomerSmsLoginRequest = z.infer<
+  typeof CustomerSmsLoginRequestSchema
+>;
+export type CustomerSmsLoginConfirm = z.infer<
+  typeof CustomerSmsLoginConfirmSchema
+>;
+export type CustomerSmsLoginRequestResult = z.infer<
+  typeof CustomerSmsLoginRequestResultSchema
+>;
+export type CustomerLoginCapabilities = z.infer<
+  typeof CustomerLoginCapabilitiesSchema
 >;
 export type MfaRecoveryStatus = z.infer<typeof MfaRecoveryStatusSchema>;
 export type MfaRecoveryRejectionCode = z.infer<

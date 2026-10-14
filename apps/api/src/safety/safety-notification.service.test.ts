@@ -13,6 +13,54 @@ const principal = {
 } satisfies AuthPrincipal;
 
 describe("SafetyNotificationService monitoring", () => {
+  it.each(["changed", "same", "unverified", "broken-cipher"])(
+    "does not confer phone-login verification while maintaining %s duty contact",
+    async (kind) => {
+      const originalPhone = "13800000000";
+      const enteredPhone = kind === "changed" ? "13900000000" : originalPhone;
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        user: {
+          findUniqueOrThrow: vi
+            .fn()
+            .mockResolvedValue({
+              phoneEncrypted: originalPhone,
+              phoneVerifiedAt: kind === "unverified" ? null : new Date(),
+            }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const crypto = {
+        encrypt: vi.fn((value: string) => `encrypted:${value}`),
+        decrypt: vi.fn((value: string) => {
+          if (kind === "broken-cipher") throw Error("secret cipher detail");
+          return value;
+        }),
+      };
+      const service = new SafetyNotificationService(
+        {
+          staffMembership: {
+            findFirst: vi.fn().mockResolvedValue({ id: "membership" }),
+          },
+          $transaction: vi.fn(async (callback) => callback(tx)),
+        } as never,
+        { assertPermission: vi.fn() } as never,
+        crypto as never,
+      );
+      await service.updateDutyContact(principal, "org-1", "duty-user", {
+        phone: enteredPhone,
+      });
+      const data = tx.user.update.mock.calls[0]![0].data;
+      expect(data.phoneEncrypted).toBe(`encrypted:${enteredPhone}`);
+      if (kind === "same") expect(data).not.toHaveProperty("phoneVerifiedAt");
+      else expect(data.phoneVerifiedAt).toBeNull();
+      expect(tx.$queryRaw).toHaveBeenCalledOnce();
+      expect(JSON.stringify(tx.auditLog.create.mock.calls)).not.toContain(
+        enteredPhone,
+      );
+    },
+  );
   it("flags old dispatch, dead-letter and failed delivery without exposing channel ids", async () => {
     const findMany = vi.fn().mockResolvedValue([
       {

@@ -12,6 +12,8 @@ const principal: AuthPrincipal = {
   sessionId: "session",
   displayName: "客户",
   memberships: [],
+  authChannel: "WECHAT_MINIAPP",
+  authProvider: "wechat",
 };
 function fixture() {
   const order: any = {
@@ -99,10 +101,27 @@ function fixture() {
     gateway as never,
     client as never,
   );
-  return { service, order, client, identities, crypto, gateway, tx };
+  return { service, order, client, identities, crypto, gateway, tx, prisma };
 }
 
 describe("durable WeChat prepay", () => {
+  it("refuses SMS-only sessions before prepay claims or external requests despite an existing WeChat identity", async () => {
+    const f = fixture();
+    await expect(
+      f.service.createIntent(
+        {
+          ...principal,
+          authProvider: "customer-sms",
+          authChannel: "CUSTOMER_SMS",
+        },
+        "order",
+      ),
+    ).rejects.toThrow("切换微信一键登录");
+    expect(f.prisma.externalIdentity.findMany).not.toHaveBeenCalled();
+    expect(f.tx.payment.create).not.toHaveBeenCalled();
+    expect(f.client.prepay).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
   it("never returns SDK parameters after a close request is recorded", async () => {
     const f = fixture();
     await f.service.createIntent(principal, "order");
@@ -179,6 +198,24 @@ describe("durable WeChat prepay", () => {
       expect(f.client.prepay).not.toHaveBeenCalled();
     },
   );
+  it("does not expose a legacy unbound READY intent as proof of this session's WeChat payer", async () => {
+    const f = fixture();
+    f.order.payment = {
+      id: "old-unbound-ready",
+      orderId: "order",
+      provider: "WECHAT",
+      status: "PENDING",
+      amountFen: 19880n,
+      prepayState: "READY",
+      providerReference: "legacy-prepay",
+      prepayReadyAt: new Date(),
+      payerOpenIdHash: null,
+    };
+    const result = await f.service.createIntent(principal, "order");
+    expect(result.wechatPayParameters).toBeUndefined();
+    expect(f.client.prepay).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
   it("forbids another customer before reading identity or dispatching", async () => {
     const f = fixture();
     f.order.customerId = "other";

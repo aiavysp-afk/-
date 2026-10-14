@@ -1,5 +1,7 @@
 import type {
   AuthSession,
+  CustomerLoginCapabilities,
+  CustomerSmsLoginRequestResult,
   SmsPhoneVerificationRequestResult,
   WechatPhoneVerificationResult,
 } from "@zydj/contracts";
@@ -20,13 +22,8 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-const networkFailureMessage = (
-  error: { errMsg?: string },
-  fallback: string,
-) =>
-  /timeout/i.test(error.errMsg ?? "")
-    ? "请求超时，请检查网络后重试"
-    : fallback;
+const networkFailureMessage = (error: { errMsg?: string }, fallback: string) =>
+  /timeout/i.test(error.errMsg ?? "") ? "请求超时，请检查网络后重试" : fallback;
 
 export const getStoredSession = () => {
   const value = wx.getStorageSync(STORAGE_KEY);
@@ -34,7 +31,10 @@ export const getStoredSession = () => {
   const session = value as Partial<AuthSession>;
   if (!session.accessToken || !session.expiresAt || !session.user)
     return undefined;
-  if (Date.parse(session.expiresAt) <= Date.now()) {
+  if (
+    !Number.isFinite(Date.parse(session.expiresAt)) ||
+    Date.parse(session.expiresAt) <= Date.now()
+  ) {
     wx.removeStorageSync(STORAGE_KEY);
     return undefined;
   }
@@ -53,8 +53,11 @@ export const redirectToCustomerLogin = (returnPath?: string) => {
   if (customerLoginRedirecting) return;
   customerLoginRedirecting = true;
   wx.reLaunch({
-    url: CUSTOMER_LOGIN_URL + (safeLoginReturnPath(returnPath)
-      ? `&returnPath=${encodeURIComponent(safeLoginReturnPath(returnPath))}` : ""),
+    url:
+      CUSTOMER_LOGIN_URL +
+      (safeLoginReturnPath(returnPath)
+        ? `&returnPath=${encodeURIComponent(safeLoginReturnPath(returnPath))}`
+        : ""),
     complete: () => {
       customerLoginRedirecting = false;
     },
@@ -68,7 +71,115 @@ export const requireVerifiedCustomerAccess = (returnPath?: string) => {
 };
 
 export const goToPhoneVerification = () =>
-  wx.navigateTo({ url: "/pages/phone-verification/index" });
+  wx.navigateTo({ url: "/pages/phone-verification/index?forceChoice=1" });
+
+const assertCustomerConsent = (accepted: boolean) => {
+  if (accepted !== true)
+    throw new Error("请先阅读并同意用户协议、隐私政策与上门服务公约");
+};
+
+// Customer SMS login must not depend on a previous WeChat/staff session. Never
+// forward the old bearer token or include credentials in error diagnostics.
+const customerLoginRequest = <T>(path: string, data?: unknown) => {
+  const app = getApp<AppContext>();
+  return new Promise<T>((resolve, reject) => {
+    wx.request<ApiResponse<T>>({
+      url: `${app.globalData.apiBaseUrl}/auth/customer-login${path}`,
+      method: data === undefined ? "GET" : "POST",
+      timeout: 20_000,
+      ...(data === undefined ? {} : { data }),
+      header: {
+        "content-type": data === undefined ? "text/plain" : "application/json",
+      },
+      success: (response) => {
+        if (response.statusCode === 200 && response.data.data !== undefined)
+          resolve(response.data.data);
+        else reject(new Error(response.data.message || "登录服务暂时不可用"));
+      },
+      fail: (error) =>
+        reject(new Error(networkFailureMessage(error, "无法连接登录服务"))),
+    });
+  });
+};
+
+const saveVerifiedCustomerSession = (session: AuthSession) => {
+  if (
+    !session?.accessToken ||
+    !session?.user?.id ||
+    session.user.phoneVerified !== true ||
+    !Array.isArray(session.user.memberships) ||
+    !Number.isFinite(Date.parse(session.expiresAt)) ||
+    Date.parse(session.expiresAt) <= Date.now()
+  )
+    throw new Error("登录验证未完成，请重试");
+  wx.setStorageSync(STORAGE_KEY, session);
+  return session;
+};
+
+export const getCustomerLoginCapabilities = () =>
+  customerLoginRequest<CustomerLoginCapabilities>("/capabilities");
+
+// getPhoneNumber and wx.login supply different, single-use codes. One native
+// user-authorized click supplies both to one atomic server login, without
+// creating a temporary user/session or a second visible verification step.
+export const loginCustomerWithWechatPhone = async (
+  phoneCode: string,
+  agreementsAccepted = false,
+) => {
+  assertCustomerConsent(agreementsAccepted);
+  if (!phoneCode?.trim()) throw new Error("请先同意微信手机号授权");
+  const code = await new Promise<string>((resolve, reject) => {
+    wx.login({
+      success: (result) =>
+        result.code
+          ? resolve(result.code)
+          : reject(new Error("微信未返回登录凭证")),
+      fail: () => reject(new Error("微信登录未完成，请重试")),
+    });
+  });
+  const session = await customerLoginRequest<AuthSession>("/wechat-phone", {
+    code,
+    phoneCode,
+    agreementsAccepted,
+  });
+  return saveVerifiedCustomerSession({ ...session, loginMethod: "WECHAT" });
+};
+
+export const requestCustomerSmsLogin = async (
+  phone: string,
+  agreementsAccepted = false,
+) => {
+  assertCustomerConsent(agreementsAccepted);
+  if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error("请输入正确的 11 位手机号");
+  return customerLoginRequest<CustomerSmsLoginRequestResult>("/sms/request", {
+    phone,
+    agreementsAccepted,
+  });
+};
+
+export const confirmCustomerSmsLogin = async (
+  phone: string,
+  code: string,
+  challengeId: string,
+  agreementsAccepted = false,
+) => {
+  assertCustomerConsent(agreementsAccepted);
+  if (
+    !/^1[3-9]\d{9}$/.test(phone) ||
+    !/^\d{6}$/.test(code) ||
+    !challengeId ||
+    challengeId.length < 16 ||
+    challengeId.length > 128
+  )
+    throw new Error("请先获取并填写正确的短信验证码");
+  const session = await customerLoginRequest<AuthSession>("/sms/confirm", {
+    phone,
+    code,
+    challengeId,
+    agreementsAccepted,
+  });
+  return saveVerifiedCustomerSession({ ...session, loginMethod: "PHONE_SMS" });
+};
 
 export const loginWithWechat = async () => {
   const code = await new Promise<string>((resolve, reject) => {
@@ -97,8 +208,9 @@ export const loginWithWechat = async () => {
         reject(new Error(networkFailureMessage(error, "无法连接登录服务"))),
     });
   });
-  wx.setStorageSync(STORAGE_KEY, session);
-  return session;
+  const nextSession: AuthSession = { ...session, loginMethod: "WECHAT" };
+  wx.setStorageSync(STORAGE_KEY, nextSession);
+  return nextSession;
 };
 
 export const verifyWechatPhone = async (code: string) => {
@@ -125,9 +237,7 @@ export const verifyWechatPhone = async (code: string) => {
         },
         fail: (error) =>
           reject(
-            new Error(
-              networkFailureMessage(error, "无法连接手机号验证服务"),
-            ),
+            new Error(networkFailureMessage(error, "无法连接手机号验证服务")),
           ),
       });
     },

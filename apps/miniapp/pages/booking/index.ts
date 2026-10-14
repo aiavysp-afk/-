@@ -56,8 +56,15 @@ const categoryNames: Record<ServiceItem["category"], string> = {
   FOOT_CARE: "足部养护",
 };
 
-function definitiveOrderRejection(error: unknown): "coupon" | "hold" | "address" | null {
-  if (!(error instanceof ApiError) || error.path !== "/orders" || error.method !== "POST") return null;
+function definitiveOrderRejection(
+  error: unknown,
+): "coupon" | "hold" | "address" | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.path !== "/orders" ||
+    error.method !== "POST"
+  )
+    return null;
   // These exact create errors occur after a rollback/no-order result and the
   // server's idempotency/reservation-order recheck. Never unlock for an existing
   // order conflict, arbitrary 4xx, transport failure or 5xx.
@@ -406,13 +413,19 @@ Page({
     });
   },
   openServiceDetail() {
-    if (!this.data.service || this.data.busy || this.data.orderSubmissionAttempted)
+    if (
+      !this.data.service ||
+      this.data.busy ||
+      this.data.orderSubmissionAttempted
+    )
       return;
     const slug = encodeURIComponent(this.data.service.slug);
     const therapist = this.data.preferredTherapistId
       ? `&therapistId=${encodeURIComponent(this.data.preferredTherapistId)}`
       : "";
-    wx.navigateTo({ url: `/pages/service-detail/index?slug=${slug}${therapist}` });
+    wx.navigateTo({
+      url: `/pages/service-detail/index?slug=${slug}${therapist}`,
+    });
   },
   select(e: { currentTarget: { dataset: { index: number } } }) {
     if (!this.data.busy && !this.data.orderSubmissionAttempted) {
@@ -450,7 +463,8 @@ Page({
     const field = e.currentTarget.dataset.field;
     if (
       ["contactName", "phone", "detail", "doorNumber"].includes(field) &&
-      !this.data.orderSubmissionAttempted && !this.data.busy
+      !this.data.orderSubmissionAttempted &&
+      !this.data.busy
     ) {
       const addressFieldChanged = ["detail", "doorNumber"].includes(field);
       this.setData({
@@ -470,13 +484,23 @@ Page({
     }
   },
   async locateAddress() {
-    if (this.data.locationBusy || this.data.busy || this.data.orderSubmissionAttempted) return;
+    if (
+      this.data.locationBusy ||
+      this.data.busy ||
+      this.data.orderSubmissionAttempted
+    )
+      return;
     this.setData({ locationBusy: true, error: "", suggestions: [] });
     const revision = this.quoteRevision;
     try {
       const point = await getGcj02Location();
       const address = await reverseGeocode(this.data.amapMiniappKey, point);
-      if (this.pageClosed || revision !== this.quoteRevision || this.data.orderSubmissionAttempted) return;
+      if (
+        this.pageClosed ||
+        revision !== this.quoteRevision ||
+        this.data.orderSubmissionAttempted
+      )
+        return;
       this.setData({
         selectedAddressId: "",
         detail: address.detail.slice(0, 140),
@@ -498,8 +522,8 @@ Page({
     if (
       this.data.suggestionBusy ||
       !this.data.addressSuggestionAvailable ||
-      this.data.orderSubmissionAttempted
-      || this.data.busy
+      this.data.orderSubmissionAttempted ||
+      this.data.busy
     )
       return;
     const keyword = this.data.detail.trim();
@@ -514,7 +538,12 @@ Page({
         keyword,
         this.data.serviceCity,
       );
-      if (this.pageClosed || this.data.detail.trim() !== keyword || this.data.orderSubmissionAttempted) return;
+      if (
+        this.pageClosed ||
+        this.data.detail.trim() !== keyword ||
+        this.data.orderSubmissionAttempted
+      )
+        return;
       this.setData({ suggestions });
       if (!suggestions.length)
         this.fail(new Error("当前服务城市内未找到匹配地址，请继续手填"));
@@ -570,7 +599,8 @@ Page({
   },
   scheduleQuote() {
     if (this.quoteTimer) clearTimeout(this.quoteTimer);
-    if (this.pageClosed || this.data.busy || this.data.orderSubmissionAttempted) return;
+    if (this.pageClosed || this.data.busy || this.data.orderSubmissionAttempted)
+      return;
     this.quoteTimer = setTimeout(() => {
       this.quoteTimer = undefined;
       void this.refreshQuote();
@@ -580,13 +610,19 @@ Page({
     if (this.data.couponsLoading) return;
     this.setData({ couponsLoading: true, couponsError: "" });
     try {
-      const coupons = await api<CustomerCoupon[]>(customerCenterPath("/customer-center/coupons"));
+      const coupons = await api<CustomerCoupon[]>(
+        customerCenterPath("/customer-center/coupons"),
+      );
       if (this.pageClosed) return;
-      this.setData({ coupons: bookingCouponRows(coupons, this.data.service?.priceFen ?? 0) });
-    } catch (error) {
-      if (!this.pageClosed) this.setData({
-        couponsError: error instanceof Error ? error.message : "优惠券读取失败，请重试",
+      this.setData({
+        coupons: bookingCouponRows(coupons, this.data.service?.priceFen ?? 0),
       });
+    } catch (error) {
+      if (!this.pageClosed)
+        this.setData({
+          couponsError:
+            error instanceof Error ? error.message : "优惠券读取失败，请重试",
+        });
     } finally {
       if (!this.pageClosed) this.setData({ couponsLoading: false });
     }
@@ -603,13 +639,21 @@ Page({
   chooseCoupon(event: { currentTarget: { dataset: { id: string } } }) {
     if (this.data.busy || this.data.orderSubmissionAttempted) return;
     const couponChoice = event.currentTarget.dataset.id;
-    if (!["auto", "none"].includes(couponChoice)
-      && !this.data.coupons.some((row) => row.id === couponChoice && row.eligible)) return;
+    if (
+      !["auto", "none"].includes(couponChoice) &&
+      !this.data.coupons.some((row) => row.id === couponChoice && row.eligible)
+    )
+      return;
     this.setData({ couponChoice, couponPickerOpen: false });
     this.invalidateQuote();
   },
   async refreshQuote(force = false) {
-    if (this.pageClosed || this.data.orderSubmissionAttempted || (this.data.busy && !force)) return false;
+    if (
+      this.pageClosed ||
+      this.data.orderSubmissionAttempted ||
+      (this.data.busy && !force)
+    )
+      return false;
     if (this.data.quoteLoading) {
       this.quoteRefreshQueued = true;
       return false;
@@ -629,56 +673,96 @@ Page({
     const couponChoice = this.data.couponChoice;
     this.setData({ quoteLoading: true, quoteError: "", quoteDetails: null });
     try {
-      if (this.data.reservationId && (this.data.reservationSlotKey !== slotKey
-        || Date.parse(this.data.reservationExpiresAt) <= Date.now())) {
+      if (
+        this.data.reservationId &&
+        (this.data.reservationSlotKey !== slotKey ||
+          Date.parse(this.data.reservationExpiresAt) <= Date.now())
+      ) {
         const oldId = this.data.reservationId;
         if (Date.parse(this.data.reservationExpiresAt) > Date.now()) {
-          await api(`/booking-holds/${encodeURIComponent(oldId)}/release`, "POST", {});
+          await api(
+            `/booking-holds/${encodeURIComponent(oldId)}/release`,
+            "POST",
+            {},
+          );
         }
-        this.setData({ reservationId: "", reservationSlotKey: "", reservationExpiresAt: "", addressVerificationId: "" });
+        this.setData({
+          reservationId: "",
+          reservationSlotKey: "",
+          reservationExpiresAt: "",
+          addressVerificationId: "",
+        });
       }
       if (!this.data.reservationId) {
         // A hold is real capacity, not an invented technician/time. Keep only
         // one active hold and release it before changing the chosen slot.
         const hold = await api<BookingHold>("/booking-holds", "POST", {
-          serviceId: service.id, therapistId: slot.therapistId, startsAt: slot.startsAt,
+          serviceId: service.id,
+          therapistId: slot.therapistId,
+          startsAt: slot.startsAt,
         });
         this.setData({
-          reservationId: hold.id, reservationSlotKey: slotKey,
-          reservationExpiresAt: hold.expiresAt, orderKey: newKey(), addressVerificationId: "",
+          reservationId: hold.id,
+          reservationSlotKey: slotKey,
+          reservationExpiresAt: hold.expiresAt,
+          orderKey: newKey(),
+          addressVerificationId: "",
         });
         if (this.pageClosed) {
-          await api(`/booking-holds/${encodeURIComponent(hold.id)}/release`, "POST", {});
+          await api(
+            `/booking-holds/${encodeURIComponent(hold.id)}/release`,
+            "POST",
+            {},
+          );
           return false;
         }
       }
       const reservationId = this.data.reservationId;
       const quote = await api<OrderQuote>("/orders/quote", "POST", {
         reservationId,
-        ...(couponChoice === "auto" ? {} : { couponId: couponChoice === "none" ? null : couponChoice }),
+        ...(couponChoice === "auto"
+          ? {}
+          : { couponId: couponChoice === "none" ? null : couponChoice }),
       });
       assertServerQuote(quote, reservationId);
       if (quote.travelFeeFen !== 0) throw new Error("当前报价异常，已阻止提交");
       if (this.pageClosed) {
-        await api(`/booking-holds/${encodeURIComponent(reservationId)}/release`, "POST", {});
+        await api(
+          `/booking-holds/${encodeURIComponent(reservationId)}/release`,
+          "POST",
+          {},
+        );
         return false;
       }
-      if (revision !== this.quoteRevision || fingerprint !== this.draftFingerprint()) return false;
-      const appliedCoupon = this.data.coupons.find((row) => row.id === quote.couponId);
+      if (
+        revision !== this.quoteRevision ||
+        fingerprint !== this.draftFingerprint()
+      )
+        return false;
+      const appliedCoupon = this.data.coupons.find(
+        (row) => row.id === quote.couponId,
+      );
       this.setData({
-        quoteDetails: quoteDisplay(quote), quoteCouponId: quote.couponId ?? null,
+        quoteDetails: quoteDisplay(quote),
+        quoteCouponId: quote.couponId ?? null,
         quoteFingerprint: fingerprint,
         coupons: bookingCouponRows(this.data.coupons, quote.serviceAmountFen),
-        couponSummary: quote.discountFen > 0
-          ? `${appliedCoupon?.title ?? "已使用优惠券"} · 减 ¥${money(quote.discountFen)}`
-          : couponChoice === "none" ? "本单不使用优惠券" : "暂无符合项目费门槛的优惠券",
+        couponSummary:
+          quote.discountFen > 0
+            ? `${appliedCoupon?.title ?? "已使用优惠券"} · 减 ¥${money(quote.discountFen)}`
+            : couponChoice === "none"
+              ? "本单不使用优惠券"
+              : "暂无符合项目费门槛的优惠券",
       });
       return true;
     } catch (error) {
-      if (!this.pageClosed && revision === this.quoteRevision) this.setData({
-        quoteDetails: null, quoteFingerprint: "",
-        quoteError: error instanceof Error ? error.message : "实时价格读取失败，请重试",
-      });
+      if (!this.pageClosed && revision === this.quoteRevision)
+        this.setData({
+          quoteDetails: null,
+          quoteFingerprint: "",
+          quoteError:
+            error instanceof Error ? error.message : "实时价格读取失败，请重试",
+        });
       return false;
     } finally {
       if (!this.pageClosed) {
@@ -735,7 +819,13 @@ Page({
     return { service, slot };
   },
   async prepareOrder() {
-    if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy) return;
+    if (
+      this.data.busy ||
+      this.data.quoteLoading ||
+      this.data.locationBusy ||
+      this.data.suggestionBusy
+    )
+      return;
     const draft = this.validDraft();
     if (!draft) return;
     this.setData({ busy: true, error: "" });
@@ -754,8 +844,10 @@ Page({
         return;
       }
       const addressPoint = await this.ensureAddressCoordinates();
-      if (!await this.refreshQuote(true)) {
-        this.fail(new Error(this.data.quoteError || "服务器价格尚未确认，请稍后重试"));
+      if (!(await this.refreshQuote(true))) {
+        this.fail(
+          new Error(this.data.quoteError || "服务器价格尚未确认，请稍后重试"),
+        );
         return;
       }
       if (
@@ -782,7 +874,13 @@ Page({
     }
   },
   async create() {
-    if (this.data.busy || this.data.quoteLoading || this.data.locationBusy || this.data.suggestionBusy) return;
+    if (
+      this.data.busy ||
+      this.data.quoteLoading ||
+      this.data.locationBusy ||
+      this.data.suggestionBusy
+    )
+      return;
     const retryingUncertainSubmission = this.data.orderSubmissionAttempted;
     if (!this.data.quoteDetails) {
       await this.prepareOrder();
@@ -793,8 +891,14 @@ Page({
       const shownCoupon = this.data.quoteCouponId;
       await this.prepareOrder();
       if (this.data.error || !this.data.quoteDetails) return;
-      if (this.data.quoteDetails.payable !== shownPayable || this.data.quoteCouponId !== shownCoupon) {
-        wx.showToast({ title: "优惠或价格已更新，请核对后再提交", icon: "none" });
+      if (
+        this.data.quoteDetails.payable !== shownPayable ||
+        this.data.quoteCouponId !== shownCoupon
+      ) {
+        wx.showToast({
+          title: "优惠或价格已更新，请核对后再提交",
+          icon: "none",
+        });
         return;
       }
       if (this.data.quoteFingerprint !== this.draftFingerprint()) return;
@@ -839,11 +943,14 @@ Page({
         this.data.orderKey,
       );
       if (this.pageClosed) return;
-      if (order.travelFeeFen !== 0
-        || !this.data.quoteDetails
-        || money(order.serviceAmountFen) !== this.data.quoteDetails.serviceAmount
-        || money(order.discountFen) !== this.data.quoteDetails.discount
-        || money(order.payableFen) !== this.data.quoteDetails.payable) {
+      if (
+        order.travelFeeFen !== 0 ||
+        !this.data.quoteDetails ||
+        money(order.serviceAmountFen) !==
+          this.data.quoteDetails.serviceAmount ||
+        money(order.discountFen) !== this.data.quoteDetails.discount ||
+        money(order.payableFen) !== this.data.quoteDetails.payable
+      ) {
         wx.showModal({
           title: "订单价格异常",
           content:
@@ -867,21 +974,32 @@ Page({
         await this.shareCreatedOrder(order);
         return;
       }
-      await this.payCreatedOrder(order);
+      const continueToOrders = await this.payCreatedOrder(order);
+      if (continueToOrders === false) return;
       wx.redirectTo({ url: "/pages/orders/index" });
     } catch (error) {
       const rejection = definitiveOrderRejection(error);
-      if (this.data.orderSubmissionAttempted && !retryingUncertainSubmission && rejection) {
+      if (
+        this.data.orderSubmissionAttempted &&
+        !retryingUncertainSubmission &&
+        rejection
+      ) {
         // A prior uncertain request may still be in flight. Only a first, known
         // rejected submission can safely return to an editable draft.
         this.setData({
           orderSubmissionAttempted: false,
           orderKey: newKey(),
           addressVerificationId: "",
-          ...(rejection === "hold" ? {
-            reservationId: "", reservationSlotKey: "", reservationExpiresAt: "",
-          } : {}),
-          ...(rejection === "address" ? { addressVerificationRequired: true } : {}),
+          ...(rejection === "hold"
+            ? {
+                reservationId: "",
+                reservationSlotKey: "",
+                reservationExpiresAt: "",
+              }
+            : {}),
+          ...(rejection === "address"
+            ? { addressVerificationRequired: true }
+            : {}),
         });
         this.invalidateQuote(false);
         void this.loadCoupons();
@@ -894,7 +1012,8 @@ Page({
   choosePaymentMode(event: { currentTarget: { dataset: { mode: string } } }) {
     if (this.data.busy || this.data.orderSubmissionAttempted) return;
     const mode = event.currentTarget.dataset.mode;
-    if (mode === "WECHAT" || mode === "FRIEND") this.setData({ paymentMode: mode });
+    if (mode === "WECHAT" || mode === "FRIEND")
+      this.setData({ paymentMode: mode });
   },
   async shareCreatedOrder(order: OrderView) {
     if (order.status !== "PENDING_PAYMENT") {
@@ -904,9 +1023,14 @@ Page({
     try {
       // Do not create the owner's prepay first. The server chooses and locks
       // exactly one real payer before creating a WeChat payment intent.
-      const share = assertFriendPaymentShare(await api<FriendPaymentShare>(
-        `/orders/${order.id}/friend-payment`, "POST", {},
-      ), order.payableFen);
+      const share = assertFriendPaymentShare(
+        await api<FriendPaymentShare>(
+          `/orders/${order.id}/friend-payment`,
+          "POST",
+          {},
+        ),
+        order.payableFen,
+      );
       wx.redirectTo({ url: share.miniappPath });
     } catch (error) {
       wx.showModal({
@@ -919,6 +1043,11 @@ Page({
   },
   async payCreatedOrder(order: OrderView) {
     if (order.status !== "PENDING_PAYMENT") return;
+    if (getStoredSession()?.loginMethod === "PHONE_SMS") {
+      wx.showToast({ title: "订单已保存，请微信登录后继续支付", icon: "none" });
+      goToPhoneVerification();
+      return false;
+    }
     let intent: PaymentIntent;
     try {
       intent = await api<PaymentIntent>(
@@ -1031,8 +1160,16 @@ Page({
     ++this.quoteRevision;
     ++this.slotsRevision;
     if (this.quoteTimer) clearTimeout(this.quoteTimer);
-    if (this.data.reservationId && !this.data.orderSubmissionAttempted && !this.data.quoteLoading) {
-      void api(`/booking-holds/${encodeURIComponent(this.data.reservationId)}/release`, "POST", {}).catch(() => undefined);
+    if (
+      this.data.reservationId &&
+      !this.data.orderSubmissionAttempted &&
+      !this.data.quoteLoading
+    ) {
+      void api(
+        `/booking-holds/${encodeURIComponent(this.data.reservationId)}/release`,
+        "POST",
+        {},
+      ).catch(() => undefined);
     }
     this.setData({
       contactName: "",

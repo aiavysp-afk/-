@@ -159,8 +159,14 @@ Page({
         });
     },
     async confirmRecharge() {
+        var _a;
         if (this.data.rechargeBusy || !this.data.rechargeEnabled)
             return;
+        if (((_a = (0, auth_1.getStoredSession)()) === null || _a === void 0 ? void 0 : _a.loginMethod) === "PHONE_SMS") {
+            wx.showToast({ title: "请微信登录后充值，余额不会变更", icon: "none" });
+            (0, auth_1.goToPhoneVerification)();
+            return;
+        }
         const plan = this.data.rechargePlans[this.data.selectedRecharge];
         if (!plan)
             return;

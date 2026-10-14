@@ -91,6 +91,8 @@ const EnvSchema = z.object({
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
   // Independent fallback gate for login/phone-binding verification codes.
   PHONE_VERIFICATION_SMS_ENABLED: z.enum(["false", "true"]).default("false"),
+  // Public anonymous customer login requires an independent, explicit opt-in.
+  CUSTOMER_SMS_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
   // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
   SAFETY_NOTIFICATION_DISPATCH_ENABLED: z
     .enum(["false", "true"])
@@ -311,6 +313,7 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
       env.SMS_PROVIDER === "none" &&
       (env.SMS_SEND_ENABLED === "true" ||
         env.PHONE_VERIFICATION_SMS_ENABLED === "true" ||
+        env.CUSTOMER_SMS_LOGIN_ENABLED === "true" ||
         env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true" ||
         env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED === "true")
     )
@@ -353,7 +356,10 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
         if (!env[key].trim() || /[\r\n]/.test(env[key])) invalid.push(key);
       }
     }
-    if (env.PHONE_VERIFICATION_SMS_ENABLED === "true") {
+    if (
+      env.PHONE_VERIFICATION_SMS_ENABLED === "true" ||
+      env.CUSTOMER_SMS_LOGIN_ENABLED === "true"
+    ) {
       if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
       if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
       if (
@@ -362,6 +368,11 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
         )
       )
         invalid.push("ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE");
+      if (
+        env.CUSTOMER_SMS_LOGIN_ENABLED === "true" &&
+        env.PHONE_VERIFICATION_SMS_ENABLED !== "true"
+      )
+        invalid.push("PHONE_VERIFICATION_SMS_ENABLED");
     }
     if (env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true") {
       if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");

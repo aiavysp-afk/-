@@ -86,7 +86,10 @@ async function fixture({
             getCustomerCenterOrganizationId: () => "org-fixture",
           };
         if (name === "../../utils/auth")
-          return { requireVerifiedCustomerAccess: () => true };
+          return {
+            requireVerifiedCustomerAccess: () => true,
+            getStoredSession: () => ({ loginMethod: "WECHAT" }),
+          };
         throw new Error(`Unexpected dependency ${name}`);
       },
     },

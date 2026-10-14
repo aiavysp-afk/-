@@ -10,13 +10,16 @@ import { AppModule } from "./app.module.js";
 import type { AppEnv } from "./config/env.js";
 import { HttpExceptionTelemetryFilter } from "./observability/http-exception.filter.js";
 import { safeRequestLog } from "./observability/safe-request-log.js";
+import { REVERSE_PROXY_TRUST } from "./config/proxy.js";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
       logger: { serializers: { req: safeRequestLog } },
-      trustProxy: true,
+      // Only our directly connected loopback reverse proxy is trusted. An
+      // untrusted left-most X-Forwarded-For must not evade anonymous SMS limits.
+      trustProxy: REVERSE_PROXY_TRUST,
     }),
     { rawBody: true },
   );

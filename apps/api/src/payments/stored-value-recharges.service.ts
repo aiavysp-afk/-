@@ -72,6 +72,8 @@ export class StoredValueRechargesService {
     const fingerprint = createHash("sha256")
       .update(`${organizationId}:${input.amountFen}`)
       .digest("hex");
+    const openId = await this.prepay.payerOpenId(principal);
+    const payerOpenIdHash = this.prepay.payerOpenIdHash(openId);
     const existing = await this.prisma.storedValueRecharge.findUnique({
       where: {
         customerId_idempotencyKey: {
@@ -80,9 +82,8 @@ export class StoredValueRechargesService {
         },
       },
     });
-    if (existing) return this.replay(existing, fingerprint);
+    if (existing) return this.replay(existing, fingerprint, payerOpenIdHash);
 
-    const openId = await this.prepay.payerOpenId(principal.userId);
     const expiresAt = new Date(Date.now() + RECHARGE_WINDOW_MS);
     const merchantPaymentNo = `SVR${Date.now()}${randomBytes(5).toString("hex").toUpperCase()}`;
     const request = this.gateway.buildWechatJsapiRequest({
@@ -114,6 +115,7 @@ export class StoredValueRechargesService {
           data: {
             organizationId,
             customerId: principal.userId,
+            payerOpenIdHash,
             accountId: account.id,
             amountFen: BigInt(input.amountFen),
             merchantPaymentNo,
@@ -152,7 +154,7 @@ export class StoredValueRechargesService {
         },
       });
       if (!replay) throw error;
-      return this.replay(replay, fingerprint);
+      return this.replay(replay, fingerprint, payerOpenIdHash);
     }
 
     let prepayId: string;
@@ -197,6 +199,21 @@ export class StoredValueRechargesService {
       throw new ForbiddenException("不能查询其他用户的充值");
     if (recharge.status === StoredValueRechargeStatus.SUCCEEDED)
       return this.toIntent(recharge);
+    // Phone login can read its own recharge status without borrowing a WeChat
+    // identity, starting provider I/O, or receiving usable SDK parameters.
+    if (
+      principal.authProvider === "customer-sms" ||
+      principal.authChannel === "CUSTOMER_SMS"
+    )
+      return this.toIntent(recharge, false);
+    const payerOpenIdHash = this.prepay.payerOpenIdHash(
+      await this.prepay.payerOpenId(principal),
+    );
+    if (
+      !recharge.payerOpenIdHash ||
+      recharge.payerOpenIdHash !== payerOpenIdHash
+    )
+      return this.toIntent(recharge, false);
     await this.queryExisting(recharge);
     return this.toIntent(
       await this.prisma.storedValueRecharge.findUniqueOrThrow({
@@ -401,6 +418,14 @@ export class StoredValueRechargesService {
       BigInt(transaction.amount.total) !== initial.amountFen
     )
       throw new BadRequestException("微信充值交易与本地记录不一致");
+    // Null legacy bindings must still settle verified historical callbacks.
+    if (
+      initial.payerOpenIdHash &&
+      (!transaction.payer?.openid ||
+        this.prepay.payerOpenIdHash(transaction.payer.openid) !==
+          initial.payerOpenIdHash)
+    )
+      throw new BadRequestException("微信充值付款身份与本地记录不一致");
     const succeededAt = new Date(transaction.success_time);
     if (
       !Number.isFinite(succeededAt.getTime()) ||
@@ -521,15 +546,31 @@ export class StoredValueRechargesService {
     this.client.assertPrepayEnabled();
   }
 
-  private replay(recharge: StoredValueRecharge, requestFingerprint: string) {
+  private replay(
+    recharge: StoredValueRecharge,
+    requestFingerprint: string,
+    payerOpenIdHash: string,
+  ) {
     if (recharge.requestFingerprint !== requestFingerprint)
       throw new ConflictException("幂等键已用于其他充值请求");
+    if (
+      recharge.status !== StoredValueRechargeStatus.SUCCEEDED &&
+      (!recharge.payerOpenIdHash ||
+        recharge.payerOpenIdHash !== payerOpenIdHash)
+    )
+      throw new ConflictException(
+        "原充值已绑定其他微信身份或属于旧记录，请使用原微信登录查询，不能重复发起充值",
+      );
     return this.toIntent(recharge);
   }
 
-  private toIntent(recharge: StoredValueRecharge): StoredValueRechargeIntent {
+  private toIntent(
+    recharge: StoredValueRecharge,
+    allowWechatParameters = true,
+  ): StoredValueRechargeIntent {
     const amountFen = this.safeMoney(recharge.amountFen);
     const ready =
+      allowWechatParameters &&
       recharge.status === StoredValueRechargeStatus.PENDING &&
       recharge.prepayState === WechatPrepayState.READY &&
       !!recharge.providerReference &&

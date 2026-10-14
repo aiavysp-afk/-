@@ -22,7 +22,9 @@ const recommendedServices = (
   services: TherapistServiceView[],
   selectedSlug: string,
 ) =>
-  services.filter((service) => service.featured || service.slug === selectedSlug);
+  services.filter(
+    (service) => service.featured || service.slug === selectedSlug,
+  );
 
 Page({
   data: {
@@ -35,6 +37,14 @@ Page({
     activeTab: "recommended" as DetailTab,
     tabs: DETAIL_TABS,
     displayedServices: [] as TherapistServiceView[],
+  },
+  onShow() {
+    if (!requireVerifiedCustomerAccess())
+      this.setData({
+        therapist: null,
+        displayedServices: [],
+        canUploadOwnPhotos: false,
+      });
   },
   async onLoad(options: { id?: string; slug?: string }) {
     if (!requireVerifiedCustomerAccess()) return;
@@ -87,10 +97,12 @@ Page({
     wx.navigateBack({ delta: 1 });
   },
   openOwnPhotos() {
-    if (!requireVerifiedCustomerAccess() || !this.data.canUploadOwnPhotos) return;
+    if (!requireVerifiedCustomerAccess() || !this.data.canUploadOwnPhotos)
+      return;
     wx.navigateTo({ url: "/pages/technician-photos/index" });
   },
   selectTab(event: { currentTarget: { dataset: { tab?: string } } }) {
+    if (!requireVerifiedCustomerAccess()) return;
     const activeTab = event.currentTarget.dataset.tab;
     if (!DETAIL_TABS.some((tab) => tab.key === activeTab)) return;
     const services = this.data.therapist?.services ?? [];
@@ -105,6 +117,7 @@ Page({
     });
   },
   showAllProjects() {
+    if (!requireVerifiedCustomerAccess()) return;
     this.setData({
       activeTab: "all" as DetailTab,
       displayedServices: this.data.therapist?.services ?? [],

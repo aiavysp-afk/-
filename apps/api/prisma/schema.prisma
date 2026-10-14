@@ -212,6 +212,7 @@ model User {
   displayName                  String
   phoneEncrypted               String?
   phoneVerifiedAt              DateTime?
+  customerPhoneIdentity        CustomerPhoneIdentity?
   status                       String                        @default("ACTIVE")
   createdAt                    DateTime                      @default(now())
   updatedAt                    DateTime                      @updatedAt
@@ -360,6 +361,7 @@ model StoredValueRecharge {
   merchantPaymentNo     String                          @unique
   providerReference     String?
   providerTransactionId String?                         @unique
+  payerOpenIdHash       String?
   prepayState           WechatPrepayState               @default(NONE)
   prepayRequestedAt     DateTime?
   prepayReadyAt         DateTime?
@@ -453,6 +455,7 @@ model ExternalIdentity {
   unionIdEncrypted String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+  sessions         Session[]
 
   @@unique([provider, subjectHash])
   @@index([userId, provider])
@@ -481,6 +484,11 @@ model Session {
   mfaVerifiedUntil        DateTime?
   authChannel             String              @default("LEGACY")
   authProvider            String              @default("unknown")
+  // Bind payment identity to the actual WeChat authorization for this session.
+  wechatIdentityId        String?
+  wechatIdentity          ExternalIdentity?   @relation(fields: [wechatIdentityId], references: [id], onDelete: Restrict)
+  // Reverified phone changes invalidate old SMS tokens; same-number refreshes do not.
+  customerPhoneHash       String?
   // Login assurance is separate from the five-minute TOTP step-up grant.
   staffVerifiedUntil      DateTime?
   staffVerificationMethod String?
@@ -490,6 +498,34 @@ model Session {
 
   @@index([userId, expiresAt])
   @@index([trustedDeviceId])
+  @@index([wechatIdentityId])
+}
+
+// A phone is an authentication binding, never a reason to rewrite financial rows.
+model CustomerPhoneIdentity {
+  phoneHash String   @id
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerSmsLoginChallenge {
+  id                String    @id
+  phoneHash         String
+  phoneEncrypted    String
+  requestIpHash     String
+  codeHash          String
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  consumedAt        DateTime?
+  providerRequestId String?
+  providerBizId     String?
+
+  @@index([phoneHash, createdAt])
+  @@index([expiresAt])
 }
 
 model StaffPasswordCredential {
