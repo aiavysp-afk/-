@@ -18,6 +18,7 @@ function fixture({
   session,
   response = { statusCode: 200, data: { data: { hidden: true } } },
   networkFailure = false,
+  deferred = false,
 } = {}) {
   const calls = [];
   let clears = 0;
@@ -39,6 +40,7 @@ function fixture({
     wx: {
       request(options) {
         calls.push(options);
+        if (deferred) return;
         if (networkFailure) options.fail();
         else options.success(response);
       },
@@ -47,6 +49,9 @@ function fixture({
   return {
     api: exports.api,
     calls,
+    setSession(nextSession) {
+      session = nextSession;
+    },
     get clears() {
       return clears;
     },
@@ -137,6 +142,36 @@ test("bodyless authorization errors still clear the session and redirect exactly
   assert.equal(f.clears, 1);
   assert.equal(f.redirects, 1);
   assert.equal(f.calls.length, 1);
+});
+
+for (const requestSession of [
+  undefined,
+  { accessToken: "old-fixture-token" },
+]) {
+  test(`a delayed ${requestSession ? "old-session" : "anonymous"} 401 cannot clear a newly logged-in session`, async () => {
+    const f = fixture({ session: requestSession, deferred: true });
+    const pending = f.api("/orders/fixture");
+    const rejection = assert.rejects(pending, { message: "请重新登录" });
+    f.setSession({ accessToken: "new-fixture-token" });
+    f.calls[0].success({ statusCode: 401, data: { message: "请重新登录" } });
+    await rejection;
+    assert.equal(f.clears, 0);
+    assert.equal(f.redirects, 0);
+  });
+}
+
+test("a delayed 401 still redirects when no replacement session exists after logout or expiry", async () => {
+  const f = fixture({
+    session: { accessToken: "old-fixture-token" },
+    deferred: true,
+  });
+  const pending = f.api("/orders/fixture");
+  const rejection = assert.rejects(pending, { message: "请重新登录" });
+  f.setSession(undefined);
+  f.calls[0].success({ statusCode: 401, data: { message: "请重新登录" } });
+  await rejection;
+  assert.equal(f.clears, 1);
+  assert.equal(f.redirects, 1);
 });
 
 test("non-success responses and missing response data cannot be reported as successful removal", async () => {

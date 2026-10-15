@@ -60,6 +60,7 @@ const event = (id = order.id) => ({
 });
 
 async function fixture({
+  pageName = "orders",
   intent = wechatIntent,
   modal = "confirm",
   sdk = "success",
@@ -133,7 +134,7 @@ async function fixture({
   let definition;
   vm.runInNewContext(
     await readFile(
-      new URL("../apps/miniapp/pages/orders/index.js", import.meta.url),
+      new URL(`../apps/miniapp/pages/${pageName}/index.js`, import.meta.url),
       "utf8",
     ),
     {
@@ -143,6 +144,9 @@ async function fixture({
         definition = input;
       },
       require(name) {
+        if (name === "../../utils/booking") return require("../apps/miniapp/utils/booking.js");
+        if (name === "../../utils/amap") return {};
+        if (name === "../../utils/customer-center") return { customerCenterPath: (path) => path };
         if (name === "../../utils/friend-payment") return require("../apps/miniapp/utils/friend-payment.js");
         if (name === "../../utils/api")
           return {
@@ -197,6 +201,34 @@ test("orders pay button neutrally requests channel confirmation, never promises 
   assert.match(wxml, /查看支付渠道并确认/);
   assert.doesNotMatch(wxml, />\s*模拟支付（不会扣款）\s*</);
 });
+
+for (const prepayState of ["READY", "UNKNOWN"]) {
+  test(`booking ${prepayState} reconciliation warns that a late settled payment does not confirm the reservation`, async () => {
+    const f = await fixture({
+      pageName: "booking",
+      intent: { ...wechatIntent, prepayState },
+      reconcile: { status: "SUCCEEDED", fulfillmentReviewRequired: true },
+    });
+    await f.page.payCreatedOrder(order);
+    assert.equal(f.count("/payment-intent"), 1);
+    assert.equal(f.count("/reconcile"), 1);
+    assert.equal(f.sdkCalls.length, prepayState === "READY" ? 1 : 0);
+    assert.ok(f.toasts.some((toast) => /款项已到账.*预约需平台核实/.test(toast.title) && toast.icon === "none"));
+    assert.ok(f.toasts.every((toast) => !/预约已生效|支付已确认/.test(toast.title)));
+  });
+
+  test(`booking ${prepayState} reconciliation still confirms a normally fulfilled payment`, async () => {
+    const f = await fixture({
+      pageName: "booking",
+      intent: { ...wechatIntent, prepayState },
+      reconcile: { status: "SUCCEEDED", fulfillmentReviewRequired: false },
+    });
+    await f.page.payCreatedOrder(order);
+    assert.equal(f.count("/reconcile"), 1);
+    assert.ok(f.toasts.some((toast) => toast.icon === "success"));
+    assert.ok(f.toasts.every((toast) => !/预约需平台核实/.test(toast.title)));
+  });
+}
 
 test("WECHAT READY intent requires a real-funds modal before exactly one SDK call and original-query reconciliation", async () => {
   const f = await fixture();

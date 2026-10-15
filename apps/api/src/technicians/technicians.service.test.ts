@@ -76,6 +76,89 @@ function metrics() {
 }
 
 describe("TechniciansService", () => {
+  it.each([
+    TechnicianProfileStatus.PENDING_REVIEW,
+    TechnicianProfileStatus.APPROVED,
+  ])(
+    "rejects a stale displayed review version for a legacy %s profile before approving or returning success",
+    async (status) => {
+      const current = profile({ status, selfRegistered: false, version: 5 });
+      const prisma = {
+        staffMembership: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ user: { displayName: "private" } }),
+        },
+        technicianProfile: { upsert: vi.fn().mockResolvedValue(current) },
+        $transaction: vi.fn(),
+        ...metrics(),
+      };
+      const access = { assertPermission: vi.fn() };
+      await expect(
+        new TechniciansService(prisma as never, access as never).approve(
+          admin,
+          "org-1",
+          technician.userId,
+          4,
+        ),
+      ).rejects.toThrow("资料已更新");
+      expect(access.assertPermission).toHaveBeenCalledWith(
+        admin,
+        "technicians.manage",
+        "org-1",
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.technicianReview.aggregate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, 5])(
+    "preserves legacy approval compatibility for expectedVersion=%s while retaining the version CAS",
+    async (expectedVersion) => {
+      const current = profile({
+        status: TechnicianProfileStatus.PENDING_REVIEW,
+        selfRegistered: false,
+        version: 5,
+      });
+      const tx = {
+        technicianProfile: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            ...current,
+            status: TechnicianProfileStatus.APPROVED,
+            version: 6,
+          }),
+        },
+        auditLog: { create: vi.fn() },
+      };
+      const prisma = {
+        staffMembership: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ user: { displayName: "private" } }),
+        },
+        technicianProfile: { upsert: vi.fn().mockResolvedValue(current) },
+        $transaction: vi.fn((callback) => callback(tx)),
+        ...metrics(),
+      };
+      const access = { assertPermission: vi.fn() };
+      await expect(
+        new TechniciansService(prisma as never, access as never).approve(
+          admin,
+          "org-1",
+          technician.userId,
+          expectedVersion,
+        ),
+      ).resolves.toMatchObject({ status: "APPROVED", version: 6 });
+      expect(tx.technicianProfile.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: current.id, status: current.status, version: 5 },
+          data: expect.objectContaining({ version: { increment: 1 } }),
+        }),
+      );
+    },
+  );
+
   it.each(["approve", "publish"] as const)(
     "rejects %s if another content write changes the version during review",
     async (action) => {

@@ -33,8 +33,15 @@ function api(path, method = "GET", data, key, authReturnPath) {
         },
         success: (result) => {
             if (result.statusCode === 401) {
-                (0, auth_1.clearStoredSession)();
-                (0, auth_1.redirectToCustomerLogin)(authReturnPath);
+                // A request can outlive logout, token rotation or a successful new
+                // login. Its rejected old/anonymous credentials cannot invalidate the
+                // replacement session; still reject the request itself below.
+                const currentSession = (0, auth_1.getStoredSession)();
+                if (!currentSession ||
+                    currentSession.accessToken === (session === null || session === void 0 ? void 0 : session.accessToken)) {
+                    (0, auth_1.clearStoredSession)();
+                    (0, auth_1.redirectToCustomerLogin)(authReturnPath);
+                }
             }
             if (result.statusCode >= 200 &&
                 result.statusCode < 300 &&

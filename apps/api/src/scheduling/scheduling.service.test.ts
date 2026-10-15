@@ -29,6 +29,74 @@ const serviceRecord = {
   durationMinutes: 60,
 };
 
+function expiredOrderFixture(
+  current: Record<string, unknown> = {},
+  cancelledCount = 1,
+) {
+  const expiredOrder = {
+    id: "expired-order",
+    reservationId: "expired-hold",
+    status: "PENDING_PAYMENT",
+    paymentExpiresAt: new Date("2026-10-02T23:59:00Z"),
+    payment: null,
+    ...current,
+  };
+  const tx = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    appointmentReservation: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue([
+          { id: "expired-hold", order: { id: "expired-order" } },
+        ]),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      create: vi
+        .fn()
+        .mockResolvedValue({
+          id: "fresh-hold",
+          organizationId: "org-a",
+          serviceId: serviceRecord.id,
+          therapistId: "therapist-a",
+          customerId: customer.userId,
+          startsAt: new Date("2026-10-04T02:00:00Z"),
+          endsAt: new Date("2026-10-04T03:00:00Z"),
+          expiresAt: new Date("2026-10-03T00:10:00Z"),
+          status: "HOLD",
+        }),
+    },
+    order: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue(expiredOrder),
+      updateMany: vi.fn().mockResolvedValue({ count: cancelledCount }),
+    },
+    customerCoupon: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    orderEvent: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    auditLog: { create: vi.fn().mockResolvedValue({}) },
+  };
+  const prisma = {
+    service: { findFirst: vi.fn().mockResolvedValue(serviceRecord) },
+    staffMembership: {
+      findFirst: vi.fn().mockResolvedValue({ id: "membership" }),
+    },
+    therapistShift: { findFirst: vi.fn().mockResolvedValue({ id: "shift" }) },
+    $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
+      callback(tx),
+    ),
+  };
+  const service = new SchedulingService(
+    prisma as never,
+    new AccessControlService(),
+  );
+  return {
+    tx,
+    create: () =>
+      service.createHold(customer, {
+        serviceId: serviceRecord.id,
+        therapistId: "therapist-a",
+        startsAt: "2026-10-04T10:00:00+08:00",
+      }),
+  };
+}
+
 describe("SchedulingService", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -97,6 +165,60 @@ describe("SchedulingService", () => {
     expect(prisma.staffMembership.findFirst).not.toHaveBeenCalled();
   });
 
+  it("returns the earliest real slot first across technicians, with stable same-time ordering", async () => {
+    const prisma = {
+      service: { findFirst: vi.fn().mockResolvedValue(serviceRecord) },
+      therapistShift: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            therapistId: "therapist-z",
+            startsAt: new Date("2026-10-04T00:00:00Z"),
+            endsAt: new Date("2026-10-04T06:00:00Z"),
+          },
+          {
+            therapistId: "therapist-b",
+            startsAt: new Date("2026-10-04T01:00:00Z"),
+            endsAt: new Date("2026-10-04T02:00:00Z"),
+          },
+          {
+            therapistId: "therapist-a",
+            startsAt: new Date("2026-10-04T01:00:00Z"),
+            endsAt: new Date("2026-10-04T02:00:00Z"),
+          },
+        ]),
+      },
+      appointmentReservation: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            {
+              therapistId: "therapist-z",
+              startsAt: new Date("2026-10-04T00:00:00Z"),
+              endsAt: new Date("2026-10-04T04:00:00Z"),
+            },
+          ]),
+      },
+    };
+    const scheduling = new SchedulingService(
+      prisma as never,
+      new AccessControlService(),
+    );
+    const slots = await scheduling.listAvailability({
+      serviceId: serviceRecord.id,
+      date: "2026-10-04",
+      timeZone: "Asia/Shanghai",
+    });
+    expect(
+      slots.map(({ therapistId, startsAt }) => `${startsAt}/${therapistId}`),
+    ).toEqual([
+      "2026-10-04T01:00:00.000Z/therapist-a",
+      "2026-10-04T01:00:00.000Z/therapist-b",
+      "2026-10-04T04:00:00.000Z/therapist-z",
+      "2026-10-04T04:30:00.000Z/therapist-z",
+      "2026-10-04T05:00:00.000Z/therapist-z",
+    ]);
+  });
+
   it("creates a ten-minute hold with the service duration and an audit entry", async () => {
     const hold = {
       id: "hold-1",
@@ -149,6 +271,84 @@ describe("SchedulingService", () => {
       status: "HOLD",
     });
     expect(tx.auditLog.create).toHaveBeenCalledOnce();
+  });
+
+  it("returns only the cancelled unpaid order's coupon while creating a replacement hold", async () => {
+    const f = expiredOrderFixture();
+    await f.create();
+    expect(f.tx.$queryRaw).toHaveBeenCalledOnce();
+    expect(f.tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      f.tx.order.findUniqueOrThrow.mock.invocationCallOrder[0]!,
+    );
+    expect(f.tx.order.updateMany).toHaveBeenCalledWith({
+      where: { id: "expired-order", status: "PENDING_PAYMENT" },
+      data: { status: "CANCELLED" },
+    });
+    const now = new Date("2026-10-03T00:00:00Z");
+    expect(f.tx.customerCoupon.updateMany).toHaveBeenCalledWith({
+      where: {
+        usedOrderId: "expired-order",
+        status: "USED",
+        expiresAt: { gt: now },
+      },
+      data: { status: "AVAILABLE", usedOrderId: null, usedAt: null },
+    });
+    expect(f.tx.customerCoupon.updateMany).toHaveBeenCalledWith({
+      where: {
+        usedOrderId: "expired-order",
+        status: "USED",
+        expiresAt: { lte: now },
+      },
+      data: { status: "EXPIRED", usedOrderId: null, usedAt: null },
+    });
+    expect(f.tx.orderEvent.createMany).toHaveBeenCalledWith({
+      data: [
+        { orderId: "expired-order", type: "PAYMENT_EXPIRED", payload: {} },
+      ],
+    });
+    expect(f.tx.appointmentReservation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ["expired-hold"] },
+          expiresAt: { lte: now },
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    { payment: { provider: "WECHAT", status: "PENDING" } },
+    { payment: { provider: "WECHAT", status: "SUCCEEDED" } },
+    { payment: { provider: "MOCK", status: "SUCCEEDED" } },
+    { status: "PAID" },
+    { paymentExpiresAt: new Date("2026-10-03T00:10:00Z") },
+    { reservationId: "another-hold" },
+  ])(
+    "does not cancel, release capacity or return coupons if payment wins the expiry scan race: %j",
+    async (current) => {
+      const f = expiredOrderFixture(current);
+      await f.create();
+      expect(f.tx.order.updateMany).not.toHaveBeenCalled();
+      expect(f.tx.customerCoupon.updateMany).not.toHaveBeenCalled();
+      expect(f.tx.orderEvent.createMany).not.toHaveBeenCalled();
+      expect(f.tx.appointmentReservation.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: { in: [] } }),
+        }),
+      );
+    },
+  );
+
+  it("never returns coupons or emits expiry events for an order that was not actually cancelled", async () => {
+    const f = expiredOrderFixture({}, 0);
+    await f.create();
+    expect(f.tx.customerCoupon.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.orderEvent.createMany).not.toHaveBeenCalled();
+    expect(f.tx.appointmentReservation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [] } }),
+      }),
+    );
   });
 
   it("maps the PostgreSQL exclusion constraint to a booking conflict", async () => {

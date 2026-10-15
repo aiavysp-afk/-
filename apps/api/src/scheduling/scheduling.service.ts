@@ -8,6 +8,8 @@ import {
 import {
   MembershipStatus,
   OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
   ReservationStatus,
   ShiftStatus,
   UserRole,
@@ -23,6 +25,7 @@ import type {
 import { AccessControlService } from "../auth/access-control.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
+import { releaseOrderCoupon } from "../customer-center/order-coupons.js";
 
 const SLOT_INTERVAL_MS = 30 * 60 * 1_000;
 const HOLD_TTL_MS = 10 * 60 * 1_000;
@@ -111,7 +114,14 @@ export class SchedulingService {
         }
       }
     }
-    return slots;
+    // Each shift contributes a run of slots. Shift order is not availability
+    // order when the first technician has earlier occupied appointments.
+    return slots.sort(
+      (left, right) =>
+        left.startsAt.localeCompare(right.startsAt) ||
+        left.endsAt.localeCompare(right.endsAt) ||
+        left.therapistId.localeCompare(right.therapistId),
+    );
   }
 
   async createShift(principal: AuthPrincipal, input: ShiftCreate) {
@@ -260,41 +270,66 @@ export class SchedulingService {
               { customerId: principal.userId },
             ],
           },
-          select: { id: true },
+          select: { id: true, order: { select: { id: true } } },
         });
-        const expiredIds = expired.map((item) => item.id);
+        const expiredIds = expired
+          .filter((item) => !item.order)
+          .map((item) => item.id);
+        const expiredOrderIds: string[] = [];
+        // All payment/closure paths serialize on Order before touching its
+        // reservation. Re-read under the same lock: the initial scan can race
+        // with a real prepay claim, and may never release that uncertain money.
+        const ordered = expired
+          .filter((item) => item.order)
+          .sort((left, right) => left.order!.id.localeCompare(right.order!.id));
+        for (const candidate of ordered) {
+          const orderId = candidate.order!.id;
+          await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+          const current = await tx.order.findUniqueOrThrow({
+            where: { id: orderId },
+            include: { payment: true },
+          });
+          if (
+            current.status !== OrderStatus.PENDING_PAYMENT ||
+            current.reservationId !== candidate.id ||
+            !current.paymentExpiresAt ||
+            current.paymentExpiresAt > now ||
+            current.payment?.provider === PaymentProvider.WECHAT ||
+            (current.payment &&
+              current.payment.status !== PaymentStatus.PENDING)
+          )
+            continue;
+          const cancelled = await tx.order.updateMany({
+            where: { id: orderId, status: OrderStatus.PENDING_PAYMENT },
+            data: { status: OrderStatus.CANCELLED },
+          });
+          if (cancelled.count !== 1) continue;
+          await releaseOrderCoupon(tx, orderId, now);
+          expiredOrderIds.push(orderId);
+          expiredIds.push(candidate.id);
+        }
         await tx.appointmentReservation.updateMany({
           where: {
             id: { in: expiredIds },
             status: ReservationStatus.HOLD,
+            expiresAt: { lte: now },
+            // A previously unowned hold may have gained an order after the
+            // scan. Its order creation extends expiry under the hold row lock.
+            OR: [
+              { order: { is: null } },
+              { order: { is: { status: OrderStatus.CANCELLED } } },
+            ],
           },
           data: { status: ReservationStatus.EXPIRED },
         });
-        if (expiredIds.length) {
-          const expiredOrders = await tx.order.findMany({
-            where: {
-              reservationId: { in: expiredIds },
-              status: OrderStatus.PENDING_PAYMENT,
-            },
-            select: { id: true },
+        if (expiredOrderIds.length) {
+          await tx.orderEvent.createMany({
+            data: expiredOrderIds.map((orderId) => ({
+              orderId,
+              type: "PAYMENT_EXPIRED",
+              payload: {},
+            })),
           });
-          const expiredOrderIds = expiredOrders.map((order) => order.id);
-          await tx.order.updateMany({
-            where: {
-              id: { in: expiredOrderIds },
-              status: OrderStatus.PENDING_PAYMENT,
-            },
-            data: { status: OrderStatus.CANCELLED },
-          });
-          if (expiredOrderIds.length) {
-            await tx.orderEvent.createMany({
-              data: expiredOrderIds.map((orderId) => ({
-                orderId,
-                type: "PAYMENT_EXPIRED",
-                payload: {},
-              })),
-            });
-          }
         }
         const record = await tx.appointmentReservation.create({
           data: {

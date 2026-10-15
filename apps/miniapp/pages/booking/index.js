@@ -994,7 +994,12 @@ Page({
             try {
                 const result = await (0, api_1.api)(`/payments/${intent.id}/reconcile`, "POST", {});
                 if (result.status === "SUCCEEDED") {
-                    wx.showToast({ title: "支付已确认", icon: "success" });
+                    wx.showToast({
+                        title: result.fulfillmentReviewRequired
+                            ? "款项已到账，预约需平台核实"
+                            : "支付已确认",
+                        icon: result.fulfillmentReviewRequired ? "none" : "success",
+                    });
                     return;
                 }
             }
@@ -1028,7 +1033,12 @@ Page({
         try {
             const result = await (0, api_1.api)(`/payments/${intent.id}/reconcile`, "POST", {});
             if (result.status === "SUCCEEDED") {
-                wx.showToast({ title: "支付成功，预约已生效", icon: "success" });
+                wx.showToast({
+                    title: result.fulfillmentReviewRequired
+                        ? "款项已到账，预约需平台核实"
+                        : "支付成功，预约已生效",
+                    icon: result.fulfillmentReviewRequired ? "none" : "success",
+                });
                 return;
             }
         }

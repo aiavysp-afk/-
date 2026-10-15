@@ -1047,7 +1047,14 @@ export class TechniciansService {
       organizationId,
       technicianId,
     );
-    if (current.selfRegistered && expectedVersion !== current.version)
+    // A supplied review version must match for legacy/invited profiles too;
+    // otherwise the server could approve a newer snapshot than the one shown.
+    // Self-registration still requires a version, while older unversioned
+    // legacy clients retain their existing compatibility path.
+    if (
+      (current.selfRegistered || expectedVersion !== undefined) &&
+      expectedVersion !== current.version
+    )
       throw new ConflictException("入驻资料已更新，请刷新并重新核验后审核");
     if (current.status === TechnicianProfileStatus.APPROVED) {
       return this.toProfile(current, false);
