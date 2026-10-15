@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -49,8 +50,64 @@ const Params = z.record(
     .regex(/^[^\r\n\x00-\x1f]*$/),
 );
 
+// Closed vocabulary from the provider's API error reference. Never echo an
+// arbitrary Code/Message, even if it looks like an identifier (it may be PII).
+// https://help.aliyun.com/zh/sms/developer-reference/api-error-codes
+const ProviderCodes = [
+  "isp.RAM_PERMISSION_DENY",
+  "isp.SYSTEM_ERROR",
+  "isp.GATEWAY_ERROR",
+  "isv.SMS_SIGNATURE_SCENE_ILLEGAL",
+  "isv.SIGN_STATE_ILLEGAL",
+  "isv.SMS_SIGN_ILLEGAL",
+  "isv.SMS_SIGNATURE_ILLEGAL",
+  "isv.SMS_TEMPLATE_ILLEGAL",
+  "isv.SMS_CONTENT_ILLEGAL",
+  "isv.OUT_OF_SERVICE",
+  "isv.AMOUNT_NOT_ENOUGH",
+  "isv.PRODUCT_UN_SUBSCRIPT",
+  "isv.PRODUCT_UNSUBSCRIBE",
+  "isv.ACCOUNT_NOT_EXISTS",
+  "isv.ACCOUNT_ABNORMAL",
+  "isv.INVALID_PARAMETERS",
+  "isv.MOBILE_NUMBER_ILLEGAL",
+  "isv.MOBILE_COUNT_OVER_LIMIT",
+  "isv.TEMPLATE_MISSING_PARAMETERS",
+  "isv.TEMPLATE_PARAMS_ILLEGAL",
+  "isv.INVALID_JSON_PARAM",
+  "isv.PARAM_LENGTH_LIMIT",
+  "isv.BUSINESS_LIMIT_CONTROL",
+  "isv.DAY_LIMIT_CONTROL",
+  "isv.MONTH_LIMIT_CONTROL",
+  "isv.DENY_IP_RANGE",
+  "isv.SECURITY_FROZEN_ACCOUNT",
+  "isv.SMS_TEST_SIGN_TEMPLATE_LIMIT",
+  "isv.SMS_TEST_TEMPLATE_PARAMS_ILLEGAL",
+  "isv.SMS_TEST_NUMBER_LIMIT",
+  "SignatureDoesNotMatch",
+  "InvalidTimeStamp.Expired",
+  "SignatureNonceUsed",
+  "InvalidVersion",
+  "InvalidAction.NotFound",
+] as const;
+const ProviderCodeByLowercase = new Map(
+  ProviderCodes.map((code) => [code.toLowerCase(), code]),
+);
+const safeProviderCode = (code: string) =>
+  ProviderCodeByLowercase.get(code.toLowerCase()) ?? "UNKNOWN_CODE";
+const safeProviderRequestId = (id: string) =>
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)
+    ? id.toLowerCase()
+    : undefined;
+type UnknownSubmissionStage =
+  | "TRANSPORT"
+  | "HTTP_RESPONSE"
+  | "INVALID_RESPONSE"
+  | "MISSING_BIZ_ID";
+
 @Injectable()
 export class AliyunSmsClient {
+  private readonly logger = new Logger(AliyunSmsClient.name);
   constructor(
     private readonly config: ConfigService<AppEnv, true>,
     private readonly verificationBudget: PhoneVerificationSmsBudgetService,
@@ -159,6 +216,8 @@ export class AliyunSmsClient {
     // Reserve durably only after gates, input and signing configuration passed.
     // The common verification branch covers every caller, not safety alerts.
     if (verification) await this.verificationBudget.reserve();
+    let httpStatus: number | undefined;
+    let unknownStage: UnknownSubmissionStage = "TRANSPORT";
     try {
       const response = await fetch(
         `https://dysmsapi.aliyuncs.com/?${request.query}`,
@@ -169,10 +228,38 @@ export class AliyunSmsClient {
           signal: AbortSignal.timeout(8_000),
         },
       );
+      if (
+        Number.isInteger(response.status) &&
+        response.status >= 100 &&
+        response.status <= 599
+      )
+        httpStatus = response.status;
+      unknownStage = response.ok ? "INVALID_RESPONSE" : "HTTP_RESPONSE";
       const receipt = Receipt.safeParse(await readIntegrationJson(response));
-      if (!receipt.success) return { status: "UNKNOWN" };
-      if (receipt.data.Code !== "OK") return { status: "REJECTED" };
-      if (!receipt.data.BizId) return { status: "UNKNOWN" };
+      if (!receipt.success) {
+        if (verification)
+          this.logUnknownSubmission("INVALID_RESPONSE", httpStatus);
+        return { status: "UNKNOWN" };
+      }
+      if (receipt.data.Code !== "OK") {
+        if (verification) {
+          const providerRequestId = safeProviderRequestId(
+            receipt.data.RequestId,
+          );
+          this.logSubmissionDiagnostic({
+            status: "REJECTED",
+            failureStage: "PROVIDER_REJECTED",
+            providerCode: safeProviderCode(receipt.data.Code),
+            ...(providerRequestId ? { providerRequestId } : {}),
+          });
+        }
+        return { status: "REJECTED" };
+      }
+      if (!receipt.data.BizId) {
+        if (verification)
+          this.logUnknownSubmission("MISSING_BIZ_ID", httpStatus);
+        return { status: "UNKNOWN" };
+      }
       // Provider acceptance is NOT handset delivery. Do not mark notifications delivered.
       return {
         status: "ACCEPTED",
@@ -180,7 +267,31 @@ export class AliyunSmsClient {
         bizId: receipt.data.BizId,
       };
     } catch {
+      if (verification) this.logUnknownSubmission(unknownStage, httpStatus);
       return { status: "UNKNOWN" };
+    }
+  }
+
+  private logUnknownSubmission(
+    failureStage: UnknownSubmissionStage,
+    httpStatus?: number,
+  ) {
+    this.logSubmissionDiagnostic({
+      status: "UNKNOWN",
+      failureStage,
+      ...(httpStatus === undefined ? {} : { httpStatus }),
+    });
+  }
+
+  private logSubmissionDiagnostic(fields: Record<string, string | number>) {
+    // Observability must never change submission outcomes or trigger a retry.
+    try {
+      this.logger.warn({
+        event: "phone_verification_sms_submission",
+        ...fields,
+      });
+    } catch {
+      /* ignore a failed logger */
     }
   }
 

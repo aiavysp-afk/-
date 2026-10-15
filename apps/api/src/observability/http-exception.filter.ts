@@ -8,6 +8,19 @@ import {
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { safeTelemetryPath } from "./safe-request-log.js";
 
+const SafeBusinessErrorCodes = new Set([
+  "ACCOUNT_LINK_CONFLICT",
+  "CONFIGURATION_NOT_READY",
+  "LOGIN_BUSY",
+  "SMS_DAILY_REQUEST_LIMIT",
+  "SMS_BUDGET_UNAVAILABLE",
+]);
+const safeCode = (value: unknown) =>
+  typeof value === "string" &&
+  (SafeBusinessErrorCodes.has(value) || /^P[0-9]{4}$/.test(value))
+    ? value
+    : undefined;
+
 @Catch()
 export class HttpExceptionTelemetryFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
@@ -52,11 +65,15 @@ export class HttpExceptionTelemetryFilter implements ExceptionFilter {
   }
 
   private safeErrorCode(exception: unknown) {
-    if (!exception || typeof exception !== "object" || !("code" in exception))
-      return undefined;
-    const code = (exception as { code?: unknown }).code;
-    return typeof code === "string" && /^[A-Z0-9_-]{1,48}$/.test(code)
-      ? code
+    if (exception instanceof HttpException) {
+      const response = exception.getResponse();
+      if (response && typeof response === "object" && "code" in response) {
+        const code = safeCode(response.code);
+        if (code) return code;
+      }
+    }
+    return exception && typeof exception === "object" && "code" in exception
+      ? safeCode(exception.code)
       : undefined;
   }
 }

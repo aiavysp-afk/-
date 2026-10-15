@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
+import { Logger } from "@nestjs/common";
 import { validateEnv, type AppEnv } from "../config/env.js";
 import { signAliyunRpc, encodeRpc } from "./aliyun-signature.js";
 import { AliyunSmsClient } from "./aliyun-sms.client.js";
@@ -364,6 +365,242 @@ describe("SMS internal submission", () => {
     expect(await smsClient(config()).queryDelivery(deliveryQuery)).toEqual({
       status: "PENDING",
     });
+  });
+});
+
+describe("private verification submission diagnostics", () => {
+  const verification = {
+    phone: "13800138000",
+    code: "123456",
+    trackingId: "diag-fixture",
+  };
+  const uuid = "123e4567-e89b-42d3-a456-426614174000";
+  const sensitive =
+    "synthetic-secret Authorization signature phone=13800138000 code=123456 https://private.test/?key=secret";
+  let diagnostics: unknown[][];
+  beforeEach(() => {
+    diagnostics = [];
+    vi.spyOn(Logger.prototype, "warn").mockImplementation(
+      (...args: unknown[]) => {
+        diagnostics.push(args);
+      },
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("logs only canonical known rejection code and a safe UUID, without changing rejection semantics", async () => {
+    fetcher.mockResolvedValue(
+      json({
+        Code: "ISP.RAM_PERMISSION_DENY",
+        RequestId: uuid.toUpperCase(),
+        Message: sensitive,
+        PhoneNumbers: verification.phone,
+        TemplateParam: { code: verification.code },
+        Authorization: sensitive,
+        URL: sensitive,
+        BizId: sensitive,
+      }),
+    );
+    expect(
+      await smsClient(config()).submitPhoneVerification(verification),
+    ).toEqual({ status: "REJECTED" });
+    expect(diagnostics).toEqual([
+      [
+        {
+          event: "phone_verification_sms_submission",
+          status: "REJECTED",
+          failureStage: "PROVIDER_REJECTED",
+          providerCode: "isp.RAM_PERMISSION_DENY",
+          providerRequestId: uuid,
+        },
+      ],
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toMatch(
+      /synthetic-secret|Authorization|signature|13800138000|123456|private\.test|TemplateParam|BizId/,
+    );
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(budget.reserve).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    "13800138000",
+    "123456",
+    "LTAIsyntheticKey000000",
+    "isv.SMS_SIGNATURE_ILLEGAL secret",
+    "PRIVATE_UPPERCASE_SECRET",
+    "isv.SMS_SIGNATURE_ILLEGAL\n",
+    "x".repeat(200),
+  ])(
+    "replaces an arbitrary or malicious provider code without echoing it: %s",
+    async (code) => {
+      fetcher.mockResolvedValue(
+        json({ Code: code, RequestId: "13800138000", Message: sensitive }),
+      );
+      expect(
+        await smsClient(config()).submitPhoneVerification(verification),
+      ).toEqual({ status: "REJECTED" });
+      expect(diagnostics).toEqual([
+        [
+          {
+            event: "phone_verification_sms_submission",
+            status: "REJECTED",
+            failureStage: "PROVIDER_REJECTED",
+            providerCode: "UNKNOWN_CODE",
+          },
+        ],
+      ]);
+    },
+  );
+
+  it.each([
+    "13800138000",
+    "123456",
+    "LTAIsyntheticKey000000",
+    uuid + "\n",
+    uuid + "/extra",
+  ])("omits a non-UUID provider request id: %s", async (requestId) => {
+    fetcher.mockResolvedValue(
+      json({
+        Code: "isv.SMS_TEMPLATE_ILLEGAL",
+        RequestId: requestId,
+        Message: sensitive,
+      }),
+    );
+    expect(
+      await smsClient(config()).submitPhoneVerification(verification),
+    ).toEqual({ status: "REJECTED" });
+    expect(diagnostics).toEqual([
+      [
+        {
+          event: "phone_verification_sms_submission",
+          status: "REJECTED",
+          failureStage: "PROVIDER_REJECTED",
+          providerCode: "isv.SMS_TEMPLATE_ILLEGAL",
+        },
+      ],
+    ]);
+  });
+
+  it.each([
+    ["transport", "TRANSPORT", undefined],
+    ["http", "HTTP_RESPONSE", 403],
+    ["invalid-json", "INVALID_RESPONSE", 200],
+    ["invalid-receipt", "INVALID_RESPONSE", 200],
+    ["missing-biz", "MISSING_BIZ_ID", 200],
+  ] as const)(
+    "logs only fixed UNKNOWN stage/httpstatus for %s, without retries",
+    async (kind, failureStage, httpStatus) => {
+      if (kind === "transport") fetcher.mockRejectedValue(new Error(sensitive));
+      else if (kind === "http")
+        fetcher.mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              Code: sensitive,
+              RequestId: uuid,
+              Message: sensitive,
+            }),
+            { status: 403, headers: { "content-type": "application/json" } },
+          ),
+        );
+      else if (kind === "invalid-json")
+        fetcher.mockResolvedValue(
+          new Response(sensitive, {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      else
+        fetcher.mockResolvedValue(
+          json(
+            kind === "missing-biz"
+              ? { Code: "OK", RequestId: uuid, Message: sensitive }
+              : { Code: sensitive, Message: sensitive },
+          ),
+        );
+      expect(
+        await smsClient(config()).submitPhoneVerification(verification),
+      ).toEqual({ status: "UNKNOWN" });
+      expect(diagnostics).toEqual([
+        [
+          {
+            event: "phone_verification_sms_submission",
+            status: "UNKNOWN",
+            failureStage,
+            ...(httpStatus === undefined ? {} : { httpStatus }),
+          },
+        ],
+      ]);
+      expect(JSON.stringify(diagnostics)).not.toContain(sensitive);
+      expect(fetcher).toHaveBeenCalledOnce();
+      expect(budget.reserve).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("keeps accepted identifiers and return shape unchanged, without logging them", async () => {
+    fetcher.mockResolvedValue(
+      json({
+        Code: "OK",
+        RequestId: "existing-non-uuid-id",
+        BizId: "existing-biz-id",
+        Message: sensitive,
+      }),
+    );
+    expect(
+      await smsClient(config()).submitPhoneVerification(verification),
+    ).toEqual({
+      status: "ACCEPTED",
+      requestId: "existing-non-uuid-id",
+      bizId: "existing-biz-id",
+    });
+    expect(diagnostics).toEqual([]);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("does not add diagnostic logging to safety submissions or receipt queries", async () => {
+    fetcher.mockImplementation(async () =>
+      json({
+        Code: "isv.SMS_TEMPLATE_ILLEGAL",
+        RequestId: uuid,
+        Message: sensitive,
+      }),
+    );
+    expect(await smsClient(config()).submit(submission)).toEqual({
+      status: "REJECTED",
+    });
+    expect(await smsClient(config()).queryDelivery(deliveryQuery)).toEqual({
+      status: "UNKNOWN",
+      errorCode: "SMS_RECEIPT_QUERY_REJECTED",
+    });
+    expect(diagnostics).toEqual([]);
+    expect(budget.reserve).not.toHaveBeenCalled();
+  });
+
+  it("never changes results or retries if the diagnostic logger itself fails", async () => {
+    vi.mocked(Logger.prototype.warn).mockImplementation(() => {
+      throw new Error(sensitive);
+    });
+    fetcher
+      .mockResolvedValueOnce(
+        json({ Code: "isv.SMS_SIGNATURE_ILLEGAL", RequestId: uuid }),
+      )
+      .mockRejectedValueOnce(new Error(sensitive));
+    const client = smsClient(config());
+    expect(await client.submitPhoneVerification(verification)).toEqual({
+      status: "REJECTED",
+    });
+    expect(await client.submitPhoneVerification(verification)).toEqual({
+      status: "UNKNOWN",
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(budget.reserve).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not log pre-provider configuration or budget exceptions", async () => {
+    budget.reserve.mockRejectedValue(new Error(sensitive));
+    await expect(
+      smsClient(config()).submitPhoneVerification(verification),
+    ).rejects.toThrow(sensitive);
+    expect(diagnostics).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
 
