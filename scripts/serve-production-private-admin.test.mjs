@@ -24,6 +24,9 @@ const identityDocument =
   "/v1/admin/organizations/org-1/technician-applications/tech-1/documents/ID_FRONT";
 const walletLedger =
   "/v1/admin/organizations/org-1/customer-center/wallet-ledger";
+const customerDirectory =
+  "/v1/admin/organizations/org-1/customer-center/customers";
+const customerPhoneReveal = customerDirectory + "/customer-1/reveal-phone";
 before(async () => {
   root = await mkdtemp(join(tmpdir(), "zydj-production-admin-test-"));
   await mkdir(join(root, "assets"));
@@ -58,6 +61,26 @@ before(async () => {
           status: 401,
           headers: { "Content-Type": "application/json" },
         });
+      if ([customerDirectory, customerPhoneReveal].includes(new URL(url).pathname)) {
+        const status = !options.headers.Authorization
+          ? 401
+          : options.headers.Authorization === "Bearer synthetic-denied"
+            ? 403
+            : 200;
+        return new Response(
+          status === 200
+            ? '{"data":{"fixture":"customer-directory"}}'
+            : JSON.stringify({ message: status === 401 ? "Unauthorized" : "Forbidden" }),
+          {
+            status,
+            headers: {
+              "Content-Type": "application/json",
+              "Set-Cookie": "never-forward-private-customer-cookie",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }
       if (url.endsWith("/photos/photo-1"))
         return new Response(new Uint8Array([255, 216, 255]), {
           headers: {
@@ -238,6 +261,8 @@ test("all required exact management routes have narrowly allowed methods", () =>
     ["/v1/admin/organizations/org-1/customer-center/config", ["GET", "PATCH"]],
     ["/v1/admin/organizations/org-1/customer-center/summary", ["GET"]],
     [walletLedger, ["GET"]],
+    [customerDirectory, ["GET"]],
+    [customerPhoneReveal, ["POST"]],
     ["/v1/admin/organizations/org-1/payments/pay-1/refunds", ["GET", "POST"]],
     ["/v1/admin/organizations/org-1/refunds/refund-1/approve", ["POST"]],
     [
@@ -307,6 +332,141 @@ test("wallet ledger refuses non-GET and extra namespace suffixes without API eff
   ]) {
     assert.equal(allowedAdminMethods(path), undefined, path);
     assert.equal((await send(path)).status, 404, path);
+  }
+  assert.equal(calls.length, count);
+});
+
+test("customer directory forwards pagination and bearer authorization without cookies or invented MFA", async () => {
+  const query = "?limit=20&cursor=customer_previous";
+  const result = await send(customerDirectory + query, {
+    headers: {
+      Authorization: "Bearer synthetic",
+      Origin: "https://admin.mtsc.top",
+      Cookie: `analytics=private; __Host-zydj_staff_trust=${"x".repeat(43)}`,
+      "X-MFA-Verified": "true",
+      "X-Forwarded-For": "untrusted-fixture",
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers["cache-control"], "no-store");
+  assert.equal(result.headers["set-cookie"], undefined);
+  assert.equal(result.headers["access-control-allow-origin"], undefined);
+  assert.equal(calls.at(-1).url, API_ORIGIN + customerDirectory + query);
+  assert.equal(calls.at(-1).options.method, "GET");
+  assert.equal(calls.at(-1).options.body, undefined);
+  assert.deepEqual(calls.at(-1).options.headers, {
+    Origin: "https://admin.mtsc.top",
+    Authorization: "Bearer synthetic",
+  });
+});
+
+test("complete-phone POST preserves only the explicit reason, real Origin and authorization", async () => {
+  const body = JSON.stringify({ reason: "核对预约服务资料" });
+  const result = await send(customerPhoneReveal, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer synthetic",
+      Origin: "https://admin.mtsc.top",
+      Cookie: `analytics=private; __Host-zydj_staff_trust=${"x".repeat(43)}`,
+      "X-MFA-Verified": "true",
+      "X-Staff-Verified": "true",
+      "X-Forwarded-For": "untrusted-fixture",
+    },
+    body,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers["cache-control"], "no-store");
+  assert.equal(result.headers["set-cookie"], undefined);
+  assert.equal(result.headers["access-control-allow-origin"], undefined);
+  assert.equal(calls.at(-1).url, API_ORIGIN + customerPhoneReveal);
+  assert.equal(calls.at(-1).options.method, "POST");
+  assert.equal(calls.at(-1).options.body.toString(), body);
+  assert.deepEqual(calls.at(-1).options.headers, {
+    "Content-Type": "application/json",
+    Origin: "https://admin.mtsc.top",
+    Authorization: "Bearer synthetic",
+  });
+  assert.equal(calls.at(-1).options.redirect, "error");
+});
+
+test("customer directory and reveal retain upstream anonymous 401 and authorization/MFA 403", async () => {
+  for (const [path, method] of [[customerDirectory, "GET"], [customerPhoneReveal, "POST"]]) {
+    for (const [Authorization, status, message] of [
+      [undefined, 401, "Unauthorized"],
+      ["Bearer synthetic-denied", 403, "Forbidden"],
+    ]) {
+      const result = await send(path, {
+        method,
+        headers: {
+          Origin: "https://admin.mtsc.top",
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+          ...(Authorization ? { Authorization } : {}),
+          "X-MFA-Verified": "true",
+        },
+        ...(method === "POST" ? { body: JSON.stringify({ reason: "核对预约服务资料" }) } : {}),
+      });
+      assert.equal(result.status, status, `${method} ${path}`);
+      assert.equal(result.headers["cache-control"], "no-store");
+      assert.deepEqual(JSON.parse(result.body), { message });
+      assert.equal(calls.at(-1).options.headers.Authorization, Authorization);
+      assert.equal(calls.at(-1).options.headers["X-MFA-Verified"], undefined);
+    }
+  }
+});
+
+test("customer directory routes reject alternate methods, namespace expansion and encoded separators locally", async () => {
+  const count = calls.length;
+  for (const [path, permitted] of [[customerDirectory, "GET"], [customerPhoneReveal, "POST"]]) {
+    for (const method of ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"].filter((item) => item !== permitted)) {
+      const result = await send(path, { method });
+      assert.equal(result.status, 405, `${method} ${path}`);
+      assert.equal(result.headers.allow, permitted);
+    }
+  }
+  for (const path of [
+    customerDirectory + "/",
+    customerDirectory + "/export",
+    customerDirectory + "-export",
+    customerDirectory + "/customer-1",
+    customerPhoneReveal + "/",
+    customerPhoneReveal + "/extra",
+    customerPhoneReveal + "-export",
+    customerDirectory.replace("/org-1/", "/org%2F1/"),
+    customerPhoneReveal.replace("/customer-1/", "/customer%2F1/"),
+    customerPhoneReveal.replace("/customer-1/", "/customer%252F1/"),
+    customerPhoneReveal.replace("/customer-1/", "/customer%5C1/"),
+    customerDirectory.replace("/org-1/", "/org.1/"),
+    customerDirectory.replace("/org-1/", "/org%00/"),
+    "/v1/customer-center/customers",
+    "/v1/admin/customer-center/customers",
+    "/v1/admin/organizations/org-1/customers",
+    "/v1/admin/organizations/org-1/customer-center/reveal-phone",
+  ]) {
+    assert.equal(allowedAdminMethods(path), undefined, path);
+    assert.equal((await send(path)).status, 404, path);
+  }
+  assert.deepEqual(allowedAdminMethods("/v1/admin/organizations/org_A/customer-center/customers"), ["GET"]);
+  assert.deepEqual(allowedAdminMethods("/v1/admin/organizations/org_A/customer-center/customers/customer_B/reveal-phone"), ["POST"]);
+  assert.equal(calls.length, count);
+});
+
+test("foreign Origins cannot forward customer-directory reads or complete-phone requests", async () => {
+  const count = calls.length;
+  for (const [path, method] of [[customerDirectory, "GET"], [customerPhoneReveal, "POST"]]) {
+    for (const Origin of ["https://evil.invalid", "http://admin.mtsc.top", "https://admin.mtsc.top.evil.invalid", "https://admin.mtsc.top:3222", "null"]) {
+      const result = await send(path, {
+        method,
+        headers: {
+          Origin,
+          Authorization: "Bearer synthetic",
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(method === "POST" ? { body: JSON.stringify({ reason: "核对预约服务资料" }) } : {}),
+      });
+      assert.equal(result.status, 403, `${method} ${Origin}`);
+      assert.equal(result.body.length, 0);
+    }
   }
   assert.equal(calls.length, count);
 });

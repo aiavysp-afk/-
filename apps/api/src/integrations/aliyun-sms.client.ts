@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { signAliyunRpc } from "./aliyun-signature.js";
 import { readIntegrationJson } from "./integration-http.js";
+import { PhoneVerificationSmsBudgetService } from "./phone-verification-sms-budget.service.js";
 
 export type SmsSubmission =
   | { status: "ACCEPTED"; requestId: string; bizId: string }
@@ -50,7 +51,10 @@ const Params = z.record(
 
 @Injectable()
 export class AliyunSmsClient {
-  constructor(private readonly config: ConfigService<AppEnv, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppEnv, true>,
+    private readonly verificationBudget: PhoneVerificationSmsBudgetService,
+  ) {}
 
   // INTERNAL adapter only. A durable outbox/idempotency owner must persist DISPATCHING
   // before calling. OutId is tracking metadata, NOT a provider deduplication guarantee.
@@ -88,6 +92,7 @@ export class AliyunSmsClient {
       this.config.get("ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE", {
         infer: true,
       }),
+      true,
     );
   }
 
@@ -98,6 +103,7 @@ export class AliyunSmsClient {
       trackingId: string;
     },
     template: string,
+    verification = false,
   ): Promise<SmsSubmission> {
     if (
       this.config.get("SMS_PROVIDER", { infer: true }) !== "aliyun" ||
@@ -150,6 +156,9 @@ export class AliyunSmsClient {
     } catch {
       throw configurationNotReady("短信渠道配置未就绪");
     }
+    // Reserve durably only after gates, input and signing configuration passed.
+    // The common verification branch covers every caller, not safety alerts.
+    if (verification) await this.verificationBudget.reserve();
     try {
       const response = await fetch(
         `https://dysmsapi.aliyuncs.com/?${request.query}`,

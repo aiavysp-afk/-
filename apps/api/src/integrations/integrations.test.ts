@@ -5,6 +5,7 @@ import { signAliyunRpc, encodeRpc } from "./aliyun-signature.js";
 import { AliyunSmsClient } from "./aliyun-sms.client.js";
 import { AmapClient } from "./amap.client.js";
 import { readIntegrationJson } from "./integration-http.js";
+import type { PhoneVerificationSmsBudgetService } from "./phone-verification-sms-budget.service.js";
 
 const config = (overrides: Record<string, string | undefined> = {}) =>
   new ConfigService<AppEnv, true>(
@@ -12,6 +13,7 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
       SMS_PROVIDER: "aliyun",
       SMS_SEND_ENABLED: "true",
       PHONE_VERIFICATION_SMS_ENABLED: "true",
+      PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: "100",
       SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "true",
       ALIYUN_SMS_ACCESS_KEY_ID: "test-id",
       ALIYUN_SMS_ACCESS_KEY_SECRET: "test-secret",
@@ -42,8 +44,15 @@ const json = (value: unknown) =>
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 let fetcher: ReturnType<typeof vi.fn>;
+let budget: { reserve: ReturnType<typeof vi.fn> };
+const smsClient = (configuration: ConfigService<AppEnv, true>) =>
+  new AliyunSmsClient(
+    configuration,
+    budget as unknown as PhoneVerificationSmsBudgetService,
+  );
 beforeEach(() => {
   fetcher = vi.fn();
+  budget = { reserve: vi.fn().mockResolvedValue(undefined) };
   vi.stubGlobal("fetch", fetcher);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -105,21 +114,21 @@ describe("SMS internal submission", () => {
     "does not spend or fake success with gate %j",
     async (overrides) => {
       await expect(
-        new AliyunSmsClient(config(overrides)).submit(submission),
+        smsClient(config(overrides)).submit(submission),
       ).rejects.toThrow("门禁");
       expect(fetcher).not.toHaveBeenCalled();
     },
   );
   it("refuses missing credentials", async () => {
     await expect(
-      new AliyunSmsClient(config({ ALIYUN_SMS_ACCESS_KEY_SECRET: "" })).submit(
+      smsClient(config({ ALIYUN_SMS_ACCESS_KEY_SECRET: "" })).submit(
         submission,
       ),
     ).rejects.toThrow("未就绪");
     expect(fetcher).not.toHaveBeenCalled();
   });
   it("rejects batching and invalid tracking input", async () => {
-    const client = new AliyunSmsClient(config());
+    const client = smsClient(config());
     await expect(
       client.submit({ ...submission, phone: "13800138000,13900139000" }),
     ).rejects.toThrow("参数无效");
@@ -135,7 +144,7 @@ describe("SMS internal submission", () => {
     fetcher.mockResolvedValue(
       json({ Code: "OK", RequestId: "test-request", BizId: "test-biz" }),
     );
-    expect(await new AliyunSmsClient(config()).submit(submission)).toEqual({
+    expect(await smsClient(config()).submit(submission)).toEqual({
       status: "ACCEPTED",
       requestId: "test-request",
       bizId: "test-biz",
@@ -154,7 +163,7 @@ describe("SMS internal submission", () => {
       json({ Code: "OK", RequestId: "phone-request", BizId: "phone-biz" }),
     );
     await expect(
-      new AliyunSmsClient(config()).submitPhoneVerification({
+      smsClient(config()).submitPhoneVerification({
         phone: "13800138000",
         code: "123456",
         trackingId: "phone-tracking",
@@ -170,10 +179,72 @@ describe("SMS internal submission", () => {
     expect(JSON.parse(target.searchParams.get("TemplateParam")!)).toEqual({
       code: "123456",
     });
+    expect(budget.reserve).toHaveBeenCalledOnce();
+    expect(budget.reserve.mock.invocationCallOrder[0]).toBeLessThan(
+      fetcher.mock.invocationCallOrder[0]!,
+    );
+  });
+  it("does not reserve verification quota for safety alerts or delivery queries", async () => {
+    fetcher.mockResolvedValue(
+      json({ Code: "OK", RequestId: "unit", BizId: "unit" }),
+    );
+    const client = smsClient(
+      config({ PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: "0" }),
+    );
+    await client.submit(submission);
+    await client.queryDelivery(deliveryQuery);
+    expect(budget.reserve).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    { SMS_SEND_ENABLED: "false" },
+    { SMS_PROVIDER: "mock" },
+    { PHONE_VERIFICATION_SMS_ENABLED: "false" },
+    { ALIYUN_SMS_ACCESS_KEY_SECRET: "" },
+    { ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: "invalid" },
+  ])(
+    "refuses invalid/closed verification configuration without reserving %j",
+    async (overrides) => {
+      await expect(
+        smsClient(config(overrides)).submitPhoneVerification({
+          phone: "13800138000",
+          code: "123456",
+          trackingId: "unit-fixture",
+        }),
+      ).rejects.toThrow();
+      expect(budget.reserve).not.toHaveBeenCalled();
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { phone: "invalid", code: "123456", trackingId: "unit-fixture" },
+    { phone: "13800138000", code: "invalid", trackingId: "unit-fixture" },
+    { phone: "13800138000", code: "123456", trackingId: "invalid\n" },
+  ])(
+    "refuses invalid verification input without reserving %j",
+    async (input) => {
+      await expect(
+        smsClient(config()).submitPhoneVerification(input),
+      ).rejects.toThrow();
+      expect(budget.reserve).not.toHaveBeenCalled();
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+  it("never sends or retries when shared verification reservation rejects", async () => {
+    budget.reserve.mockRejectedValue(new Error("unit reservation denied"));
+    await expect(
+      smsClient(config()).submitPhoneVerification({
+        phone: "13800138000",
+        code: "123456",
+        trackingId: "unit-fixture",
+      }),
+    ).rejects.toThrow("reservation denied");
+    expect(budget.reserve).toHaveBeenCalledOnce();
+    expect(fetcher).not.toHaveBeenCalled();
   });
   it("keeps the phone-verification gate independent from general SMS sending", async () => {
     await expect(
-      new AliyunSmsClient(
+      smsClient(
         config({ PHONE_VERIFICATION_SMS_ENABLED: "false" }),
       ).submitPhoneVerification({
         phone: "13800138000",
@@ -191,13 +262,13 @@ describe("SMS internal submission", () => {
         Message: "test-secret 13800138000",
       }),
     );
-    expect(await new AliyunSmsClient(config()).submit(submission)).toEqual({
+    expect(await smsClient(config()).submit(submission)).toEqual({
       status: "REJECTED",
     });
   });
   it("marks network failure UNKNOWN without retries or secret diagnostics", async () => {
     fetcher.mockRejectedValue(new Error("test-secret 13800138000"));
-    expect(await new AliyunSmsClient(config()).submit(submission)).toEqual({
+    expect(await smsClient(config()).submit(submission)).toEqual({
       status: "UNKNOWN",
     });
     expect(fetcher).toHaveBeenCalledOnce();
@@ -206,7 +277,7 @@ describe("SMS internal submission", () => {
     "marks malformed acceptance %j UNKNOWN",
     async (payload) => {
       fetcher.mockResolvedValue(json(payload));
-      expect(await new AliyunSmsClient(config()).submit(submission)).toEqual({
+      expect(await smsClient(config()).submit(submission)).toEqual({
         status: "UNKNOWN",
       });
       expect(fetcher).toHaveBeenCalledOnce();
@@ -219,7 +290,7 @@ describe("SMS internal submission", () => {
         headers: { location: "https://example.test" },
       }),
     );
-    expect(await new AliyunSmsClient(config()).submit(submission)).toEqual({
+    expect(await smsClient(config()).submit(submission)).toEqual({
       status: "UNKNOWN",
     });
     expect(fetcher).toHaveBeenCalledOnce();
@@ -243,9 +314,9 @@ describe("SMS internal submission", () => {
         },
       }),
     );
-    expect(
-      await new AliyunSmsClient(config()).queryDelivery(deliveryQuery),
-    ).toEqual({ status: "DELIVERED" });
+    expect(await smsClient(config()).queryDelivery(deliveryQuery)).toEqual({
+      status: "DELIVERED",
+    });
     const [url, options] = fetcher.mock.calls[0]!;
     const parsed = new URL(url);
     expect(parsed.hostname).toBe("dysmsapi.aliyuncs.com");
@@ -276,23 +347,23 @@ describe("SMS internal submission", () => {
           },
         }),
       );
-      expect(
-        await new AliyunSmsClient(config()).queryDelivery(deliveryQuery),
-      ).toEqual(expected);
+      expect(await smsClient(config()).queryDelivery(deliveryQuery)).toEqual(
+        expected,
+      );
     },
   );
 
   it("does not query with a closed receipt gate or malformed provider result", async () => {
     await expect(
-      new AliyunSmsClient(
+      smsClient(
         config({ SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "false" }),
       ).queryDelivery(deliveryQuery),
     ).rejects.toThrow("门禁");
     expect(fetcher).not.toHaveBeenCalled();
     fetcher.mockResolvedValue(json({ Code: "OK", RequestId: "query-request" }));
-    expect(
-      await new AliyunSmsClient(config()).queryDelivery(deliveryQuery),
-    ).toEqual({ status: "PENDING" });
+    expect(await smsClient(config()).queryDelivery(deliveryQuery)).toEqual({
+      status: "PENDING",
+    });
   });
 });
 

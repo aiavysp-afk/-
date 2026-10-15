@@ -196,6 +196,8 @@ test("production nginx retains private gates with only four exact MFA exceptions
     "/v1/admin/catalog/services",
     "/v1/admin/organizations/org-1/mfa-recovery-requests/request-1/approve",
     "/v1/admin/organizations/org-1/customer-center/wallet-ledger",
+    "/v1/admin/organizations/org-1/customer-center/customers",
+    "/v1/admin/organizations/org-1/customer-center/customers/customer-1/reveal-phone",
     "/v1/auth/mfa/",
     "/v1/auth/mfa/recovery",
     "/v1/auth/mfa/verify/extra",
@@ -659,6 +661,47 @@ test("financial wallet ledger uses the private gate and only an exact GET path",
     block,
     /satisfy any|auth_request off|proxy_set_header Origin|proxy_set_header Authorization/,
   );
+});
+
+test("customer phone directory uses two exact private routes and rejects implicit HEAD", () => {
+  const routes = [
+    ["~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/customer-center/customers$", "GET", "/v1/admin/organizations/org-1/customer-center/customers"],
+    ["~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/customer-center/customers/[A-Za-z0-9_-]+/reveal-phone$", "POST", "/v1/admin/organizations/org-1/customer-center/customers/customer-1/reveal-phone"],
+  ];
+  for (const [declaration, method, path] of routes) {
+    const block = assertAllowedMethods(declaration, [method]);
+    assert.ok(block.includes(`if ($request_method != ${method}) { return 405; }`));
+    assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
+    assert.doesNotMatch(block, /satisfy any|auth_request off|proxy_set_header (?:Origin|Authorization|Cookie)|Access-Control-Allow-Origin/);
+    const pattern = new RegExp(declaration.slice(2));
+    assert.equal(pattern.test(path), true);
+    for (const invalid of [path + "/", path + "/extra", path + "-export",
+      path.replace("org-1", "org-1/other"), path.replace("org-1", "org%2fother")])
+      assert.equal(pattern.test(invalid), false, invalid);
+  }
+  const admin = config.slice(config.lastIndexOf("\nserver {"));
+  assert.ok(admin.includes("if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }"));
+  assert.ok(admin.includes("proxy_pass http://127.0.0.1:3222;"));
+  assert.doesNotMatch(admin, /proxy_pass http:\/\/127\.0\.0\.1:3220/);
+  assert.ok(config.includes("~^0:/v1/(?:admin/|auth/mfa(?:/|$)) 1;"));
+  assert.ok(config.includes("if ($zydj_admin_request_denied) { return 403; }"));
+});
+
+test("gateway publication requires both customer directory markers and credential-free probes", () => {
+  const deploy = readFileSync(new URL("./deploy-production-nginx.sh", import.meta.url), "utf8");
+  for (const marker of [
+    "'location ~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/customer-center/customers$ {'",
+    "'location ~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/customer-center/customers/[A-Za-z0-9_-]+/reveal-phone$ {'",
+  ]) assert.ok(deploy.includes(marker));
+  assert.ok(deploy.includes("verify_customer_directory_gateway\n"));
+  const start = deploy.indexOf("# Customer directory gateway probe helpers.");
+  const end = deploy.indexOf("# End customer directory gateway probe helpers.");
+  assert.ok(start >= 0 && end > start);
+  const probes = deploy.slice(start, end);
+  assert.ok(probes.includes("for host in api.mtsc.top admin.mtsc.top"));
+  assert.ok(probes.includes("for method in GET POST"));
+  assert.ok(probes.includes("[[ $status == 401 ]]"));
+  assert.doesNotMatch(probes, /Authorization|Cookie|Bearer|--data|--insecure/);
 });
 
 test("gateway publication requires the exact wallet ledger marker and unauthenticated GET probes", () => {

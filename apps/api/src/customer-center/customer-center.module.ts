@@ -7,14 +7,21 @@ import {
 import { CustomerCenterService } from "./customer-center.service.js";
 import { CustomerCouponsService } from "./customer-coupons.service.js";
 import { AdminStoredValueLedgerService } from "./admin-stored-value-ledger.service.js";
+import { AdminCustomerDirectoryController } from "./admin-customer-directory.controller.js";
+import { AdminCustomerDirectoryService } from "./admin-customer-directory.service.js";
 
 @Module({
   imports: [AuthModule],
-  controllers: [CustomerCenterController, AdminCustomerCenterController],
+  controllers: [
+    CustomerCenterController,
+    AdminCustomerCenterController,
+    AdminCustomerDirectoryController,
+  ],
   providers: [
     CustomerCenterService,
     CustomerCouponsService,
     AdminStoredValueLedgerService,
+    AdminCustomerDirectoryService,
   ],
   exports: [CustomerCenterService],
 })

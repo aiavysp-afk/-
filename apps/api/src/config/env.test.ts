@@ -11,6 +11,7 @@ const productionAuth = {
   ALIYUN_SMS_ACCESS_KEY_SECRET: "test-sms-access-key-secret",
   ALIYUN_SMS_SIGN_NAME: "测试签名",
   ALIYUN_SMS_TEMPLATE_CODE: "SMS_testtemplate",
+  PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: "100",
   AMAP_MINIAPP_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   AMAP_WEB_SERVICE_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 } as const;
@@ -62,6 +63,7 @@ describe("production safety gate", () => {
     });
     expect(env.SMS_SEND_ENABLED).toBe("false");
     expect(env.CUSTOMER_SMS_LOGIN_ENABLED).toBe("false");
+    expect(env.PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT).toBe(0);
     expect(() => validateEnv({ CUSTOMER_SMS_LOGIN_ENABLED: "yes" })).toThrow();
     expect(env.SAFETY_NOTIFICATION_DISPATCH_ENABLED).toBe("false");
     expect(env.SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED).toBe("false");
@@ -95,6 +97,53 @@ describe("production safety gate", () => {
     expect(() =>
       validateEnv({ SAFETY_NOTIFICATION_RECEIPT_QUERY_ENABLED: "yes" }),
     ).toThrow();
+  });
+  it("requires an explicit shared request budget before enabling production verification SMS", () => {
+    const raw = {
+      NODE_ENV: "production",
+      ...productionAuth,
+      PAYMENT_PROVIDER: "wechat",
+      WECHAT_MCH_ID: "test-merchant",
+      WECHAT_PAY_API_V3_KEY: "12345678901234567890123456789012",
+      WECHAT_PAY_MERCHANT_SERIAL_NO: "test-serial",
+      WECHAT_PAY_PRIVATE_KEY_PATH: "/secure/test-private.pem",
+      WECHAT_PAY_PUBLIC_KEY_ID: "PUB_KEY_ID_test",
+      WECHAT_PAY_PUBLIC_KEY_PATH: "/secure/test-public.pem",
+      SMS_PROVIDER: "aliyun",
+      SMS_SEND_ENABLED: "true",
+      PHONE_VERIFICATION_SMS_ENABLED: "true",
+      ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE: "SMS_unitcode",
+      MAP_PROVIDER: "amap",
+      SAFETY_HOTLINE: "400-000-0000",
+    };
+    for (const value of [undefined, "", "0"])
+      expect(() =>
+        validateEnv({
+          ...raw,
+          PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: value,
+        }),
+      ).toThrow("PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT");
+    for (const value of ["1", "10000"])
+      expect(
+        validateEnv({
+          ...raw,
+          PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: value,
+        }).PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT,
+      ).toBe(Number(value));
+    for (const value of ["-1", "1.5", "10001", "NaN"])
+      expect(() =>
+        validateEnv({ PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: value }),
+      ).toThrow();
+    // Staged credentials and safety-only dispatch must not enable or require OTP.
+    expect(
+      validateEnv({
+        ...raw,
+        PHONE_VERIFICATION_SMS_ENABLED: "false",
+        PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: "0",
+        SAFETY_NOTIFICATION_DISPATCH_ENABLED: "true",
+        SAFETY_DUTY_CONFIRMED: "true",
+      }).PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT,
+    ).toBe(0);
   });
   it("allows read-only receipt queries only with the Aliyun provider in production", () => {
     const raw = {

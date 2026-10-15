@@ -101,6 +101,11 @@ const rules = [
   [new RegExp(`^${organization}/customer-center/config$`), ["GET", "PATCH"]],
   [new RegExp(`^${organization}/customer-center/summary$`), ["GET"]],
   [new RegExp(`^${organization}/customer-center/wallet-ledger$`), ["GET"]],
+  [new RegExp(`^${organization}/customer-center/customers$`), ["GET"]],
+  [
+    new RegExp(`^${organization}/customer-center/customers/${segment}/reveal-phone$`),
+    ["POST"],
+  ],
 ];
 const types = {
   ".html": "text/html; charset=utf-8",

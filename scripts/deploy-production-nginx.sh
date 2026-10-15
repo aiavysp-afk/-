@@ -113,6 +113,8 @@ for marker in \
   '"0:/v1/auth/mfa/activate" 0;' \
   '"0:/v1/auth/mfa/verify" 0;' \
   'location ~ ^/v1/admin/organizations/[^/]+/customer-center/wallet-ledger$ {' \
+  'location ~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/customer-center/customers$ {' \
+  'location ~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/customer-center/customers/[A-Za-z0-9_-]+/reveal-phone$ {' \
   'if ($zydj_admin_request_denied) { return 403; }' \
   'if ($zydj_admin_network_allowed = 0) { return 503 maintenance; }' \
   'proxy_pass http://127.0.0.1:3222;'; do
@@ -300,10 +302,51 @@ verify_customer_login_gateway() {
 }
 # End customer login gateway probe helpers.
 
+# Customer directory gateway probe helpers. No credentials, customer IDs, reason
+# or request body: allowed requests must stop at the existing session gate.
+customer_directory_gateway_status() {
+  local host=$1 method=$2 path=$3 remaining=$((customer_directory_deadline - SECONDS)) timeout=2
+  if (( remaining <= 0 )); then printf '%s' deadline-expired; return 0; fi
+  (( remaining >= timeout )) || timeout=$remaining
+  local args=(--silent --show-error --connect-timeout 1 --max-time "$timeout"
+    --http1.1 --header 'Connection: close' --noproxy '*'
+    --output /dev/null --write-out '%{http_code}'
+    --resolve "$host:443:127.0.0.1")
+  if [[ $method == HEAD ]]; then args+=(--head); else args+=(--request "$method"); fi
+  curl "${args[@]}" "https://$host$path"
+}
+
+verify_customer_directory_gateway() {
+  local customer_directory_deadline=$((SECONDS + 30)) host path method status
+  local root=/v1/admin/organizations/probe/customer-center/customers
+  for host in api.mtsc.top admin.mtsc.top; do
+    for method in GET POST; do
+      path=$root
+      [[ $method != POST ]] || path=$root/probe/reveal-phone
+      status=$(customer_directory_gateway_status "$host" "$method" "$path") || status=transport-error
+      [[ $status == 401 ]] || { printf 'Customer directory session gate failed: %s %s status=%s\n' "$host" "$method" "$status" >&2; return 1; }
+    done
+    for path in "$root" "$root/probe/reveal-phone"; do
+      local rejected=(POST HEAD PATCH)
+      [[ $path == "$root" ]] || rejected=(GET HEAD PATCH)
+      for method in "${rejected[@]}"; do
+        status=$(customer_directory_gateway_status "$host" "$method" "$path") || status=transport-error
+        [[ $status == 403 || $status == 405 ]] || { printf 'Customer phone method gate failed: %s %s status=%s\n' "$host" "$method" "$status" >&2; return 1; }
+      done
+    done
+    for path in "$root/extra" "$root/probe/reveal-phone/extra"; do
+      status=$(customer_directory_gateway_status "$host" GET "$path") || status=transport-error
+      [[ $status == 404 ]] || { printf 'Unexpected customer directory path is exposed: %s status=%s\n' "$host" "$status" >&2; return 1; }
+    done
+  done
+}
+# End customer directory gateway probe helpers.
+
 # Failure remains a top-level error, invoking the existing exact-vhost rollback.
 wait_for_private_gateway
 verify_mfa_gateway 127.0.0.1
 verify_customer_login_gateway
+verify_customer_directory_gateway
 # Autonomous registration is session-only; no anonymous draft or identity grant.
 for onboarding_method in GET POST; do
   onboarding_status=$(curl --silent --show-error --max-time 10 \

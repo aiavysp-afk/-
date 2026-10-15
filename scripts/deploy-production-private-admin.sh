@@ -169,6 +169,15 @@ wait_for_release() {
   done
   return 1
 }
+# New-release-only probes: rollback must still be able to validate an older
+# adapter without these routes. Anonymous requests stop before any PII read/audit.
+verify_customer_directory() {
+  local route=/v1/admin/organizations/probe/customer-center/customers
+  [[ $(curl --silent --show-error --connect-timeout 2 --max-time 10 --noproxy '*' \
+    --request GET --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:3222$route") == 401 ]] || return 1
+  [[ $(curl --silent --show-error --connect-timeout 2 --max-time 10 --noproxy '*' \
+    --request POST --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:3222$route/probe/reveal-phone") == 401 ]] || return 1
+}
 activated=false
 rollback() {
   trap - ERR
@@ -202,6 +211,7 @@ mv -Tf "$candidate" "$unit_path"
 systemctl daemon-reload
 systemctl restart "$unit"
 wait_for_release "$release"
+verify_customer_directory
 systemctl enable "$unit" >/dev/null
 activated=false
 trap - ERR

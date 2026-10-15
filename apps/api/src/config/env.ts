@@ -91,6 +91,13 @@ const EnvSchema = z.object({
   SMS_SEND_ENABLED: z.enum(["false", "true"]).default("false"),
   // Independent fallback gate for login/phone-binding verification codes.
   PHONE_VERIFICATION_SMS_ENABLED: z.enum(["false", "true"]).default("false"),
+  // Shared chargeable request budget, not a per-phone limit or currency quota.
+  PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10_000)
+    .default(0),
   // Public anonymous customer login requires an independent, explicit opt-in.
   CUSTOMER_SMS_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
   // Separate dispatch gate: channel credentials and provider selection do not authorize automated safety sends.
@@ -362,6 +369,8 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     ) {
       if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
       if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
+      if (env.PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT < 1)
+        invalid.push("PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT");
       if (
         !/^SMS_[A-Za-z0-9]+$/.test(
           env.ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE,

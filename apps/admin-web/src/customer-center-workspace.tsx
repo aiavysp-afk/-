@@ -23,6 +23,7 @@ import {
 import type { AuthUser } from "@zydj/contracts";
 import { canViewOrganizationWallet } from "./stored-value-ledger";
 import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
+import { CustomerDirectory } from "./customer-directory";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -127,6 +128,7 @@ export function CustomerCenterWorkspace({
   const [config, setConfig] = useState<CustomerCenterConfig | null>(null);
   const [draft, setDraft] = useState<CustomerCenterConfigDraft | null>(null);
   const [summary, setSummary] = useState<CustomerCenterSummary | null>(null);
+  const [directoryVersion, setDirectoryVersion] = useState(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -140,6 +142,8 @@ export function CustomerCenterWorkspace({
 
   const load = useCallback(async () => {
     if (!token || !organizationId) return;
+    // A workspace refresh must also destroy any in-memory complete phone.
+    setDirectoryVersion((version) => version + 1);
     const isCurrent = requests.begin();
     const summaryIsCurrent = summaryRequests.begin();
     setLoading(true);
@@ -259,7 +263,9 @@ export function CustomerCenterWorkspace({
         <div>
           <span className="eyebrow">CUSTOMER EXPERIENCE</span>
           <h2>客户中心配置与监控</h2>
-          <p>客户端文案共用组织配置；摘要不展示手机号、地址等客户隐私。</p>
+          <p>
+            客户端文案共用组织配置；关联客户默认脱敏，完整号码按用途授权查看。
+          </p>
         </div>
         <div className="catalog-actions">
           <button
@@ -285,6 +291,12 @@ export function CustomerCenterWorkspace({
       {loading && !summary && (
         <div className="catalog-empty">正在读取客户中心配置…</div>
       )}
+
+      <CustomerDirectory
+        key={directoryVersion}
+        token={token}
+        organizationId={organizationId}
+      />
 
       {summary && (
         <>

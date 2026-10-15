@@ -1667,6 +1667,53 @@ export const AdminCustomerCenterSummarySchema = z.object({
   }),
 });
 
+// Directory membership comes from organization-scoped customer business records,
+// never a global user list or caller-supplied registration ownership.
+export const AdminCustomerDirectoryQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    cursor: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{1,128}$/)
+      .optional(),
+  })
+  .strict();
+export const AdminCustomerDirectoryItemSchema = z
+  .object({
+    userId: z.string(),
+    displayName: z.string(),
+    maskedPhone: z
+      .string()
+      .regex(/^1\d{2}\*{4}\d{4}$/)
+      .nullable(),
+    phoneVerified: z.boolean(),
+    createdAt: IsoDateTimeSchema,
+  })
+  .strict();
+export const AdminCustomerDirectorySchema = z
+  .object({
+    items: z.array(AdminCustomerDirectoryItemSchema),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+export const AdminCustomerPhoneRevealRequestSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(4)
+      .max(200)
+      .regex(/^[^\u0000-\u001f\u007f]+$/),
+  })
+  .strict();
+export const AdminCustomerPhoneRevealSchema = z
+  .object({
+    userId: z.string(),
+    phone: z.string().regex(/^1[3-9]\d{9}$/),
+    expiresAt: IsoDateTimeSchema,
+  })
+  .strict();
+
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 export type AdminServiceItem = z.infer<typeof AdminServiceItemSchema>;
 export type ServiceAdminUpdate = z.infer<typeof ServiceAdminUpdateSchema>;
@@ -1900,6 +1947,18 @@ export type AccountDeletionRequest = z.infer<
 >;
 export type AdminCustomerCenterSummary = z.infer<
   typeof AdminCustomerCenterSummarySchema
+>;
+export type AdminCustomerDirectoryQuery = z.infer<
+  typeof AdminCustomerDirectoryQuerySchema
+>;
+export type AdminCustomerDirectory = z.infer<
+  typeof AdminCustomerDirectorySchema
+>;
+export type AdminCustomerPhoneRevealRequest = z.infer<
+  typeof AdminCustomerPhoneRevealRequestSchema
+>;
+export type AdminCustomerPhoneReveal = z.infer<
+  typeof AdminCustomerPhoneRevealSchema
 >;
 
 export const formatMoney = (fen: number): string =>
