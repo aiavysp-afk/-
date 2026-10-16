@@ -180,6 +180,24 @@ afterEach(() => {
 });
 
 describe("account security actual async state", () => {
+  it("explains first-display-only pending enrollment recovery without requesting another secret", async () => {
+    render();
+    reply(0, { ...base, enabled: false, enrollmentPending: true });
+    reply(1, operator);
+    await flush();
+    const tree = render();
+    expect(text(tree)).toContain("若已录入验证器");
+    expect(text(tree)).toContain("同一登录会话");
+    expect(text(tree)).toContain("自创建起 10 分钟");
+    expect(text(tree)).toContain("新登录会话创建后 5 分钟内");
+    expect(text(tree)).toContain("不会再次显示密钥");
+    expect(button(tree, "确认绑定").props.disabled).toBe(true);
+    expect(button(tree, "刷新安全状态")).toBeDefined();
+    expect(button(tree, "注销当前会话")).toBeDefined();
+    expect(pending).toHaveLength(2);
+    expect(text(tree)).not.toContain("开始绑定验证器");
+  });
+
   it("does not let an old refresh overwrite a newly verified TOTP session", async () => {
     render();
     reply(0, base);

@@ -74,9 +74,7 @@ function SecurityWorkspaceScope({
     if (!response.ok)
       throw Object.assign(
         Error(
-          typeof json.message === "string"
-            ? json.message
-            : "安全验证请求失败",
+          typeof json.message === "string" ? json.message : "安全验证请求失败",
         ),
         { status: response.status },
       );
@@ -256,10 +254,7 @@ function SecurityWorkspaceScope({
             <button disabled={busy} onClick={() => void refresh()}>
               刷新安全状态
             </button>
-            <button
-              disabled={busy}
-              onClick={() => void logoutCurrent()}
-            >
+            <button disabled={busy} onClick={() => void logoutCurrent()}>
               注销当前会话
             </button>
           </div>
@@ -328,6 +323,28 @@ function SecurityWorkspaceScope({
                       </p>
                     </div>
                   )}
+                  {!status.enabled &&
+                    status.enrollmentPending &&
+                    !enrollment && (
+                      <div className="environment-banner">
+                        <p>
+                          已有待激活绑定。密钥仅在创建时显示，本页刷新后不会再次显示密钥。
+                        </p>
+                        <p>
+                          若已录入验证器，且仍在最初发起绑定的同一登录会话，请输入当前六位动态码确认绑定。
+                        </p>
+                        <p>
+                          若未保存密钥，或已经退出、更换登录会话，请等待该次未激活绑定自创建起
+                          10 分钟的有效期结束，
+                          再刷新安全状态。确认待激活状态结束后，注销并重新微信登录，在新登录会话创建后
+                          5 分钟内重新开始绑定。
+                          重新登录不能激活旧会话的待激活绑定，请勿反复提交动态码。
+                        </p>
+                        <p>
+                          请勿向任何人发送密钥或动态码；此处不会重发、重置或替换已绑定验证器。
+                        </p>
+                      </div>
+                    )}
                   {(status.enabled || status.enrollmentPending) && (
                     <div className="toolbar">
                       <label>

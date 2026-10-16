@@ -157,11 +157,44 @@ function StaffSecurityScope({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [passwordLoadError, setPasswordLoadError] = useState("");
+  const [trustLoadError, setTrustLoadError] = useState("");
+  const [devicesLoadError, setDevicesLoadError] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [trustLoading, setTrustLoading] = useState(false);
+  const [devicesLoading, setDevicesLoading] = useState(false);
   const [now, setNow] = useState(Date.now());
   const requests = useMemo(createLoginGeneration, []);
   const currentToken = useRef(token);
   currentToken.current = token;
+  type ReadKind = "password" | "trust" | "devices";
+  const reads = useRef({
+    pending: new Set<ReadKind>(),
+    failed: new Set<ReadKind>(),
+  });
   const freshTotp = hasFreshTotp({ verifiedUntil }, now);
+
+  function beginRequest() {
+    const identity = token;
+    const isLatest = requests.begin();
+    // A mutation can invalidate an unfinished optional read. Its late finally is
+    // intentionally ignored, so retire the old loading flag here, not as a success.
+    for (const kind of reads.current.pending) {
+      reads.current.failed.add(kind);
+      if (kind === "password") {
+        setPasswordLoading(false);
+        setPasswordLoadError("上次本人密码配置读取已中断，请重新读取。");
+      } else if (kind === "trust") {
+        setTrustLoading(false);
+        setTrustLoadError("上次信任设备配置读取已中断，请重新读取。");
+      } else {
+        setDevicesLoading(false);
+        setDevicesLoadError("上次设备列表读取已中断，请重新读取。");
+      }
+    }
+    reads.current.pending.clear();
+    return () => isLatest() && currentToken.current === identity;
+  }
 
   async function request<T>(
     path: string,
@@ -186,38 +219,96 @@ function StaffSecurityScope({
     return json.data as T;
   }
   async function load(isCurrent: () => boolean) {
-    setPasswordState(null);
-    setLoginAlias("");
-    setDevices(null);
+    if (!isCurrent()) return;
     setError("");
-    try {
-      const [passwordData, passwordFeature, trustFeature] = await Promise.all([
-        request<PasswordState>("/auth/staff-password"),
-        request<{ enabled: boolean; smsEnabled: boolean }>(
-          "/auth/staff-password/config",
-        ),
-        request<TrustConfig>("/auth/trusted-devices/config"),
-      ]);
-      if (!isCurrent()) return;
-      // Revocation/listing remains available while trust enrollment is disabled.
-      const trusted = await request<TrustedDevice[]>("/auth/trusted-devices");
-      if (!isCurrent()) return;
-      setPasswordState(passwordData);
-      setLoginAlias(passwordData.loginAlias ?? "admin");
-      setPasswordConfig(passwordFeature);
-      setTrustConfig(trustFeature);
-      setDevices(trusted);
-    } catch (caught) {
-      if (isCurrent()) {
-        setPasswordState(null);
-        setPasswordConfig(null);
-        setTrustConfig(null);
-        setDevices(null);
-        setError(
-          caught instanceof Error ? caught.message : "账户安全配置读取失败",
-        );
+    setPasswordLoadError("");
+    setTrustLoadError("");
+    setDevicesLoadError("");
+    setPasswordLoading(true);
+    setTrustLoading(true);
+    setDevicesLoading(true);
+    reads.current = {
+      pending: new Set(["password", "trust", "devices"]),
+      failed: new Set(),
+    };
+    async function readPassword() {
+      try {
+        const [passwordData, passwordFeature] = await Promise.all([
+          request<PasswordState>("/auth/staff-password"),
+          request<{ enabled: boolean; smsEnabled: boolean }>(
+            "/auth/staff-password/config",
+          ),
+        ]);
+        if (!isCurrent()) return;
+        reads.current.failed.delete("password");
+        setPasswordState(passwordData);
+        setLoginAlias(passwordData.loginAlias ?? "admin");
+        setPasswordConfig(passwordFeature);
+      } catch (caught) {
+        if (isCurrent()) {
+          reads.current.failed.add("password");
+          setPasswordLoadError(
+            caught instanceof Error ? caught.message : "本人密码配置读取失败",
+          );
+        }
+      } finally {
+        if (isCurrent()) {
+          reads.current.pending.delete("password");
+          setPasswordLoading(false);
+        }
       }
     }
+    async function readTrustConfig() {
+      try {
+        const value = await request<TrustConfig>(
+          "/auth/trusted-devices/config",
+        );
+        if (isCurrent()) {
+          reads.current.failed.delete("trust");
+          setTrustConfig(value);
+        }
+      } catch (caught) {
+        if (isCurrent()) {
+          reads.current.failed.add("trust");
+          setTrustLoadError(
+            caught instanceof Error ? caught.message : "信任设备配置读取失败",
+          );
+        }
+      } finally {
+        if (isCurrent()) {
+          reads.current.pending.delete("trust");
+          setTrustLoading(false);
+        }
+      }
+    }
+    async function readDevices() {
+      try {
+        // Listing/revocation remains available even while new enrollment is disabled.
+        const value = await request<TrustedDevice[]>("/auth/trusted-devices");
+        if (isCurrent()) {
+          reads.current.failed.delete("devices");
+          setDevices(value);
+        }
+      } catch (caught) {
+        if (isCurrent()) {
+          reads.current.failed.add("devices");
+          setDevicesLoadError(
+            caught instanceof Error ? caught.message : "设备列表读取失败",
+          );
+        }
+      } finally {
+        if (isCurrent()) {
+          reads.current.pending.delete("devices");
+          setDevicesLoading(false);
+        }
+      }
+    }
+    // Optional trust reads neither erase successful self-password data nor hold
+    // password mutations busy. Every branch still uses the same identity/epoch fence.
+    const passwordRead = readPassword();
+    void readTrustConfig();
+    void readDevices();
+    await passwordRead;
   }
   useEffect(() => {
     setPassword("");
@@ -227,7 +318,7 @@ function StaffSecurityScope({
     setPrivateDevice(false);
     setMessage("");
     setBusy(false);
-    const isCurrent = requests.begin();
+    const isCurrent = beginRequest();
     void load(isCurrent);
     return () => requests.invalidate();
   }, [token, verifiedUntil, requests]);
@@ -237,17 +328,26 @@ function StaffSecurityScope({
   }, []);
 
   async function savePassword() {
+    if (
+      currentToken.current !== token ||
+      reads.current.pending.has("password") ||
+      reads.current.failed.has("password")
+    )
+      return;
     const payload = buildStaffPasswordUpdate(
       { loginAlias, password, confirmation },
       {
         busy,
-        enabled: passwordConfig?.enabled === true,
+        enabled:
+          passwordConfig?.enabled === true &&
+          !passwordLoading &&
+          !passwordLoadError,
         maskedAccount: passwordState?.maskedAccount ?? null,
         verifiedUntil,
       },
     );
     if (!payload) return;
-    const isCurrent = requests.begin();
+    const isCurrent = beginRequest();
     const identity = token;
     setPassword("");
     setConfirmation("");
@@ -273,12 +373,17 @@ function StaffSecurityScope({
   async function registerDevice() {
     if (
       busy ||
+      currentToken.current !== token ||
       !hasFreshTotp({ verifiedUntil }) ||
       !trustConfig?.enabled ||
+      trustLoading ||
+      Boolean(trustLoadError) ||
+      reads.current.pending.has("trust") ||
+      reads.current.failed.has("trust") ||
       !privateDevice
     )
       return;
-    const isCurrent = requests.begin();
+    const isCurrent = beginRequest();
     setError("");
     setMessage("");
     setBusy(true);
@@ -304,13 +409,18 @@ function StaffSecurityScope({
   async function revokeDevice(device: TrustedDevice) {
     if (
       busy ||
+      currentToken.current !== token ||
+      devicesLoading ||
+      Boolean(devicesLoadError) ||
+      reads.current.pending.has("devices") ||
+      reads.current.failed.has("devices") ||
       !window.confirm(
         `确认撤销「${device.label || "常用设备"}」的信任？该设备以后登录需重新完成二次验证。`,
       )
     )
       return;
     const identity = token;
-    const isCurrent = requests.begin();
+    const isCurrent = beginRequest();
     setError("");
     setMessage("");
     setBusy(true);
@@ -332,6 +442,13 @@ function StaffSecurityScope({
     <div className="staff-security">
       <section className="security-panel">
         <h3>账号密码与短信登录</h3>
+        {passwordLoading && <p role="status">正在读取本人密码配置…</p>}
+        {passwordLoadError && (
+          <p className="catalog-error" role="alert">
+            密码配置读取失败：{passwordLoadError}
+            ；保留上次成功读取的状态，请重新读取后再设置。
+          </p>
+        )}
         {passwordState ? (
           <>
             <p>
@@ -370,6 +487,8 @@ function StaffSecurityScope({
                 !passwordConfig?.enabled ||
                 !freshTotp ||
                 busy ||
+                passwordLoading ||
+                Boolean(passwordLoadError) ||
                 !passwordState.maskedAccount
               }
               canSubmit={Boolean(
@@ -379,7 +498,7 @@ function StaffSecurityScope({
                     enabled: passwordConfig?.enabled === true,
                     maskedAccount: passwordState.maskedAccount,
                     verifiedUntil,
-                    busy,
+                    busy: busy || passwordLoading || Boolean(passwordLoadError),
                   },
                   now,
                 ),
@@ -398,6 +517,13 @@ function StaffSecurityScope({
       </section>
       <section className="security-panel">
         <h3>常用设备 · 7 天信任</h3>
+        {trustLoading && <p role="status">正在读取信任设备配置…</p>}
+        {trustLoadError && (
+          <p className="catalog-error" role="alert">
+            信任设备配置读取失败：{trustLoadError}
+            ；不会据此改变密码登录状态，请重新读取。
+          </p>
+        )}
         <p>
           只登记自己长期使用的私人电脑，公用或共享电脑不要信任。有效期从登记起计算，7
           天后自动失效，不自动续期；每次仍须完成微信或账号密码身份验证。
@@ -422,7 +548,12 @@ function StaffSecurityScope({
                 <input
                   maxLength={80}
                   value={deviceLabel}
-                  disabled={!freshTotp || busy}
+                  disabled={
+                    !freshTotp ||
+                    busy ||
+                    trustLoading ||
+                    Boolean(trustLoadError)
+                  }
                   onChange={(event) => setDeviceLabel(event.target.value)}
                   placeholder="例如：办公室私人电脑"
                 />
@@ -431,20 +562,41 @@ function StaffSecurityScope({
                 <input
                   type="checkbox"
                   checked={privateDevice}
-                  disabled={!freshTotp || busy}
+                  disabled={
+                    !freshTotp ||
+                    busy ||
+                    trustLoading ||
+                    Boolean(trustLoadError)
+                  }
                   onChange={(event) => setPrivateDevice(event.target.checked)}
                 />
                 我确认这是本人的私人常用设备
               </label>
               <button
                 className="primary-action"
-                disabled={!freshTotp || busy || !privateDevice}
+                disabled={
+                  !freshTotp ||
+                  busy ||
+                  trustLoading ||
+                  Boolean(trustLoadError) ||
+                  !privateDevice
+                }
                 onClick={() => void registerDevice()}
               >
                 信任本设备 7 天
               </button>
             </div>
           </>
+        )}
+        {devicesLoading && <p role="status">正在读取设备列表…</p>}
+        {devicesLoadError && (
+          <p className="catalog-error" role="alert">
+            设备列表读取失败：{devicesLoadError}。
+            {devices === null
+              ? "暂无法判定已登记设备。"
+              : "当前显示上次成功读取的设备，请重新读取后再操作。"}
+            密码配置不受此故障影响。
+          </p>
         )}
         {devices === null ? (
           <p>设备列表尚未读取成功，不能判定是否存在已登记设备。</p>
@@ -470,7 +622,9 @@ function StaffSecurityScope({
                   </div>
                   <button
                     className="ghost-action"
-                    disabled={busy}
+                    disabled={
+                      busy || devicesLoading || Boolean(devicesLoadError)
+                    }
                     onClick={() => void revokeDevice(device)}
                   >
                     撤销信任
@@ -485,7 +639,7 @@ function StaffSecurityScope({
       <button
         className="ghost-action"
         disabled={busy}
-        onClick={() => void load(requests.begin())}
+        onClick={() => void load(beginRequest())}
       >
         重新读取密码与设备配置
       </button>

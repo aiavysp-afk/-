@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHookRenderer } from "./test-hook-renderer";
-import { BrowserLogin, loginRequest } from "./browser-login";
+import {
+  BrowserLogin,
+  loginRequest,
+  StaffPasswordCredentialsFields,
+} from "./browser-login";
 
 const hooks = vi.hoisted(() => ({
   current: null as ReturnType<typeof createHookRenderer> | null,
@@ -333,5 +337,264 @@ describe("actual WeChat start response state", () => {
     expect(text(tree)).toContain(pair.confirmationCode);
     expect(nodes(tree).some((node) => node.props.role === "alert")).toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+});
+
+function buttonWithText(tree: unknown, label: string) {
+  const button = nodes(tree).find(
+    (node) => node.type === "button" && text(node) === label,
+  );
+  expect(button).toBeDefined();
+  return button!;
+}
+async function openPasswordForm() {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(json({ enabled: true, provider: "wechat" }))
+    .mockResolvedValueOnce(json({ enabled: true, smsEnabled: true }));
+  vi.stubGlobal("fetch", fetcher);
+  render();
+  hooks.current!.flushEffects();
+  await flush();
+  nodes(render())
+    .find(
+      (node) =>
+        node.props.role === "tab" && text(node).includes("账号密码登录"),
+    )!
+    .props.onClick();
+  return fetcher;
+}
+
+describe("first-use password login guidance", () => {
+  it("explains a short password and account format instead of showing an unexplained disabled button", async () => {
+    const fetcher = await openPasswordForm();
+    let fields = nodes(render()).find(
+      (node) => node.type === StaffPasswordCredentialsFields,
+    )!;
+    fields.props.onAccountChange("admin");
+    fields = nodes(render()).find(
+      (node) => node.type === StaffPasswordCredentialsFields,
+    )!;
+    fields.props.onPasswordChange("000001");
+    const tree = render();
+    expect(buttonWithText(tree, "验证密码并发送短信").props.disabled).toBe(
+      true,
+    );
+    expect(text(tree)).toContain("12–128");
+    expect(text(tree)).toContain("密码至少12位");
+    expect(text(tree)).toContain("字母开头");
+    expect(text(tree)).not.toContain("000001");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers an explicit first-use route back to WeChat without generating a pairing or sending SMS", async () => {
+    const fetcher = await openPasswordForm();
+    const tree = render();
+    expect(text(tree)).toContain("首次使用请先完成微信登录");
+    expect(text(tree)).toContain("本人设置用户名和密码");
+    buttonWithText(tree, "切换微信登录").props.onClick();
+    const wechat = nodes(render()).find(
+      (node) => node.props.role === "tab" && text(node).includes("微信登录"),
+    );
+    expect(wechat?.props["aria-selected"]).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("server-rejected pairing recovery is manual and clears the obsolete proof", () => {
+  it.each([
+    { status: 401, stage: "poll", clear: true },
+    { status: 409, stage: "claim", clear: true },
+    { status: 200, stage: "poll", clear: false },
+    { status: 503, stage: "poll", clear: false },
+  ])(
+    "preserves known HTTP $status when a slow $stage body times out, clearing the proof only for server rejection",
+    async ({ status, stage, clear }) => {
+      const fetcher = await ready(json(validPair()));
+      startButton(render()).props.onClick();
+      await flush();
+      controlTimeouts();
+      if (stage === "claim")
+        fetcher.mockResolvedValueOnce(json({ status: "APPROVED" }));
+      let bodyStarted = false;
+      fetcher.mockImplementationOnce(
+        async (url: RequestInfo | URL, options?: RequestInit) => {
+          expect(String(url)).toMatch(new RegExp(`/${stage}$`));
+          const signal = options?.signal!;
+          const response = new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"data":'));
+                signal.addEventListener(
+                  "abort",
+                  () => controller.error(signal.reason),
+                  { once: true },
+                );
+              },
+            }),
+            { status },
+          );
+          const parseBody = response.json.bind(response);
+          vi.spyOn(response, "json").mockImplementation(() => {
+            bodyStarted = true;
+            return parseBody();
+          });
+          return response;
+        },
+      );
+      buttonWithText(render(), "我已在小程序确认").props.onClick();
+      await flushMicrotasks();
+      expect(bodyStarted).toBe(true);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const tree = render();
+      expect(text(tree)).toContain("请求超时");
+      expect(
+        nodes(tree).some((node) => node.props.className === "login-pair-code"),
+      ).toBe(!clear);
+      expect(
+        buttonWithText(
+          tree,
+          clear ? "重新发起微信后台登录" : "我已在小程序确认",
+        ).props.disabled,
+      ).toBe(false);
+      expect(fetcher).toHaveBeenCalledTimes(stage === "claim" ? 5 : 4);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetcher).toHaveBeenCalledTimes(stage === "claim" ? 5 : 4);
+    },
+  );
+
+  it("keeps a pending pair for manual confirmation checks without claiming or regenerating it", async () => {
+    const fetcher = await ready(json(validPair()));
+    startButton(render()).props.onClick();
+    await flush();
+    fetcher.mockResolvedValueOnce(json({ status: "PENDING" }));
+    buttonWithText(render(), "我已在小程序确认").props.onClick();
+    await flush();
+    const tree = render();
+    expect(text(tree)).toContain("尚待小程序确认");
+    expect(
+      nodes(tree).some((node) => node.props.className === "login-pair-code"),
+    ).toBe(true);
+    expect(buttonWithText(tree, "我已在小程序确认").props.disabled).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([429, 503])(
+    "does not discard a pair just because the poll receives HTTP %s",
+    async (status) => {
+      const fetcher = await ready(json(validPair()));
+      startButton(render()).props.onClick();
+      await flush();
+      fetcher.mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "请稍后重试" }), { status }),
+      );
+      buttonWithText(render(), "我已在小程序确认").props.onClick();
+      await flush();
+      const tree = render();
+      expect(
+        nodes(tree).some((node) => node.props.className === "login-pair-code"),
+      ).toBe(true);
+      expect(buttonWithText(tree, "我已在小程序确认").props.disabled).toBe(
+        false,
+      );
+      expect(fetcher).toHaveBeenCalledTimes(4);
+    },
+  );
+
+  it("keeps HTTP status structured without losing the server's safe error message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ message: "登录配对已过期或无效，请重新发起" }),
+            { status: 401 },
+          ),
+      ),
+    );
+    await expect(
+      loginRequest("/auth/browser-login/poll", {}),
+    ).rejects.toMatchObject({
+      status: 401,
+      message: "登录配对已过期或无效，请重新发起",
+    });
+  });
+
+  it("clears a server-expired pair and offers a manual restart without automatically cancelling, claiming or retrying", async () => {
+    const fetcher = await ready(json(validPair()));
+    startButton(render()).props.onClick();
+    await flush();
+    fetcher.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ message: "登录配对已过期或无效，请重新发起" }),
+        { status: 401 },
+      ),
+    );
+    buttonWithText(render(), "我已在小程序确认").props.onClick();
+    await flush();
+    const tree = render();
+    expect(
+      nodes(tree).some((node) => node.props.className === "login-pair-code"),
+    ).toBe(false);
+    expect(text(tree)).toContain("已过期");
+    expect(buttonWithText(tree, "重新发起微信后台登录").props.disabled).toBe(
+      false,
+    );
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    fetcher.mockResolvedValueOnce(json(validPair()));
+    buttonWithText(tree, "重新发起微信后台登录").props.onClick();
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(
+      nodes(render()).some(
+        (node) => node.props.className === "login-pair-code",
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["CONSUMED", "CANCELLED"])(
+    "clears terminal %s without trying to claim it",
+    async (status) => {
+      const fetcher = await ready(json(validPair()));
+      startButton(render()).props.onClick();
+      await flush();
+      fetcher.mockResolvedValueOnce(json({ status }));
+      buttonWithText(render(), "我已在小程序确认").props.onClick();
+      await flush();
+      const tree = render();
+      expect(
+        nodes(tree).some((node) => node.props.className === "login-pair-code"),
+      ).toBe(false);
+      expect(buttonWithText(tree, "重新发起微信后台登录").props.disabled).toBe(
+        false,
+      );
+      expect(fetcher).toHaveBeenCalledTimes(4);
+    },
+  );
+
+  it("does not repeat a claim rejected as already consumed or cancelled", async () => {
+    const fetcher = await ready(json(validPair()));
+    startButton(render()).props.onClick();
+    await flush();
+    fetcher.mockResolvedValueOnce(json({ status: "APPROVED" }));
+    fetcher.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "登录已领取或取消" }), {
+        status: 409,
+      }),
+    );
+    buttonWithText(render(), "我已在小程序确认").props.onClick();
+    await flush();
+    const tree = render();
+    expect(
+      nodes(tree).some((node) => node.props.className === "login-pair-code"),
+    ).toBe(false);
+    expect(buttonWithText(tree, "重新发起微信后台登录").props.disabled).toBe(
+      false,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).endsWith("/claim")),
+    ).toHaveLength(1);
   });
 });
