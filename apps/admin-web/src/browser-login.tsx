@@ -24,27 +24,86 @@ type PasswordChallenge = {
   retryAfterSeconds: number;
 };
 type LoginMethod = "wechat" | "password";
+const LOGIN_TIMEOUT_MS = 15_000;
+const RESPONSE_FORMAT_ERROR =
+  "登录服务响应格式异常，请稍后重试；仍失败请联系管理员。";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function httpFailure(status: number) {
+  return status === 503
+    ? "登录服务暂时无法访问（HTTP 503）。当前网络可能未获准访问后台，或服务暂时不可用；请稍后重试，仍失败请联系管理员。"
+    : `登录请求失败（HTTP ${status}），请稍后重试；仍失败请联系管理员。`;
+}
+
+function transportFailure(caught: unknown, signal: AbortSignal) {
+  const name = (caught as { name?: unknown } | null)?.name;
+  return Error(
+    signal.aborted || name === "TimeoutError" || name === "AbortError"
+      ? "登录请求超时，请检查网络后重试；不会自动重复提交。"
+      : "登录网络连接失败，请检查网络后重试；仍失败请联系管理员。",
+  );
+}
+
+function validWechatPair(value: unknown): value is Pair {
+  // Workstation clocks can be skewed; actual expiry is enforced by the server.
+  return (
+    isRecord(value) &&
+    typeof value.pairCode === "string" &&
+    /^[A-Za-z0-9_-]{22}$/.test(value.pairCode) &&
+    typeof value.browserSecret === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(value.browserSecret) &&
+    typeof value.confirmationCode === "string" &&
+    /^\d{6}$/.test(value.confirmationCode) &&
+    typeof value.expiresAt === "string" &&
+    Number.isFinite(Date.parse(value.expiresAt))
+  );
+}
 
 export async function loginRequest<T>(
   path: string,
   body?: unknown,
   token?: string,
-) {
-  const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    cache: "no-store",
-    credentials: "include",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const json = await response.json().catch(() => ({}));
+): Promise<T> {
+  const signal = AbortSignal.timeout(LOGIN_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      cache: "no-store",
+      credentials: "include",
+      signal,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch (caught) {
+    throw transportFailure(caught, signal);
+  }
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch (caught) {
+    const name = (caught as { name?: unknown } | null)?.name;
+    if (signal.aborted || name === "TimeoutError" || name === "AbortError")
+      throw transportFailure(caught, signal);
+    throw Error(
+      response.ok ? RESPONSE_FORMAT_ERROR : httpFailure(response.status),
+    );
+  }
   if (!response.ok)
     throw Error(
-      typeof json.message === "string" ? json.message : "登录请求失败",
+      isRecord(json) && typeof json.message === "string" && json.message.trim()
+        ? json.message
+        : httpFailure(response.status),
     );
+  // An HTML fallback or absent envelope must never look like an empty success.
+  if (!isRecord(json) || !Object.hasOwn(json, "data") || json.data == null)
+    throw Error(RESPONSE_FORMAT_ERROR);
   return json.data as T;
 }
 const proof = (pair: Pair) => ({
@@ -210,10 +269,11 @@ export function BrowserLogin({
     setBusy(true);
     setError("");
     try {
-      const created = await loginRequest<Pair>(
+      const created = await loginRequest<unknown>(
         "/auth/browser-login/create",
         {},
       );
+      if (!validWechatPair(created)) throw Error(RESPONSE_FORMAT_ERROR);
       if (isCurrent()) {
         currentPair.current = created;
         setPair(created);
