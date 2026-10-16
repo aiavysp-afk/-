@@ -29,6 +29,7 @@ function fixture() {
     status: vi.fn(async () => ({
       configured: true,
       maskedAccount: "138****1234",
+      loginAlias: null,
     })),
     setPassword: vi.fn(async () => ({ configured: true })),
     login: vi.fn(async () => ({ challengeId: CONFIRM.challengeId })),
@@ -84,11 +85,73 @@ describe("staff password controller request boundaries", () => {
     expect(f.service.login).toHaveBeenCalledWith(LOGIN, "socket-peer");
     expect(f.service.confirm).toHaveBeenCalledWith(CONFIRM, "socket-peer");
   });
+  it("accepts an existing login alias or phone account and passes canonical input only", async () => {
+    const f = fixture();
+    await f.controller.login({ ...LOGIN, account: " AdMiN " }, ORIGIN, REQUEST);
+    expect(f.service.login).toHaveBeenLastCalledWith(
+      { ...LOGIN, account: "admin" },
+      "socket-peer",
+    );
+    await f.controller.login(
+      { ...LOGIN, account: " 13800001234 " },
+      ORIGIN,
+      REQUEST,
+    );
+    expect(f.service.login).toHaveBeenLastCalledWith(LOGIN, "socket-peer");
+  });
+  it("allows self password setup to include a normalized alias without accepting another identity", async () => {
+    const f = fixture();
+    expect(
+      await f.controller.setPassword(
+        principal,
+        { password: LOGIN.password, loginAlias: " AdMiN " },
+        ORIGIN,
+      ),
+    ).toEqual({ data: { configured: true } });
+    expect(f.service.setPassword).toHaveBeenCalledWith(
+      principal,
+      LOGIN.password,
+      undefined,
+      "admin",
+    );
+    expect(await f.controller.status(principal)).toEqual({
+      data: {
+        configured: true,
+        maskedAccount: "138****1234",
+        loginAlias: null,
+      },
+    });
+  });
+  it.each([
+    "",
+    " ",
+    null,
+    "abc",
+    "a".repeat(33),
+    "1admin",
+    "13800001234",
+    "管理员",
+    "admin@example.com",
+  ])(
+    "rejects an invalid alias rather than silently clearing or binding it",
+    async (loginAlias) => {
+      const f = fixture();
+      await expect(
+        f.controller.setPassword(
+          principal,
+          { password: LOGIN.password, loginAlias },
+          ORIGIN,
+        ),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(f.service.setPassword).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     { ...LOGIN, role: "ADMIN" },
     { ...LOGIN, userId: "someone-else" },
     { ...LOGIN, phone: "13900001234" },
-    { ...LOGIN, account: "invalid" },
+    { ...LOGIN, loginAlias: "admin" },
+    { ...LOGIN, account: "bad!" },
     { ...LOGIN, password: "short" },
     { ...LOGIN, password: "a".repeat(129) },
   ])("rejects invalid or privilege-bearing login fields", async (input) => {

@@ -17,6 +17,10 @@ import { CurrentPrincipal } from "./current-principal.decorator.js";
 import { SessionAuthGuard } from "./session-auth.guard.js";
 import { StaffPasswordService } from "./staff-password.service.js";
 import type { AuthPrincipal } from "./auth.types.js";
+import {
+  normalizeStaffLoginAccount,
+  normalizeStaffLoginAlias,
+} from "./staff-login-account.js";
 
 const Password = z
   .string()
@@ -25,6 +29,28 @@ const Password = z
   .refine(
     (value) => Buffer.byteLength(value, "utf8") <= 512 && !value.includes("\0"),
   );
+const LoginAlias = z
+  .string()
+  .max(128)
+  .transform((value, context) => {
+    const normalized = normalizeStaffLoginAlias(value);
+    if (normalized === null) {
+      context.addIssue({ code: "custom", message: "登录名格式无效" });
+      return z.NEVER;
+    }
+    return normalized;
+  });
+const Account = z
+  .string()
+  .max(128)
+  .transform((value, context) => {
+    const normalized = normalizeStaffLoginAccount(value);
+    if (normalized === null) {
+      context.addIssue({ code: "custom", message: "登录账号格式无效" });
+      return z.NEVER;
+    }
+    return normalized.value;
+  });
 
 @Controller("auth/staff-password")
 export class StaffPasswordController {
@@ -52,11 +78,24 @@ export class StaffPasswordController {
     @Headers("origin") origin: string | undefined,
   ) {
     this.passwords.assertBrowserOrigin(origin);
-    const parsed = z.object({ password: Password }).strict().safeParse(body);
+    const parsed = z
+      .object({ password: Password, loginAlias: LoginAlias.optional() })
+      .strict()
+      .safeParse(body);
     if (!parsed.success)
-      throw new BadRequestException("密码须为12至128个字符，且不能包含空字符");
+      throw new BadRequestException(
+        "密码须为12至128个字符；登录名须为4至32位英文字母、数字、下划线或短横线，且以英文字母开头",
+      );
     return {
-      data: await this.passwords.setPassword(principal, parsed.data.password),
+      data:
+        parsed.data.loginAlias === undefined
+          ? await this.passwords.setPassword(principal, parsed.data.password)
+          : await this.passwords.setPassword(
+              principal,
+              parsed.data.password,
+              undefined,
+              parsed.data.loginAlias,
+            ),
     };
   }
 
@@ -71,7 +110,7 @@ export class StaffPasswordController {
     this.passwords.assertBrowserOrigin(origin);
     const parsed = z
       .object({
-        account: z.string().regex(/^1[3-9]\d{9}$/),
+        account: Account,
         password: Password,
       })
       .strict()

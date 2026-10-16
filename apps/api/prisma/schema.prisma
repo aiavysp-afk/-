@@ -532,6 +532,7 @@ model StaffPasswordCredential {
   userId         String    @id
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   phoneHash      String    @unique
+  loginAlias     String?   @unique
   passwordHash   String
   version        Int       @default(1)
   failedAttempts Int       @default(0)

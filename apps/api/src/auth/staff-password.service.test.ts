@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
+import { Prisma } from "@prisma/client";
 import { AuthSessionSchema } from "@zydj/contracts";
 import { StaffPasswordService } from "./staff-password.service.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
@@ -54,6 +55,7 @@ function fixture(values: Record<string, string> = {}) {
   const credential = {
     userId: user.id,
     phoneHash: crypto.hashPhoneVerification("phone", "13800001234"),
+    loginAlias: null as string | null,
     passwordHash: "existing-hash",
     version: 1,
     failedAttempts: 0,
@@ -76,15 +78,25 @@ function fixture(values: Record<string, string> = {}) {
     browserLoginRateLimit: { upsert: vi.fn(async () => ({ count: 1 })) },
     user: { findUnique: vi.fn(async () => user) },
     staffPasswordCredential: {
-      findUnique: vi.fn(async () => credential),
+      findUnique: vi.fn(async ({ where }: any) => {
+        return where.userId === credential.userId ||
+          where.phoneHash === credential.phoneHash ||
+          (typeof where.loginAlias === "string" &&
+            where.loginAlias === credential.loginAlias)
+          ? credential
+          : null;
+      }),
       update: vi.fn(async (input: any) => {
         Object.assign(credential, input.data);
         return credential;
       }),
-      upsert: vi.fn(async () => ({
-        ...credential,
-        version: credential.version + 1,
-      })),
+      upsert: vi.fn(async ({ update }: any) => {
+        Object.assign(credential, {
+          ...update,
+          version: credential.version + update.version.increment,
+        });
+        return credential;
+      }),
     },
     staffPasswordLoginChallenge: {
       create: vi.fn(async ({ data }: any) => {
@@ -199,6 +211,7 @@ describe("staff password configuration and caller boundaries", () => {
     expect(await f.service.status(principal)).toEqual({
       configured: true,
       maskedAccount: "138****1234",
+      loginAlias: null,
       changedAt: NOW.toISOString(),
     });
     await expect(
@@ -236,6 +249,100 @@ describe("staff password configuration and caller boundaries", () => {
 });
 
 describe("existing staff password management", () => {
+  it("stores a normalized chosen alias for the existing user without changing account identity", async () => {
+    const f = fixture();
+    await expect(
+      f.service.setPassword(principal, "correct-password", NOW, " AdMiN "),
+    ).resolves.toEqual({ configured: true });
+    expect(f.db.staffPasswordCredential.upsert).toHaveBeenCalledWith({
+      where: { userId: principal.userId },
+      create: expect.objectContaining({
+        userId: principal.userId,
+        loginAlias: "admin",
+        phoneHash: f.credential.phoneHash,
+      }),
+      update: expect.objectContaining({
+        loginAlias: "admin",
+        version: { increment: 1 },
+      }),
+    });
+    expect(await f.service.status(principal)).toEqual({
+      configured: true,
+      maskedAccount: "138****1234",
+      loginAlias: "admin",
+      changedAt: NOW.toISOString(),
+    });
+    expect(f.user.memberships).toEqual([
+      { organizationId: "org-1", role: "OPERATOR", status: "ACTIVE" },
+    ]);
+    expect(f.sms.submitPhoneVerification).not.toHaveBeenCalled();
+    expect(JSON.stringify(f.db.auditLog.create.mock.calls)).not.toContain(
+      "admin",
+    );
+  });
+  it("preserves an existing alias when an older client omits it", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "admin";
+    await f.service.setPassword(principal, "correct-password", NOW);
+    const upsert = f.db.staffPasswordCredential.upsert.mock.calls[0][0];
+    expect(upsert.create).not.toHaveProperty("loginAlias");
+    expect(upsert.update).not.toHaveProperty("loginAlias");
+    expect(f.credential.loginAlias).toBe("admin");
+  });
+  it("changes an alias only with the real fresh-TOTP password mutation and revokes old proofs", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "admin";
+    f.session.mfaVerifiedUntil = null;
+    await expect(
+      f.service.setPassword(principal, "correct-password", NOW, "new-admin"),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(f.credential.loginAlias).toBe("admin");
+    f.session.mfaVerifiedUntil = new Date(NOW.getTime() + 60_000);
+    await f.service.setPassword(
+      principal,
+      "correct-password",
+      NOW,
+      "new-admin",
+    );
+    expect(f.credential.loginAlias).toBe("new-admin");
+    expect(f.db.staffPasswordLoginChallenge.updateMany).toHaveBeenCalledWith({
+      where: { userId: principal.userId, consumedAt: null },
+      data: { status: "REJECTED", consumedAt: NOW },
+    });
+    expect(f.db.staffTrustedDevice.updateMany).toHaveBeenCalledOnce();
+    expect(f.db.session.updateMany).toHaveBeenCalledOnce();
+  });
+  it("converts unique conflicts into a generic alias error before any session or device mutation", async () => {
+    const f = fixture();
+    f.db.staffPasswordCredential.upsert.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        "unique collision with another private staff credential",
+        {
+          code: "P2002",
+          clientVersion: "test",
+          meta: { target: ["loginAlias"] },
+        },
+      ),
+    );
+    const result = await f.service
+      .setPassword(principal, "correct-password", NOW, "admin")
+      .catch((error) => error);
+    expect(result).toMatchObject({ status: 409, message: "登录名不可用" });
+    expect(JSON.stringify(result.getResponse())).not.toContain("private");
+    expect(f.db.session.updateMany).not.toHaveBeenCalled();
+    expect(f.db.staffTrustedDevice.updateMany).not.toHaveBeenCalled();
+    expect(f.db.auditLog.create).not.toHaveBeenCalled();
+  });
+  it.each(["", "abc", "1admin", "a".repeat(33), "13800001234"])(
+    "rejects invalid aliases in service calls too",
+    async (loginAlias) => {
+      const f = fixture();
+      await expect(
+        f.service.setPassword(principal, "correct-password", NOW, loginAlias),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(f.db.$transaction).not.toHaveBeenCalled();
+    },
+  );
   it("requires the actual current session's fresh TOTP, not claimed principal assurance", async () => {
     const f = fixture();
     f.session.mfaVerifiedUntil = null;
@@ -319,6 +426,149 @@ describe("existing staff password management", () => {
 });
 
 describe("password then bound-phone SMS challenge", () => {
+  it("normalizes an alias but sends only to the verified phone decrypted from its existing owner", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "admin";
+    const challenge = await f.service.login(
+      { account: " AdMiN ", password: "correct-password" },
+      "socket-peer",
+      NOW,
+    );
+    expect(f.db.staffPasswordCredential.findUnique).toHaveBeenNthCalledWith(1, {
+      where: { loginAlias: "admin" },
+    });
+    expect(f.sms.submitPhoneVerification).toHaveBeenCalledWith({
+      phone: "13800001234",
+      code: expect.stringMatching(/^\d{6}$/),
+      trackingId: challenge.challengeId,
+    });
+    expect(challenge.maskedPhone).toBe("138****1234");
+    expect(JSON.stringify(challenge)).not.toContain("admin");
+    expect(JSON.stringify(challenge)).not.toContain("13800001234");
+  });
+  it("keeps existing phone-only credentials usable without adding a default alias", async () => {
+    const f = fixture();
+    expect(f.credential.loginAlias).toBeNull();
+    await f.issue();
+    expect(f.credential.loginAlias).toBeNull();
+    expect(f.db.staffPasswordCredential.upsert).not.toHaveBeenCalled();
+  });
+  it("uses a dummy password derivation and generic error for an unknown alias", async () => {
+    const f = fixture();
+    vi.mocked(verifyStaffPassword).mockClear();
+    const failure = await f.service
+      .login(
+        { account: "not-found", password: "correct-password" },
+        "peer",
+        NOW,
+      )
+      .catch((error) => error);
+    expect(failure).toMatchObject({
+      status: 401,
+      message: "登录信息无效，请检查账号、密码或验证码后重试",
+    });
+    expect(verifyStaffPassword).toHaveBeenCalledWith(
+      "correct-password",
+      expect.stringContaining("scrypt.v1.32768"),
+    );
+    expect(f.db.user.findUnique).not.toHaveBeenCalled();
+    expect(
+      JSON.stringify(f.db.browserLoginRateLimit.upsert.mock.calls),
+    ).not.toContain("not-found");
+    expect(f.sms.submitPhoneVerification).not.toHaveBeenCalled();
+  });
+  it("shares the canonical account budget and bad-password lock across phone and alias methods", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "admin";
+    for (let index = 0; index < 5; index++) {
+      await expect(
+        f.service.login(
+          {
+            account: index % 2 ? "admin" : "13800001234",
+            password: "wrong-password",
+          },
+          "peer",
+          NOW,
+        ),
+      ).rejects.toMatchObject({ status: 401 });
+    }
+    expect(f.credential.failedAttempts).toBe(5);
+    expect(f.credential.lockedUntil?.getTime()).toBe(NOW.getTime() + 900_000);
+    const accountKey = f.crypto.hashBrowserLogin(
+      "staff-password:rate:account-login",
+      `${f.credential.phoneHash}:${Math.floor(NOW.getTime() / 600_000)}`,
+    );
+    expect(
+      f.db.browserLoginRateLimit.upsert.mock.calls.filter(
+        ([input]: any[]) => input.where.key === accountKey,
+      ),
+    ).toHaveLength(5);
+    expect(f.sms.submitPhoneVerification).not.toHaveBeenCalled();
+  });
+  it("cannot bypass the phone login budget by switching to its alias", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "admin";
+    const accountKey = f.crypto.hashBrowserLogin(
+      "staff-password:rate:account-login",
+      `${f.credential.phoneHash}:${Math.floor(NOW.getTime() / 600_000)}`,
+    );
+    f.db.browserLoginRateLimit.upsert.mockImplementation(
+      async (input: any) => ({
+        count: input.where.key === accountKey ? 11 : 1,
+      }),
+    );
+    await expect(
+      f.service.login(
+        { account: "admin", password: "correct-password" },
+        "peer",
+        NOW,
+      ),
+    ).rejects.toMatchObject({ status: 429 });
+    expect(f.sms.submitPhoneVerification).not.toHaveBeenCalled();
+  });
+  it("shares hourly and daily SMS limits across both login names", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "admin";
+    await f.issue();
+    await f.service.login(
+      { account: "admin", password: "correct-password" },
+      "peer",
+      NOW,
+    );
+    for (const [purpose, window] of [
+      ["sms-account-hour", 3_600_000],
+      ["sms-account-day", 86_400_000],
+    ] as const) {
+      const key = f.crypto.hashBrowserLogin(
+        `staff-password:rate:${purpose}`,
+        `${f.credential.phoneHash}:${Math.floor(NOW.getTime() / window)}`,
+      );
+      expect(
+        f.db.browserLoginRateLimit.upsert.mock.calls.filter(
+          ([input]: any[]) => input.where.key === key,
+        ),
+      ).toHaveLength(2);
+    }
+    expect(f.sms.submitPhoneVerification).toHaveBeenCalledTimes(2);
+  });
+  it("rechecks an alias that changed after the initial password snapshot", async () => {
+    const f = fixture();
+    f.credential.loginAlias = "renamed";
+    f.db.staffPasswordCredential.findUnique.mockImplementation(
+      async ({ where }: any) =>
+        where.loginAlias
+          ? { ...f.credential, loginAlias: "admin", version: 1 }
+          : { ...f.credential, version: 2 },
+    );
+    await expect(
+      f.service.login(
+        { account: "admin", password: "correct-password" },
+        "peer",
+        NOW,
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(f.sms.submitPhoneVerification).not.toHaveBeenCalled();
+  });
   it("only sends to the server-decrypted verified phone and stores proof hashes", async () => {
     const f = fixture();
     const challenge = await f.issue();

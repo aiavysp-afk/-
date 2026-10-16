@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -7,7 +8,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { type User, type StaffMembership } from "@prisma/client";
+import { Prisma, type User, type StaffMembership } from "@prisma/client";
 import type { AuthSession } from "@zydj/contracts";
 import { randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../database/prisma.service.js";
@@ -15,6 +16,10 @@ import { AliyunSmsClient } from "../integrations/aliyun-sms.client.js";
 import { AuthCryptoService } from "./auth-crypto.service.js";
 import { BrowserLoginService } from "./browser-login.service.js";
 import type { AuthPrincipal } from "./auth.types.js";
+import {
+  normalizeStaffLoginAccount,
+  normalizeStaffLoginAlias,
+} from "./staff-login-account.js";
 import {
   DUMMY_STAFF_PASSWORD_HASH,
   hashStaffPassword,
@@ -143,6 +148,7 @@ export class StaffPasswordService {
             this.crypto.hashPhoneVerification("phone", phone),
       ),
       maskedAccount: `${phone.slice(0, 3)}****${phone.slice(-4)}`,
+      loginAlias: credential?.loginAlias ?? null,
       ...(credential ? { changedAt: credential.updatedAt.toISOString() } : {}),
     };
   }
@@ -151,92 +157,119 @@ export class StaffPasswordService {
     principal: AuthPrincipal,
     password: string,
     now = new Date(),
+    loginAlias?: string,
   ) {
     this.gate();
+    const normalizedAlias =
+      loginAlias === undefined
+        ? undefined
+        : typeof loginAlias === "string"
+          ? normalizeStaffLoginAlias(loginAlias)
+          : null;
+    if (normalizedAlias === null)
+      throw new BadRequestException("登录名格式无效");
     if (!isStaffPasswordValid(password))
       throw new BadRequestException("密码须为12至128个字符");
     if (principal.authChannel !== "ADMIN_BROWSER")
       throw new ForbiddenException("请在后台管理本人密码");
     await this.take("password-set", principal.userId, 10, now);
     const passwordHash = await this.hashPassword(password);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${principal.userId} FOR NO KEY UPDATE`;
-      await tx.$queryRaw`SELECT "id" FROM "Session" WHERE "id" = ${principal.sessionId} FOR UPDATE`;
-      const user = await tx.user.findUnique({
-        where: { id: principal.userId },
-        include: { memberships: { where: { status: "ACTIVE" } } },
-      });
-      const session = await tx.session.findUnique({
-        where: { id: principal.sessionId },
-      });
-      const phone = this.phone(user);
-      if (
-        !phone ||
-        !session ||
-        session.userId !== principal.userId ||
-        session.revokedAt ||
-        session.expiresAt <= now ||
-        session.createdAt > now ||
-        session.authChannel !== "ADMIN_BROWSER"
-      )
-        throw invalidLogin();
-      if (!session.mfaVerifiedUntil || session.mfaVerifiedUntil <= now)
-        throw new ForbiddenException("设置或更改密码前请验证当前动态码");
-      const credential = await tx.staffPasswordCredential.upsert({
-        where: { userId: principal.userId },
-        create: {
-          userId: principal.userId,
-          phoneHash: this.crypto.hashPhoneVerification("phone", phone),
-          passwordHash,
-        },
-        update: {
-          phoneHash: this.crypto.hashPhoneVerification("phone", phone),
-          passwordHash,
-          version: { increment: 1 },
-          failedAttempts: 0,
-          lockedUntil: null,
-        },
-      });
-      await tx.staffTrustedDevice.updateMany({
-        where: { userId: principal.userId, revokedAt: null },
-        data: { revokedAt: now },
-      });
-      await tx.staffPasswordLoginChallenge.updateMany({
-        where: { userId: principal.userId, consumedAt: null },
-        data: { status: "REJECTED", consumedAt: now },
-      });
-      await tx.session.updateMany({
-        where: {
-          userId: principal.userId,
-          id: { not: principal.sessionId },
-          authChannel: "ADMIN_BROWSER",
-          revokedAt: null,
-        },
-        data: { revokedAt: now },
-      });
-      // The session that proved fresh TOTP is allowed to continue even if it
-      // originally came from password or remembered-device login.
-      await tx.session.update({
-        where: { id: principal.sessionId },
-        data: {
-          staffPasswordVersion: credential.version,
-          trustedDeviceId: null,
-        },
-      });
-      await tx.auditLog.create({
-        data: {
-          actorId: principal.userId,
-          action: "AUTH_STAFF_PASSWORD_CHANGED",
-          resourceType: "User",
-          resourceId: principal.userId,
-          metadata: {
-            credentialVersion: credential.version,
-            otherBrowserSessionsRevoked: true,
-            trustedDevicesRevoked: true,
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${principal.userId} FOR NO KEY UPDATE`;
+        await tx.$queryRaw`SELECT "id" FROM "Session" WHERE "id" = ${principal.sessionId} FOR UPDATE`;
+        const user = await tx.user.findUnique({
+          where: { id: principal.userId },
+          include: { memberships: { where: { status: "ACTIVE" } } },
+        });
+        const session = await tx.session.findUnique({
+          where: { id: principal.sessionId },
+        });
+        const phone = this.phone(user);
+        if (
+          !phone ||
+          !session ||
+          session.userId !== principal.userId ||
+          session.revokedAt ||
+          session.expiresAt <= now ||
+          session.createdAt > now ||
+          session.authChannel !== "ADMIN_BROWSER"
+        )
+          throw invalidLogin();
+        if (!session.mfaVerifiedUntil || session.mfaVerifiedUntil <= now)
+          throw new ForbiddenException("设置或更改密码前请验证当前动态码");
+        const credential = await tx.staffPasswordCredential.upsert({
+          where: { userId: principal.userId },
+          create: {
+            userId: principal.userId,
+            phoneHash: this.crypto.hashPhoneVerification("phone", phone),
+            passwordHash,
+            ...(normalizedAlias === undefined
+              ? {}
+              : { loginAlias: normalizedAlias }),
           },
-        },
+          update: {
+            phoneHash: this.crypto.hashPhoneVerification("phone", phone),
+            passwordHash,
+            ...(normalizedAlias === undefined
+              ? {}
+              : { loginAlias: normalizedAlias }),
+            version: { increment: 1 },
+            failedAttempts: 0,
+            lockedUntil: null,
+          },
+        });
+        await tx.staffTrustedDevice.updateMany({
+          where: { userId: principal.userId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        await tx.staffPasswordLoginChallenge.updateMany({
+          where: { userId: principal.userId, consumedAt: null },
+          data: { status: "REJECTED", consumedAt: now },
+        });
+        await tx.session.updateMany({
+          where: {
+            userId: principal.userId,
+            id: { not: principal.sessionId },
+            authChannel: "ADMIN_BROWSER",
+            revokedAt: null,
+          },
+          data: { revokedAt: now },
+        });
+        // The session that proved fresh TOTP is allowed to continue even if it
+        // originally came from password or remembered-device login.
+        await tx.session.update({
+          where: { id: principal.sessionId },
+          data: {
+            staffPasswordVersion: credential.version,
+            trustedDeviceId: null,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: principal.userId,
+            action: "AUTH_STAFF_PASSWORD_CHANGED",
+            resourceType: "User",
+            resourceId: principal.userId,
+            metadata: {
+              credentialVersion: credential.version,
+              loginAliasConfigured: Boolean(credential.loginAlias),
+              otherBrowserSessionsRevoked: true,
+              trustedDevicesRevoked: true,
+            },
+          },
+        });
       });
-    });
+    } catch (error) {
+      // Database uniqueness is the final concurrency boundary. Do not expose
+      // the conflicting value, its owner, or raw database constraint details.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+        throw new ConflictException("登录名不可用");
+      throw error;
+    }
     return { configured: true };
   }
 
@@ -246,23 +279,47 @@ export class StaffPasswordService {
     now = new Date(),
   ) {
     this.gate(true);
-    if (
-      !/^1[3-9]\d{9}$/.test(input.account) ||
-      !isStaffPasswordValid(input.password)
-    )
-      throw invalidLogin();
+    const account = normalizeStaffLoginAccount(input.account);
+    if (!account || !isStaffPasswordValid(input.password)) throw invalidLogin();
     await this.take("global-login", "all", 1_000, now);
     await this.take("peer-login", remoteAddress, 60, now);
-    const phoneHash = this.crypto.hashPhoneVerification("phone", input.account);
-    await this.take("account-login", phoneHash, 10, now, 600_000);
+    const lookupHash =
+      account.kind === "phone"
+        ? this.crypto.hashPhoneVerification("phone", account.value)
+        : this.crypto.hashBrowserLogin(
+            "staff-password:alias-lookup",
+            account.value,
+          );
+    // Bound unknown alias traffic before lookup. Known aliases also consume
+    // the same canonical phone budget as phone login, so alternating methods
+    // cannot multiply the account's password-guess or SMS quota.
+    await this.take(
+      account.kind === "phone" ? "account-login" : "alias-lookup",
+      lookupHash,
+      10,
+      now,
+      600_000,
+    );
     const snapshot = await this.prisma.staffPasswordCredential.findUnique({
-      where: { phoneHash },
+      where:
+        account.kind === "phone"
+          ? { phoneHash: lookupHash }
+          : { loginAlias: account.value },
     });
+    if (account.kind === "alias")
+      await this.take(
+        "account-login",
+        snapshot?.phoneHash ?? lookupHash,
+        10,
+        now,
+        600_000,
+      );
     const valid = await this.verifyPassword(
       input.password,
       snapshot?.passwordHash ?? DUMMY_STAFF_PASSWORD_HASH,
     );
     if (!snapshot) throw invalidLogin();
+    const phoneHash = snapshot.phoneHash;
     if (valid) {
       await this.take("sms-account-hour", phoneHash, 5, now);
       await this.take("sms-account-day", phoneHash, 10, now, 86_400_000);
@@ -286,6 +343,7 @@ export class StaffPasswordService {
         !credential ||
         !phone ||
         credential.phoneHash !== phoneHash ||
+        (account.kind === "alias" && credential.loginAlias !== account.value) ||
         this.crypto.hashPhoneVerification("phone", phone) !== phoneHash ||
         credential.version !== snapshot.version ||
         credential.passwordHash !== snapshot.passwordHash ||

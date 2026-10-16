@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthSession } from "@zydj/contracts";
 import { createLoginGeneration, deliverBrowserSession } from "./login-state";
+import {
+  currentStaffPasswordChallenge,
+  isValidStaffLoginAccount,
+  normalizeStaffLoginAccount,
+} from "./staff-login-account";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 
@@ -26,6 +31,7 @@ export async function loginRequest<T>(
 ) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: body === undefined ? "GET" : "POST",
+    cache: "no-store",
     credentials: "include",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -47,6 +53,52 @@ const proof = (pair: Pair) => ({
 const revoke = async (session: AuthSession) => {
   await loginRequest("/auth/logout", {}, session.accessToken).catch(() => {});
 };
+
+export function StaffPasswordCredentialsFields({
+  account,
+  password,
+  busy,
+  onAccountChange,
+  onPasswordChange,
+}: {
+  account: string;
+  password: string;
+  busy: boolean;
+  onAccountChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <label>
+        登录账号
+        <input
+          type="text"
+          inputMode="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={32}
+          value={account}
+          placeholder="用户名或已绑定手机号"
+          onChange={(event) => onAccountChange(event.target.value)}
+        />
+      </label>
+      <label>
+        账号密码
+        <input
+          type="password"
+          autoComplete="off"
+          minLength={12}
+          maxLength={128}
+          value={password}
+          disabled={busy}
+          onChange={(event) => onPasswordChange(event.target.value)}
+        />
+      </label>
+    </>
+  );
+}
 
 export function BrowserLogin({
   onSession,
@@ -213,18 +265,31 @@ export function BrowserLogin({
     }
   }
   async function startPassword() {
-    if (busy || !passwordConfig?.enabled || !passwordConfig.smsEnabled) return;
+    if (
+      busy ||
+      !passwordConfig?.enabled ||
+      !passwordConfig.smsEnabled ||
+      !isValidStaffLoginAccount(account) ||
+      password.length < 12 ||
+      password.length > 128
+    )
+      return;
     const isCurrent = requests.begin();
+    const suppliedAccount = normalizeStaffLoginAccount(account);
     const suppliedPassword = password;
     setPassword("");
     setBusy(true);
     setError("");
     try {
-      const created = await loginRequest<PasswordChallenge>(
-        "/auth/staff-password/login",
-        { account: account.trim(), password: suppliedPassword },
+      const created = await currentStaffPasswordChallenge(
+        () =>
+          loginRequest<PasswordChallenge>("/auth/staff-password/login", {
+            account: suppliedAccount,
+            password: suppliedPassword,
+          }),
+        isCurrent,
       );
-      if (isCurrent()) setChallenge(created);
+      if (created && isCurrent()) setChallenge(created);
     } catch (caught) {
       if (isCurrent())
         setError(caught instanceof Error ? caught.message : "账号密码验证失败");
@@ -292,7 +357,7 @@ export function BrowserLogin({
           }}
         >
           <strong>账号密码登录</strong>
-          <span>管理员手机号 + 短信二次验证</span>
+          <span>用户名或手机号 + 绑定手机短信验证</span>
         </button>
       </div>
       {configError && (
@@ -376,8 +441,9 @@ export function BrowserLogin({
             }}
           >
             <p>
-              验证码已发送至绑定手机号 <strong>{challenge.maskedPhone}</strong>
-              。
+              短信验证请求已提交，绑定手机号{" "}
+              <strong>{challenge.maskedPhone}</strong>
+              。请以手机实际收到为准，暂未收到时请勿连续重复申请。
             </p>
             <p>
               有效至{" "}
@@ -424,36 +490,29 @@ export function BrowserLogin({
               void startPassword();
             }}
           >
-            <label>
-              已绑定手机号
-              <input
-                type="tel"
-                inputMode="tel"
-                autoComplete="username"
-                maxLength={11}
-                value={account}
-                onChange={(event) =>
-                  setAccount(event.target.value.replace(/\D/g, ""))
-                }
-              />
-            </label>
-            <label>
-              账号密码
-              <input
-                type="password"
-                autoComplete="off"
-                maxLength={128}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
+            <StaffPasswordCredentialsFields
+              account={account}
+              password={password}
+              busy={busy}
+              onAccountChange={(value) => {
+                resetAttempt("password");
+                setAccount(value);
+              }}
+              onPasswordChange={setPassword}
+            />
             <p>
-              首次设置密码须先微信登录，在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
+              可使用本人设置的用户名或原已绑定手机号登录；密码验证后仍需向本人绑定手机发送短信二次验证。
+              首次设置用户名和密码须先微信登录，在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
             </p>
             <button
               type="submit"
               className="primary-action"
-              disabled={busy || !/^1[3-9]\d{9}$/.test(account) || !password}
+              disabled={
+                busy ||
+                !isValidStaffLoginAccount(account) ||
+                password.length < 12 ||
+                password.length > 128
+              }
             >
               验证密码并发送短信
             </button>

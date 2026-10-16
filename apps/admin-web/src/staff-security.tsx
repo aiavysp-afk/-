@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createLoginGeneration, hasFreshTotp } from "./login-state";
+import {
+  buildStaffPasswordUpdate,
+  isValidStaffLoginAlias,
+  normalizeStaffLoginAlias,
+  type StaffPasswordDraft,
+} from "./staff-login-account";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 type PasswordState = {
   configured: boolean;
   maskedAccount: string | null;
+  loginAlias: string | null;
   changedAt?: string | null;
 };
 type TrustConfig = { enabled: boolean; maxDays: number };
@@ -21,15 +28,117 @@ type TrustedDevice = {
 const localDate = (date: string) =>
   new Date(date).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 
-export function StaffSecurity({
-  token,
-  verifiedUntil,
-  onSecurityChange,
-}: {
+type StaffSecurityProps = {
   token: string;
   verifiedUntil: string | null;
   onSecurityChange?: () => Promise<void>;
+};
+
+// A different identity gets a new component before its first render; passwords,
+// aliases and old asynchronous responses never bridge account switches.
+export function StaffSecurity(props: StaffSecurityProps) {
+  return <StaffSecurityScope key={props.token} {...props} />;
+}
+
+export function StaffPasswordSettingsForm({
+  draft,
+  disabled,
+  canSubmit,
+  configured,
+  onChange,
+  onSubmit,
+}: {
+  draft: StaffPasswordDraft;
+  disabled: boolean;
+  canSubmit: boolean;
+  configured: boolean;
+  onChange: (draft: StaffPasswordDraft) => void;
+  onSubmit: () => void;
 }) {
+  return (
+    <form
+      className="login-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canSubmit && !disabled) onSubmit();
+      }}
+    >
+      <label>
+        登录用户名
+        <input
+          type="text"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          minLength={4}
+          maxLength={32}
+          value={draft.loginAlias}
+          disabled={disabled}
+          placeholder="例如：admin（需本人保存后生效）"
+          onChange={(event) =>
+            onChange({ ...draft, loginAlias: event.target.value })
+          }
+        />
+      </label>
+      <p>
+        4–32
+        位，以字母开头，可使用小写字母、数字、下划线或短横线。保存时自动转为小写。
+      </p>
+      {draft.loginAlias && !isValidStaffLoginAlias(draft.loginAlias) && (
+        <p className="catalog-error">请填写符合格式的登录用户名。</p>
+      )}
+      <label>
+        新密码
+        <input
+          type="password"
+          autoComplete="off"
+          minLength={12}
+          maxLength={128}
+          value={draft.password}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({ ...draft, password: event.target.value })
+          }
+        />
+      </label>
+      <label>
+        再次输入新密码
+        <input
+          type="password"
+          autoComplete="off"
+          minLength={12}
+          maxLength={128}
+          value={draft.confirmation}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({ ...draft, confirmation: event.target.value })
+          }
+        />
+      </label>
+      <p>
+        12–128
+        个字符，建议使用足够长且不与其他网站重复的密码。只由本人填写，不交给客服或工作人员。
+      </p>
+      <p>
+        用户名和密码仅在本人点击保存后生效，仍需本人绑定手机号短信二次验证；不会新建账号或增加权限。
+      </p>
+      <button
+        className="primary-action"
+        type="submit"
+        disabled={disabled || !canSubmit}
+      >
+        {configured ? "修改本人用户名和密码" : "设置本人用户名和密码"}
+      </button>
+    </form>
+  );
+}
+
+function StaffSecurityScope({
+  token,
+  verifiedUntil,
+  onSecurityChange,
+}: StaffSecurityProps) {
   const [passwordState, setPasswordState] = useState<PasswordState | null>(
     null,
   );
@@ -41,6 +150,7 @@ export function StaffSecurity({
   const [devices, setDevices] = useState<TrustedDevice[] | null>(null);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [loginAlias, setLoginAlias] = useState("");
   const [deviceLabel, setDeviceLabel] = useState("");
   const [privateDevice, setPrivateDevice] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -59,6 +169,7 @@ export function StaffSecurity({
   ) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: body === undefined ? "GET" : method,
+      cache: "no-store",
       credentials: "include",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -75,6 +186,7 @@ export function StaffSecurity({
   }
   async function load(isCurrent: () => boolean) {
     setPasswordState(null);
+    setLoginAlias("");
     setDevices(null);
     setError("");
     try {
@@ -85,10 +197,12 @@ export function StaffSecurity({
         ),
         request<TrustConfig>("/auth/trusted-devices/config"),
       ]);
+      if (!isCurrent()) return;
       // Revocation/listing remains available while trust enrollment is disabled.
       const trusted = await request<TrustedDevice[]>("/auth/trusted-devices");
       if (!isCurrent()) return;
       setPasswordState(passwordData);
+      setLoginAlias(passwordData.loginAlias ?? "admin");
       setPasswordConfig(passwordFeature);
       setTrustConfig(trustFeature);
       setDevices(trusted);
@@ -107,6 +221,7 @@ export function StaffSecurity({
   useEffect(() => {
     setPassword("");
     setConfirmation("");
+    setLoginAlias("");
     setDeviceLabel("");
     setPrivateDevice(false);
     setMessage("");
@@ -121,32 +236,29 @@ export function StaffSecurity({
   }, []);
 
   async function savePassword() {
-    if (
-      busy ||
-      !passwordConfig?.enabled ||
-      !hasFreshTotp({ verifiedUntil }) ||
-      !passwordState?.maskedAccount ||
-      password.length < 12 ||
-      password.length > 128 ||
-      password !== confirmation
-    )
-      return;
+    const payload = buildStaffPasswordUpdate(
+      { loginAlias, password, confirmation },
+      {
+        busy,
+        enabled: passwordConfig?.enabled === true,
+        maskedAccount: passwordState?.maskedAccount ?? null,
+        verifiedUntil,
+      },
+    );
+    if (!payload) return;
     const isCurrent = requests.begin();
-    const suppliedPassword = password;
+    const identity = token;
     setPassword("");
     setConfirmation("");
     setError("");
     setMessage("");
     setBusy(true);
     try {
-      await request(
-        "/auth/staff-password",
-        { password: suppliedPassword },
-        "PUT",
-      );
-      if (!isCurrent()) return;
+      await request("/auth/staff-password", payload, "PUT");
+      if (!isCurrent() || currentToken.current !== identity) return;
+      setLoginAlias(normalizeStaffLoginAlias(loginAlias));
       setMessage(
-        "密码已更新，其他后台会话与全部常用设备信任已撤销。当前动态码验证只在原有效期内保留，常用设备需要重新验证并登记。",
+        "用户名和密码已更新，其他后台会话与全部常用设备信任已撤销。当前动态码验证只在原有效期内保留，常用设备需要重新验证并登记。",
       );
       await load(isCurrent);
       if (isCurrent()) await onSecurityChange?.();
@@ -226,6 +338,12 @@ export function StaffSecurity({
               <strong>{passwordState.maskedAccount || "未绑定"}</strong> ·
               密码：{passwordState.configured ? "已设置" : "未设置"}
             </p>
+            <p>
+              当前登录用户名：
+              <strong>{passwordState.loginAlias || "尚未设置"}</strong>
+              {!passwordState.loginAlias &&
+                "；下方 admin 仅为建议，需本人填写并确认新密码后保存才生效。"}
+            </p>
             {passwordState.changedAt && (
               <p>最近修改：{localDate(passwordState.changedAt)}</p>
             )}
@@ -236,7 +354,7 @@ export function StaffSecurity({
             )}
             {!freshTotp && (
               <p className="security-step-up">
-                设置或修改密码需要新的六位动态码。短信登录和信任设备不能代替本次敏感操作验证。
+                设置或修改用户名和密码需要新的六位动态码。短信登录和信任设备不能代替本次敏感操作验证。
               </p>
             )}
             {!passwordState.maskedAccount && (
@@ -244,65 +362,34 @@ export function StaffSecurity({
                 请先在小程序验证本人手机号，不能使用其他人的手机号设置账号密码。
               </p>
             )}
-            <form
-              className="login-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void savePassword();
+            <StaffPasswordSettingsForm
+              draft={{ loginAlias, password, confirmation }}
+              configured={passwordState.configured}
+              disabled={
+                !passwordConfig?.enabled ||
+                !freshTotp ||
+                busy ||
+                !passwordState.maskedAccount
+              }
+              canSubmit={Boolean(
+                buildStaffPasswordUpdate(
+                  { loginAlias, password, confirmation },
+                  {
+                    enabled: passwordConfig?.enabled === true,
+                    maskedAccount: passwordState.maskedAccount,
+                    verifiedUntil,
+                    busy,
+                  },
+                  now,
+                ),
+              )}
+              onChange={(draft) => {
+                setLoginAlias(draft.loginAlias);
+                setPassword(draft.password);
+                setConfirmation(draft.confirmation);
               }}
-            >
-              <label>
-                新密码
-                <input
-                  type="password"
-                  autoComplete="off"
-                  minLength={12}
-                  maxLength={128}
-                  value={password}
-                  disabled={
-                    !passwordConfig?.enabled ||
-                    !freshTotp ||
-                    busy ||
-                    !passwordState.maskedAccount
-                  }
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-              <label>
-                再次输入新密码
-                <input
-                  type="password"
-                  autoComplete="off"
-                  maxLength={128}
-                  value={confirmation}
-                  disabled={
-                    !passwordConfig?.enabled ||
-                    !freshTotp ||
-                    busy ||
-                    !passwordState.maskedAccount
-                  }
-                  onChange={(event) => setConfirmation(event.target.value)}
-                />
-              </label>
-              <p>
-                12–128
-                个字符，建议使用足够长且不与其他网站重复的密码。只由本人填写，不交给客服或工作人员。
-              </p>
-              <button
-                className="primary-action"
-                type="submit"
-                disabled={
-                  !passwordConfig?.enabled ||
-                  !freshTotp ||
-                  busy ||
-                  !passwordState.maskedAccount ||
-                  password.length < 12 ||
-                  password !== confirmation
-                }
-              >
-                {passwordState.configured ? "修改本人密码" : "设置本人密码"}
-              </button>
-            </form>
+              onSubmit={() => void savePassword()}
+            />
           </>
         ) : (
           <p>密码配置尚未读取成功，请重试；不代表未设置密码。</p>

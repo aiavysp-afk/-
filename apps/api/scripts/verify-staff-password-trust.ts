@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   ForbiddenException,
+  ConflictException,
   UnauthorizedException,
   type ExecutionContext,
 } from "@nestjs/common";
@@ -234,9 +235,13 @@ async function main() {
     assert.ok(code, "Missing in-memory fixture SMS acceptance");
     return code;
   }
-  async function issuePasswordChallenge(secret: string, now: Date) {
+  async function issuePasswordChallenge(
+    secret: string,
+    now: Date,
+    account = fixturePhone,
+  ) {
     return password.login(
-      { account: fixturePhone, password: secret },
+      { account, password: secret },
       "isolated-socket-peer",
       now,
     );
@@ -300,7 +305,12 @@ async function main() {
         password.configuration().enabled && password.configuration().smsEnabled,
         "Acceptance feature configuration unavailable",
       );
-      await password.setPassword(proof.principal, firstPassword, loginAt);
+      await password.setPassword(
+        proof.principal,
+        firstPassword,
+        loginAt,
+        " AdMiN ",
+      );
       const credential =
         await database.staffPasswordCredential.findUniqueOrThrow({
           where: { userId: user.id },
@@ -320,6 +330,15 @@ async function main() {
       assert.ok(
         credential.version === 1,
         "Initial password credential version differs",
+      );
+      assert.ok(
+        credential.loginAlias === "admin",
+        "Chosen alias was not normalized",
+      );
+      const status = await password.status(proof.principal);
+      assert.ok(
+        status.loginAlias === "admin" && status.maskedAccount === "138****0000",
+        "Alias status did not retain masked phone privacy",
       );
     },
   );
@@ -591,7 +610,11 @@ async function main() {
         });
       assert.ok(
         credential.version === 2 &&
-          (await verifyStaffPassword(secondPassword, credential.passwordHash)),
+          (await verifyStaffPassword(
+            secondPassword,
+            credential.passwordHash,
+          )) &&
+          credential.loginAlias === "admin",
         "Password version/hash did not rotate",
       );
       assert.ok(
@@ -638,28 +661,32 @@ async function main() {
       );
     },
   );
-  await check("new password still completes real persisted login", async () => {
-    const challenge = await issuePasswordChallenge(
-      secondPassword,
-      new Date(loginAt.getTime() + 120_002),
-    );
-    const session = await password.confirm(
-      {
-        challengeId: challenge.challengeId,
-        challengeSecret: challenge.challengeSecret,
-        code: codeFor(challenge.challengeId),
-      },
-      "isolated-socket-peer",
-      new Date(loginAt.getTime() + 120_002),
-    );
-    const principal = await auth.authenticate(session.accessToken);
-    assert.ok(
-      principal.staffPasswordVersion === 2 &&
-        principal.staffVerificationMethod === "PASSWORD_SMS",
-      "New credential did not establish login assurance",
-    );
-    await assertReadOnlyAssurance(principal, session.accessToken);
-  });
+  await check(
+    "alias and rotated password complete the existing persisted staff login",
+    async () => {
+      const challenge = await issuePasswordChallenge(
+        secondPassword,
+        new Date(loginAt.getTime() + 120_002),
+        " AdMiN ",
+      );
+      const session = await password.confirm(
+        {
+          challengeId: challenge.challengeId,
+          challengeSecret: challenge.challengeSecret,
+          code: codeFor(challenge.challengeId),
+        },
+        "isolated-socket-peer",
+        new Date(loginAt.getTime() + 120_002),
+      );
+      const principal = await auth.authenticate(session.accessToken);
+      assert.ok(
+        principal.staffPasswordVersion === 2 &&
+          principal.staffVerificationMethod === "PASSWORD_SMS",
+        "New credential did not establish login assurance",
+      );
+      await assertReadOnlyAssurance(principal, session.accessToken);
+    },
+  );
 
   const expiring = await trust.register(
     await auth.authenticate(proof.token),
@@ -729,6 +756,160 @@ async function main() {
           !summaryJson.includes(secret),
           "Device capability leaked to summary",
         );
+    },
+  );
+
+  // Additional records exist only in the guarded, initially empty disposable
+  // database. They exercise migration NULL compatibility and true unique-index
+  // races, never production bootstrap or user/role creation through login.
+  activeCheck = "create isolated alias constraint fixtures";
+  const credentialSnapshot =
+    await database.staffPasswordCredential.findUniqueOrThrow({
+      where: { userId: user.id },
+    });
+  const aliasFixtures = await Promise.all(
+    ["13900000001", "13900000002"].map(async (phone) => {
+      const fixture = await database.user.create({
+        data: {
+          role: "OPERATOR",
+          displayName: "Isolated alias constraint fixture",
+          status: "ACTIVE",
+          phoneEncrypted: crypto.encrypt(phone),
+          phoneVerifiedAt: new Date(),
+          memberships: {
+            create: {
+              organizationId: organization.id,
+              role: "OPERATOR",
+              status: "ACTIVE",
+            },
+          },
+        },
+      });
+      const credential = await database.staffPasswordCredential.create({
+        data: {
+          userId: fixture.id,
+          phoneHash: crypto.hashPhoneVerification("phone", phone),
+          passwordHash: credentialSnapshot.passwordHash,
+        },
+      });
+      return { user: fixture, credential };
+    }),
+  );
+  await check(
+    "migration preserves multiple phone-only credentials without alias backfill",
+    async () => {
+      assert.ok(
+        aliasFixtures.every(
+          (fixture) => fixture.credential.loginAlias === null,
+        ),
+        "Nullable legacy aliases were backfilled",
+      );
+    },
+  );
+  await check(
+    "database alias normalization constraint rejects direct noncanonical writes",
+    async () => {
+      await assert.rejects(
+        database.staffPasswordCredential.update({
+          where: { userId: aliasFixtures[0]!.user.id },
+          data: { loginAlias: "ADMIN" },
+        }),
+      );
+      await assert.rejects(
+        database.staffPasswordCredential.update({
+          where: { userId: aliasFixtures[0]!.user.id },
+          data: { loginAlias: "12ab" },
+        }),
+      );
+      assert.ok(
+        (
+          await database.staffPasswordCredential.findUniqueOrThrow({
+            where: { userId: aliasFixtures[0]!.user.id },
+          })
+        ).loginAlias === null,
+        "Invalid alias persisted",
+      );
+    },
+  );
+  await check(
+    "concurrent alias writes are serialized by the real unique index",
+    async () => {
+      const writes = await Promise.allSettled(
+        aliasFixtures.map((fixture) =>
+          database.staffPasswordCredential.update({
+            where: { userId: fixture.user.id },
+            data: { loginAlias: "isolated-shared" },
+          }),
+        ),
+      );
+      assert.ok(
+        writes.filter((result) => result.status === "fulfilled").length === 1,
+        "Concurrent alias uniqueness was not enforced",
+      );
+      assert.ok(
+        writes.filter((result) => result.status === "rejected").length === 1,
+        "Concurrent alias collision was not rejected",
+      );
+    },
+  );
+  await check(
+    "existing alias collision returns generic error and rolls back self credential changes",
+    async () => {
+      const actor = aliasFixtures[0]!;
+      const token = crypto.createSessionToken();
+      const row = await database.session.create({
+        data: {
+          userId: actor.user.id,
+          tokenHash: crypto.hashSessionToken(token),
+          authChannel: "ADMIN_BROWSER",
+          authProvider: "wechat",
+          expiresAt: new Date(Date.now() + 3_600_000),
+          mfaVerifiedUntil: new Date(Date.now() + 300_000),
+        },
+      });
+      const before = await database.staffPasswordCredential.findUniqueOrThrow({
+        where: { userId: actor.user.id },
+      });
+      const beforeUsers = await database.user.count();
+      const beforeMemberships = await database.staffMembership.count();
+      await assert.rejects(
+        password.setPassword(
+          await auth.authenticate(token),
+          secondPassword,
+          new Date(),
+          "admin",
+        ),
+        (error: unknown) =>
+          error instanceof ConflictException &&
+          error.message === "登录名不可用",
+      );
+      const after = await database.staffPasswordCredential.findUniqueOrThrow({
+        where: { userId: actor.user.id },
+      });
+      assert.ok(
+        after.version === before.version &&
+          after.passwordHash === before.passwordHash &&
+          after.loginAlias === before.loginAlias,
+        "Rejected collision changed the actor credential",
+      );
+      assert.ok(
+        (
+          await database.staffPasswordCredential.findUniqueOrThrow({
+            where: { userId: user.id },
+          })
+        ).loginAlias === "admin",
+        "Rejected collision changed the existing alias owner",
+      );
+      assert.ok(
+        (await database.session.findUniqueOrThrow({ where: { id: row.id } }))
+          .revokedAt === null,
+        "Rejected collision mutated the active actor session",
+      );
+      assert.ok(
+        (await database.user.count()) === beforeUsers &&
+          (await database.staffMembership.count()) === beforeMemberships,
+        "Password configuration created identities or permissions",
+      );
     },
   );
   // Only check names/counts leave this process; no record payloads, identity,
