@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import {
@@ -102,7 +103,7 @@ function LedgerDetails({
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(token,
         `${API_BASE_URL}${storedValueLedgerPath(organizationId, customerId, limit)}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );

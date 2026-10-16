@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 export async function prepareTechnicianPhoto(file: File) {
   if (!["image/jpeg", "image/png"].includes(file.type) || file.size > 10 * 1024 * 1024) {
     throw new Error("请选择10MB以内的本人JPG或PNG照片");
@@ -43,7 +44,7 @@ export async function loadTechnicianPhotoPreview(publicUrl: string, apiBaseUrl: 
   if (profilePath !== "/technician/workbench/profile" && (!admin || admin[1] !== technicianId)) {
     throw new Error("照片不属于当前技师资料");
   }
-  const response = await fetch(`${apiBase}${profilePath}/photos/${encodeURIComponent(photoId)}`, {
+  const response = await authenticatedFetch(token, `${apiBase}${profilePath}/photos/${encodeURIComponent(photoId)}`, {
     credentials: "omit", redirect: "error", headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error("本人照片预览读取失败");

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthSession } from "@zydj/contracts";
 import { BrowserLogin } from "./browser-login";
 import { StaffSecurity } from "./staff-security";
-import { hasFreshTotp } from "./login-state";
+import { createLoginGeneration, hasFreshTotp } from "./login-state";
+import { authenticatedFetch } from "./authenticated-fetch";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
 type MfaStatus = {
@@ -32,15 +33,21 @@ type RecoveryRequest = {
   createdAt: string;
   expiresAt: string;
 };
-export function SecurityWorkspace({
-  token,
-  onLogout,
-  onSession,
-}: {
+type SecurityWorkspaceProps = {
   token: string;
   onLogout: () => Promise<void>;
   onSession: (session: AuthSession) => void;
-}) {
+};
+
+export function SecurityWorkspace(props: SecurityWorkspaceProps) {
+  return <SecurityWorkspaceScope key={props.token} {...props} />;
+}
+
+function SecurityWorkspaceScope({
+  token,
+  onLogout,
+  onSession,
+}: SecurityWorkspaceProps) {
   const currentToken = useRef(token);
   currentToken.current = token;
   const [status, setStatus] = useState<MfaStatus | null>(null),
@@ -50,8 +57,11 @@ export function SecurityWorkspace({
   const [code, setCode] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const requests = useMemo(createLoginGeneration, []);
   async function requestAt<T>(path: string, body?: unknown) {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -60,19 +70,45 @@ export function SecurityWorkspace({
       credentials: "include",
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    const json = await response.json();
+    const json = (await response.json().catch(() => ({}))) ?? {};
     if (!response.ok)
-      throw Error(
-        typeof json.message === "string" ? json.message : "安全验证请求失败",
+      throw Object.assign(
+        Error(
+          typeof json.message === "string"
+            ? json.message
+            : "安全验证请求失败",
+        ),
+        { status: response.status },
       );
     return json.data as T;
   }
   async function request<T>(path: string, body?: unknown) {
     return requestAt<T>(`/auth/mfa${path}`, body);
   }
-  async function refresh() {
+  function beginRequest() {
     const identity = token;
+    const isLatest = requests.begin();
+    setBusy(true);
     setError("");
+    setRecoveries([]);
+    setRecoveryError("");
+    setRecoveryLoading(hasFreshTotp(status) && reviewOrganizations.length > 0);
+    return () => isLatest() && currentToken.current === identity;
+  }
+  function clearSecurityState() {
+    setStatus(null);
+    setEnrollment(null);
+    setCode("");
+    setReviewOrganizations([]);
+    setRecoveries([]);
+    setRecoveryLoading(false);
+    setRecoveryError("");
+  }
+  function reportError(caught: unknown, fallback: string, clear = false) {
+    if (clear) clearSecurityState();
+    setError(caught instanceof Error ? caught.message : fallback);
+  }
+  async function loadSecurity(isCurrent: () => boolean) {
     try {
       const [data, me] = await Promise.all([
         request<MfaStatus>(""),
@@ -81,77 +117,89 @@ export function SecurityWorkspace({
       const organizations = me.memberships
         .filter((membership) => membership.role === "ADMIN")
         .map((membership) => membership.organizationId);
-      let queue: RecoveryRequest[] = [];
+      if (!isCurrent()) return;
+      // Optional organization recovery queues must not block self MFA setup,
+      // verification or credential management once the self reads succeeded.
+      setStatus(data);
+      setReviewOrganizations(organizations);
+      setRecoveries([]);
+      setBusy(false);
       if (hasFreshTotp(data) && organizations.length) {
-        queue = (
-          await Promise.all(
-            organizations.map((organizationId) =>
-              requestAt<RecoveryRequest[]>(
-                `/admin/organizations/${encodeURIComponent(organizationId)}/mfa-recovery-requests`,
+        setRecoveryLoading(true);
+        try {
+          const queue = (
+            await Promise.all(
+              organizations.map((organizationId) =>
+                requestAt<RecoveryRequest[]>(
+                  `/admin/organizations/${encodeURIComponent(organizationId)}/mfa-recovery-requests`,
+                ),
               ),
-            ),
-          )
-        ).flat();
+            )
+          ).flat();
+          if (isCurrent()) setRecoveries(queue);
+        } catch (caught) {
+          if (!isCurrent()) return;
+          // A queue 401 can mean fresh MFA is required, not that the browser
+          // session expired. authenticatedFetch confirms identity separately.
+          setRecoveries([]);
+          setRecoveryError(
+            caught instanceof Error
+              ? `恢复队列读取失败：${caught.message}`
+              : "恢复队列读取失败，请重试",
+          );
+        } finally {
+          if (isCurrent()) setRecoveryLoading(false);
+        }
       }
-      if (currentToken.current === identity) {
-        setStatus(data);
-        setReviewOrganizations(organizations);
-        setRecoveries(queue);
-      }
-    } catch (e) {
-      if (currentToken.current === identity) {
-        setStatus(null);
-        setReviewOrganizations([]);
-        setRecoveries([]);
-        setError(e instanceof Error ? e.message : "读取失败");
-      }
+    } catch (caught) {
+      if (isCurrent()) reportError(caught, "读取失败", true);
+    }
+  }
+  async function refresh() {
+    const isCurrent = beginRequest();
+    try {
+      await loadSecurity(isCurrent);
+    } finally {
+      if (isCurrent()) setBusy(false);
     }
   }
   useEffect(() => {
-    setStatus(null);
-    setEnrollment(null);
-    setReviewOrganizations([]);
-    setRecoveries([]);
-    setCode("");
+    clearSecurityState();
     setError("");
     setBusy(false);
     if (token) void refresh();
-  }, [token]);
+    return () => requests.invalidate();
+  }, [token, requests]);
   async function enroll() {
-    const identity = token;
-    setBusy(true);
-    setError("");
+    if (busy) return;
+    const isCurrent = beginRequest();
     try {
       const data = await request<Enrollment>("/enrollment", {});
-      if (currentToken.current === identity) {
-        setEnrollment(data);
-        await refresh();
-      }
-    } catch (e) {
-      if (currentToken.current === identity)
-        setError(e instanceof Error ? e.message : "绑定失败");
+      if (!isCurrent()) return;
+      setEnrollment(data);
+      await loadSecurity(isCurrent);
+    } catch (caught) {
+      if (isCurrent()) reportError(caught, "绑定失败");
     } finally {
-      if (currentToken.current === identity) setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
   async function verify() {
-    const identity = token;
-    setBusy(true);
-    setError("");
+    if (busy || !/^\d{6}$/.test(code)) return;
+    const isCurrent = beginRequest();
     try {
       await request(status?.enabled ? "/verify" : "/activate", { code });
-      if (currentToken.current === identity) {
+      if (!isCurrent()) return;
+      setCode("");
+      setEnrollment(null);
+      await loadSecurity(isCurrent);
+    } catch (caught) {
+      if (isCurrent()) {
         setCode("");
-        setEnrollment(null);
-        await refresh();
-      }
-    } catch (e) {
-      if (currentToken.current === identity) {
-        setCode("");
-        setError(e instanceof Error ? e.message : "验证失败");
+        reportError(caught, "验证失败");
       }
     } finally {
-      if (currentToken.current === identity) setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
   async function reviewRecovery(
@@ -168,20 +216,28 @@ export function SecurityWorkspace({
       )
     )
       return;
-    const identity = token;
-    setBusy(true);
-    setError("");
+    const isCurrent = beginRequest();
     try {
       await requestAt(
         `/admin/organizations/${encodeURIComponent(request.organizationId)}/mfa-recovery-requests/${encodeURIComponent(request.id)}/${decision}`,
         decision === "approve" ? {} : { reasonCode: "IDENTITY_NOT_CONFIRMED" },
       );
-      if (currentToken.current === identity) await refresh();
-    } catch (e) {
-      if (currentToken.current === identity)
-        setError(e instanceof Error ? e.message : "恢复复核失败");
+      if (isCurrent()) await loadSecurity(isCurrent);
+    } catch (caught) {
+      if (isCurrent()) reportError(caught, "恢复复核失败");
     } finally {
-      if (currentToken.current === identity) setBusy(false);
+      if (isCurrent()) setBusy(false);
+    }
+  }
+  async function logoutCurrent() {
+    if (busy) return;
+    const isCurrent = beginRequest();
+    try {
+      await onLogout();
+    } catch (caught) {
+      if (isCurrent()) reportError(caught, "注销失败");
+    } finally {
+      if (isCurrent()) setBusy(false);
     }
   }
   return (
@@ -202,11 +258,7 @@ export function SecurityWorkspace({
             </button>
             <button
               disabled={busy}
-              onClick={() =>
-                void onLogout().catch((e) =>
-                  setError(e instanceof Error ? e.message : "注销失败"),
-                )
-              }
+              onClick={() => void logoutCurrent()}
             >
               注销当前会话
             </button>
@@ -315,6 +367,13 @@ export function SecurityWorkspace({
                   <p>只有同组织管理员可以复核恢复申请。</p>
                 ) : !hasFreshTotp(status) ? (
                   <p>请先用自己的验证器完成当前会话MFA，再读取待复核申请。</p>
+                ) : recoveryLoading ? (
+                  <p>正在读取恢复队列…</p>
+                ) : recoveryError ? (
+                  <p role="alert">
+                    {recoveryError}
+                    ；不会据此显示为无待审核申请，请点击刷新安全状态重试。
+                  </p>
                 ) : recoveries.filter((item) => item.status === "PENDING")
                     .length ? (
                   recoveries

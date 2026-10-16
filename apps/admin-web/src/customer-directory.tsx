@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, EyeOff, RefreshCw, ShieldCheck, UsersRound } from "lucide-react";
 import {
@@ -35,7 +36,7 @@ export async function requestCustomerDirectory(
   signal: AbortSignal,
   reason?: string,
 ): Promise<CustomerDirectoryPage | CustomerPhoneDisclosure> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
     method: reason === undefined ? "GET" : "POST",
     cache: "no-store",
     signal,

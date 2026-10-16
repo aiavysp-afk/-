@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createLoginGeneration, hasFreshTotp } from "./login-state";
 import {
@@ -167,7 +168,7 @@ function StaffSecurityScope({
     body?: unknown,
     method: "POST" | "PUT" = "POST",
   ) {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
       method: body === undefined ? "GET" : method,
       cache: "no-store",
       credentials: "include",

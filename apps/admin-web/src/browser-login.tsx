@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthSession } from "@zydj/contracts";
 import { createLoginGeneration, deliverBrowserSession } from "./login-state";
@@ -29,7 +30,7 @@ export async function loginRequest<T>(
   body?: unknown,
   token?: string,
 ) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
     method: body === undefined ? "GET" : "POST",
     cache: "no-store",
     credentials: "include",

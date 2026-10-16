@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AuthUser,
@@ -61,7 +62,7 @@ export function SafetyWorkspace({
 
   const request = useCallback(
     async <T,>(path: string, body?: object): Promise<T> => {
-      const response = await fetch(`${base}${path}`, {
+      const response = await authenticatedFetch(token, `${base}${path}`, {
         method: body ? "POST" : "GET",
         headers: {
           "Content-Type": "application/json",

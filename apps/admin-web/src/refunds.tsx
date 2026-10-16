@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AdminPaymentViewSchema,
@@ -62,7 +63,7 @@ export function RefundWorkspace({
   currentContext.current = context;
   const request = useCallback(
     async <T,>(path: string, body?: object, key?: string): Promise<T> => {
-      const response = await fetch(`${base}${path}`, {
+      const response = await authenticatedFetch(token, `${base}${path}`, {
         method: body ? "POST" : "GET",
         headers: {
           "Content-Type": "application/json",

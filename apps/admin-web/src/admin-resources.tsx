@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import {
   useCallback,
   useEffect,
@@ -49,6 +50,13 @@ import {
 } from "./technician-photo";
 import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
 import {
+  buildSchedulingShift,
+  createSchedulingRequests,
+  runSchedulingOperation,
+  validSchedulingDate,
+  type SchedulingScope,
+} from "./scheduling-workspace-state";
+import {
   beginScopedWorkspaceRequest,
   createWorkspaceContext,
   emptyTechnicianWorkspace,
@@ -77,7 +85,7 @@ async function request<T>(
   body?: object,
   method: "POST" | "PATCH" = "POST",
 ) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
     method: body ? method : "GET",
     headers: {
       "Content-Type": "application/json",
@@ -1571,67 +1579,148 @@ export function SchedulingWorkspace({
   organizationId: string;
   login: () => Promise<void>;
 }) {
-  const [date, setDate] = useState(nextShanghaiDate());
-  const [technicians, setTechnicians] = useState<AdminTechnicianBoard | null>(
-    null,
+  // Identity changes discard every private row and draft before first render.
+  return (
+    <SchedulingIdentityScope
+      key={JSON.stringify([token, organizationId])}
+      token={token}
+      organizationId={organizationId}
+      login={login}
+    />
   );
-  const [shifts, setShifts] = useState<AdminShift[]>([]);
+}
+
+function SchedulingIdentityScope({
+  token,
+  organizationId,
+  login,
+}: {
+  token: string;
+  organizationId: string;
+  login: () => Promise<void>;
+}) {
+  const [date, setDate] = useState(nextShanghaiDate());
+  const requests = useMemo(createSchedulingRequests, []);
+  // Render-time scope selection fences replies before effect cleanup executes.
+  const scope = requests.select(token, organizationId, date);
+  type ReadState = {
+    scope: SchedulingScope;
+    phase: "loading" | "ready" | "failed";
+    board: AdminTechnicianBoard | null;
+    shifts: AdminShift[];
+    saving: boolean;
+    error: string;
+    message: string;
+  };
+  const emptyRead = (selected: SchedulingScope): ReadState => ({
+    scope: selected,
+    phase: "loading",
+    board: null,
+    shifts: [],
+    saving: false,
+    error: "",
+    message: "",
+  });
+  const [readState, setReadState] = useState<ReadState>(() => emptyRead(scope));
+  const current = readState.scope === scope ? readState : emptyRead(scope);
   const [therapistId, setTherapistId] = useState("");
   const [startsAt, setStartsAt] = useState(`${date}T09:00`);
   const [endsAt, setEndsAt] = useState(`${date}T18:00`);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const load = useCallback(async () => {
-    if (!token || !organizationId) return;
-    setLoading(true);
-    setError("");
-    try {
-      const [board, shiftRows] = await Promise.all([
-        request<AdminTechnicianBoard>(
-          `/admin/organizations/${organizationId}/technicians`,
-          token,
-        ),
-        request<AdminShift[]>(
-          `/admin/scheduling/shifts?organizationId=${encodeURIComponent(organizationId)}&date=${date}`,
-          token,
-        ),
-      ]);
-      setTechnicians(board);
-      setShifts(shiftRows);
-      setTherapistId((current) => current || board.technicians[0]?.id || "");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "排班加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [date, organizationId, token]);
-  useEffect(() => void load(), [load]);
+  const pendingSave = useRef<symbol | null>(null);
+  const load = useCallback(
+    async (message = "") => {
+      if (!token || !organizationId) return;
+      const isCurrent = requests.begin(scope);
+      if (!isCurrent()) return;
+      setReadState({ ...emptyRead(scope), message });
+      if (!validSchedulingDate(date)) {
+        setReadState({
+          ...emptyRead(scope),
+          phase: "failed",
+          error: "请选择有效的排班日期",
+        });
+        return;
+      }
+      await runSchedulingOperation({
+        isCurrent,
+        execute: () =>
+          Promise.all([
+            request<AdminTechnicianBoard>(
+              `/admin/organizations/${encodeURIComponent(organizationId)}/technicians`,
+              token,
+            ),
+            request<AdminShift[]>(
+              `/admin/scheduling/shifts?organizationId=${encodeURIComponent(organizationId)}&date=${date}`,
+              token,
+            ),
+          ]),
+        success: ([board, shifts]) => {
+          setReadState({
+            ...emptyRead(scope),
+            phase: "ready",
+            board,
+            shifts,
+            message,
+          });
+          setTherapistId((selected) =>
+            board.technicians.some((technician) => technician.id === selected)
+              ? selected
+              : board.technicians[0]?.id || "",
+          );
+        },
+        failure: (caught) =>
+          setReadState({
+            ...emptyRead(scope),
+            phase: "failed",
+            message,
+            error: caught instanceof Error ? caught.message : "排班加载失败",
+          }),
+      });
+    },
+    [date, organizationId, token, scope, requests],
+  );
+  useEffect(() => {
+    void load();
+    return () => requests.invalidate();
+  }, [load, requests]);
 
   if (!token || !organizationId) {
     return <Gate title="排班中心" login={login} />;
   }
 
+  const shiftInput = buildSchedulingShift(
+    { date, organizationId, therapistId, startsAt, endsAt },
+    {
+      ready: current.phase === "ready",
+      busy: current.saving,
+      technicianIds:
+        current.board?.technicians.map((technician) => technician.id) ?? [],
+    },
+  );
   async function createShift() {
-    if (!therapistId || !startsAt || !endsAt) return;
-    setSaving(true);
-    setError("");
-    setMessage("");
-    try {
-      await request("/admin/scheduling/shifts", token, {
-        organizationId,
-        therapistId,
-        startsAt: new Date(`${startsAt}:00+08:00`).toISOString(),
-        endsAt: new Date(`${endsAt}:00+08:00`).toISOString(),
-      });
-      setMessage("排班已创建并写入审计记录。");
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "排班创建失败");
-    } finally {
-      setSaving(false);
-    }
+    if (!shiftInput || pendingSave.current) return;
+    const isCurrent = requests.begin(scope);
+    if (!isCurrent()) return;
+    const operation = Symbol("shift-save");
+    pendingSave.current = operation;
+    setReadState({ ...current, saving: true, error: "", message: "" });
+    await runSchedulingOperation({
+      isCurrent,
+      execute: () => request("/admin/scheduling/shifts", token, shiftInput),
+      success: async () => {
+        pendingSave.current = null;
+        await load("排班已创建并写入审计记录。");
+      },
+      failure: (caught) =>
+        setReadState((state) => ({
+          ...state,
+          error: caught instanceof Error ? caught.message : "排班创建失败",
+        })),
+      finish: () => {
+        if (pendingSave.current === operation) pendingSave.current = null;
+        setReadState((state) => ({ ...state, saving: false }));
+      },
+    });
   }
 
   return (
@@ -1647,16 +1736,26 @@ export function SchedulingWorkspace({
           <input
             type="date"
             value={date}
+            disabled={current.saving}
             onChange={(event) => {
+              if (pendingSave.current || event.target.value === date) return;
+              requests.invalidate();
               setDate(event.target.value);
+              setTherapistId("");
               setStartsAt(`${event.target.value}T09:00`);
               setEndsAt(`${event.target.value}T18:00`);
             }}
           />
         </label>
       </div>
-      {message && <div className="dispatch-message">{message}</div>}
-      {error && <div className="catalog-error">{error}</div>}
+      {current.message && (
+        <div className="dispatch-message">{current.message}</div>
+      )}
+      {current.error && (
+        <div className="catalog-error" role="alert">
+          {current.error}
+        </div>
+      )}
       <div className="schedule-layout">
         <article className="panel schedule-form">
           <h3>
@@ -1666,10 +1765,11 @@ export function SchedulingWorkspace({
             技师
             <select
               value={therapistId}
+              disabled={current.phase !== "ready" || current.saving}
               onChange={(event) => setTherapistId(event.target.value)}
             >
               <option value="">选择技师</option>
-              {technicians?.technicians.map((technician) => (
+              {current.board?.technicians.map((technician) => (
                 <option key={technician.id} value={technician.id}>
                   {technician.displayName}
                 </option>
@@ -1681,6 +1781,7 @@ export function SchedulingWorkspace({
             <input
               type="datetime-local"
               value={startsAt}
+              disabled={current.phase !== "ready" || current.saving}
               onChange={(event) => setStartsAt(event.target.value)}
             />
           </label>
@@ -1689,20 +1790,26 @@ export function SchedulingWorkspace({
             <input
               type="datetime-local"
               value={endsAt}
+              disabled={current.phase !== "ready" || current.saving}
               onChange={(event) => setEndsAt(event.target.value)}
             />
           </label>
           <button
             className="primary-action"
-            disabled={saving || !therapistId}
+            disabled={!shiftInput}
             onClick={() => void createShift()}
           >
-            {saving ? "创建中…" : "创建有效排班"}
+            {current.saving ? "创建中…" : "创建有效排班"}
           </button>
+          {current.phase === "ready" && !shiftInput && !current.saving && (
+            <p>
+              请选择当前组织技师，开始时间须属于所选日期，结束时间须晚于开始时间。
+            </p>
+          )}
         </article>
         <article className="panel schedule-list">
-          <h3>当日排班</h3>
-          {shifts.map((shift) => (
+          <h3>当日排班 · {date}</h3>
+          {current.shifts.map((shift) => (
             <div key={shift.id}>
               <span>
                 <b>{shift.therapistDisplayName}</b>
@@ -1720,7 +1827,18 @@ export function SchedulingWorkspace({
               </em>
             </div>
           ))}
-          {!loading && shifts.length === 0 && (
+          {current.phase === "loading" && (
+            <div className="catalog-empty">正在读取当日排班…</div>
+          )}
+          {current.phase === "failed" && (
+            <div className="catalog-empty">
+              排班未读取成功，不代表当日没有排班。
+              <button className="ghost-action" onClick={() => void load()}>
+                重新读取排班
+              </button>
+            </div>
+          )}
+          {current.phase === "ready" && current.shifts.length === 0 && (
             <div className="catalog-empty">当日暂无排班</div>
           )}
         </article>

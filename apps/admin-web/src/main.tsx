@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactDOM from "react-dom/client";
 import {
   Bell,
@@ -21,18 +28,21 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
-  AdminServiceItem,
   AuthSession,
   AuthUser,
   DispatchBoard,
   OperationsDashboard,
-  ServiceItem,
 } from "@zydj/contracts";
 import { formatMoney } from "@zydj/contracts";
 import "./styles.css";
 import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
 import { BrowserLogin } from "./browser-login";
+import { CatalogWorkspace } from "./catalog-workspace";
+import {
+  authenticatedFetch,
+  registerAdminSession,
+} from "./authenticated-fetch";
 import { managementOrganizationId } from "./login-state";
 import { SafetyWorkspace } from "./safety";
 import { CustomerCenterWorkspace } from "./customer-center-workspace";
@@ -69,7 +79,6 @@ type Section =
   | "customerCenter"
   | "walletLedger"
   | "settings";
-type CatalogRow = AdminServiceItem | ServiceItem;
 
 const nav: Array<{
   icon: LucideIcon;
@@ -110,7 +119,7 @@ async function apiRequest<T>(
   options: RequestInit = {},
   token?: string,
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
     ...options,
     headers: {
       ...(options.body === undefined
@@ -592,190 +601,7 @@ function DispatchWorkspace({
   );
 }
 
-function CatalogWorkspace({
-  token,
-  onDevelopmentLogin,
-  query,
-}: {
-  token: string;
-  onDevelopmentLogin: () => Promise<void>;
-  query: string;
-}) {
-  const [services, setServices] = useState<CatalogRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [savingId, setSavingId] = useState("");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = token
-        ? await apiRequest<{ data: AdminServiceItem[] }>(
-            "/admin/catalog/services",
-            {},
-            token,
-          )
-        : await apiRequest<{ data: ServiceItem[] }>("/catalog/services");
-      setServices(response.data);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "服务目录加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function togglePublished(service: AdminServiceItem) {
-    setSavingId(service.id);
-    setError("");
-    try {
-      const action = service.published ? "unpublish" : "publish";
-      await apiRequest(
-        `/admin/catalog/services/${service.id}/${action}`,
-        { method: "POST" },
-        token,
-      );
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "状态更新失败");
-    } finally {
-      setSavingId("");
-    }
-  }
-  const visibleServices = services.filter((service) => {
-    const needle = query.trim().toLowerCase();
-    return (
-      !needle ||
-      [service.name, service.subtitle, service.category].some((value) =>
-        value.toLowerCase().includes(needle),
-      )
-    );
-  });
-
-  return (
-    <section className="catalog-workspace">
-      <div className="catalog-heading">
-        <div>
-          <span className="eyebrow">SERVICE CATALOG</span>
-          <h2>服务项目</h2>
-          <p>
-            {token
-              ? "从 PostgreSQL 读取，可安全控制上架状态。"
-              : "当前为公开目录只读视图。"}
-          </p>
-        </div>
-        <div className="catalog-actions">
-          {import.meta.env.DEV && !token && (
-            <button
-              className="primary-action"
-              onClick={() => void onDevelopmentLogin()}
-            >
-              登录本地运营账号
-            </button>
-          )}
-          <button
-            className="ghost-action"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            <RefreshCw size={15} className={loading ? "spinning" : ""} />
-            刷新
-          </button>
-        </div>
-      </div>
-
-      {!token && (
-        <div className="catalog-gate">
-          <ShieldCheck size={20} />
-          <div>
-            <strong>管理操作需要运营权限</strong>
-            <p>
-              正式环境需接入管理员微信登录和多因素验证；开发环境可使用明确标记的本地账号。
-            </p>
-          </div>
-        </div>
-      )}
-      {error && <div className="catalog-error">{error}</div>}
-
-      <div className="catalog-table panel">
-        <div className="catalog-row catalog-table-head">
-          <span>项目</span>
-          <span>类别</span>
-          <span>时长</span>
-          <span>价格</span>
-          <span>状态</span>
-          <span>操作</span>
-        </div>
-        {visibleServices.map((service) => {
-          const adminService = "published" in service ? service : undefined;
-          return (
-            <div className="catalog-row" key={service.id}>
-              <span className="service-cell">
-                <b>{service.name}</b>
-                <small>{service.subtitle}</small>
-              </span>
-              <span>
-                {service.category === "FOOT_CARE"
-                  ? "足部舒缓"
-                  : service.category === "SPA_RELAXATION"
-                    ? "SPA 放松"
-                    : "按摩舒缓"}
-              </span>
-              <span>{service.durationMinutes} 分钟</span>
-              <span className="catalog-price">
-                ¥{(service.priceFen / 100).toFixed(2)}
-              </span>
-              <span>
-                <em
-                  className={
-                    adminService?.published === false
-                      ? "status-off"
-                      : "status-on"
-                  }
-                >
-                  {adminService?.published === false ? "已下架" : "已上架"}
-                </em>
-              </span>
-              <span>
-                {adminService ? (
-                  <button
-                    className={
-                      adminService.published
-                        ? "danger-action"
-                        : "primary-action compact"
-                    }
-                    onClick={() => void togglePublished(adminService)}
-                    disabled={savingId === service.id}
-                  >
-                    {savingId === service.id
-                      ? "处理中…"
-                      : adminService.published
-                        ? "下架"
-                        : "上架"}
-                  </button>
-                ) : (
-                  <small>只读</small>
-                )}
-              </span>
-            </div>
-          );
-        })}
-        {!loading && visibleServices.length === 0 && (
-          <div className="catalog-empty">
-            {query.trim() ? "没有匹配的服务项目" : "暂无服务项目"}
-          </div>
-        )}
-        {loading && <div className="catalog-empty">正在读取服务目录…</div>}
-      </div>
-    </section>
-  );
-}
-
-function App() {
+export function App() {
   const [section, setSection] = useState<Section>("dashboard");
   const [query, setQuery] = useState("");
   const [token, setToken] = useState(
@@ -787,6 +613,28 @@ function App() {
   const currentToken = useRef(token);
   currentToken.current = token;
 
+  const clearSession = useCallback((expiredToken: string) => {
+    if (currentToken.current !== expiredToken) return;
+    currentToken.current = "";
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    setToken("");
+    setDisplayName("未登录");
+    setOrganizationId("");
+    setUser(null);
+    setQuery("");
+  }, []);
+
+  // Register before child request effects; the ref check also closes the render/effect gap.
+  useLayoutEffect(
+    () =>
+      registerAdminSession(
+        token,
+        () => clearSession(token),
+        () => currentToken.current === token,
+      ),
+    [token, clearSession],
+  );
+
   useEffect(() => {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     if (!token) {
@@ -795,11 +643,9 @@ function App() {
     }
     setUser(null);
     let current = true;
-    void apiRequest<{ data: AuthUser }>("/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    void apiRequest<{ data: AuthUser }>("/auth/me", {}, token)
       .then((r) => {
-        if (current) {
+        if (current && currentToken.current === token) {
           setUser(r.data);
           setDisplayName(r.data.displayName);
           setOrganizationId(managementOrganizationId(r.data));
@@ -808,37 +654,27 @@ function App() {
       .catch((error: { status?: number }) => {
         if (!current || currentToken.current !== token) return;
         if (error.status === 401) {
-          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-          currentToken.current = "";
-          setToken("");
-          setDisplayName("未登录");
-          setOrganizationId("");
-          setUser(null);
+          clearSession(token);
         } else setDisplayName("会话待重新验证");
       });
     return () => {
       current = false;
     };
-  }, [token]);
+  }, [token, clearSession]);
 
   async function logout() {
     const logoutToken = token;
     try {
-      await apiRequest("/auth/logout", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({}),
-      });
+      await apiRequest(
+        "/auth/logout",
+        { method: "POST", body: JSON.stringify({}) },
+        token,
+      );
     } catch (error) {
       if ((error as { status?: number }).status !== 401) throw error;
     }
     if (currentToken.current !== logoutToken) return;
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    currentToken.current = "";
-    setToken("");
-    setDisplayName("未登录");
-    setOrganizationId("");
-    setUser(null);
+    clearSession(logoutToken);
   }
 
   async function developmentLogin(code = "local-safety-admin") {
@@ -1107,6 +943,7 @@ function App() {
           />
         ) : (
           <CatalogWorkspace
+            key={token}
             token={token}
             onDevelopmentLogin={() => developmentLogin()}
             query={query}

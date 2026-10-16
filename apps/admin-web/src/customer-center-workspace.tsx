@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ClipboardList,
@@ -33,7 +34,7 @@ async function request<T>(
   token: string,
   body?: CustomerCenterConfigDraft,
 ) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authenticatedFetch(token, `${API_BASE_URL}${path}`, {
     method: body ? "PATCH" : "GET",
     headers: {
       "Content-Type": "application/json",

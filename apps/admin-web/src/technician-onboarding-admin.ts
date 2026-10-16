@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticated-fetch";
 import type {
   ServiceItem,
   TechnicianApplication,
@@ -90,7 +91,7 @@ export async function loadPrivateIdentityDocumentPreview(
   token: string,
 ) {
   const apiBase = validatedApiBase(apiBaseUrl);
-  const response = await fetch(
+  const response = await authenticatedFetch(token,
     `${apiBase}${adminIdentityDocumentPath(organizationId, technicianId, kind)}`,
     {
       credentials: "omit",
