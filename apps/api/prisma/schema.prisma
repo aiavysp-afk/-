@@ -224,6 +224,7 @@ model User {
   mfaCredential                MfaCredential?
   staffPasswordCredential      StaffPasswordCredential?
   staffPasswordLoginChallenges StaffPasswordLoginChallenge[]
+  staffPasswordSetupChallenges StaffPasswordSetupChallenge[]
   staffTrustedDevices          StaffTrustedDevice[]
   customerOrders               Order[]                       @relation("CustomerOrders")
   payerPayments                Payment[]                     @relation("PaymentPayer")
@@ -548,6 +549,26 @@ model StaffPasswordLoginChallenge {
   secretHash        String
   passwordVersion   Int
   phoneHash         String
+  codeHash          String
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  consumedAt        DateTime?
+  providerRequestId String?
+  providerBizId     String?
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+// First-time activation only. Never reused for customer login or password reset.
+model StaffPasswordSetupChallenge {
+  id                String    @id
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneHash         String
+  secretHash        String
   codeHash          String
   status            String    @default("PENDING")
   attempts          Int       @default(0)

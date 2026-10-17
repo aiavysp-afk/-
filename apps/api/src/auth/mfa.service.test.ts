@@ -159,7 +159,25 @@ describe("staff MFA persistence", () => {
   it("requires a fresh login for enrollment", async () => {
     const f = fixture(false);
     f.session.createdAt = new Date(now.getTime() - 300_001);
-    await expect(f.service.enroll(principal, now)).rejects.toThrow("重新");
+    await expect(f.service.enroll(principal, now)).rejects.toThrow(
+      "请重新登录后在五分钟内绑定验证器",
+    );
+  });
+  it("allows a fresh password-plus-SMS browser session to enroll without granting fresh TOTP", async () => {
+    const f = fixture(false);
+    f.credential.enrollmentExpiresAt = new Date(now.getTime() - 1);
+    Object.assign(f.session, {
+      authChannel: "ADMIN_BROWSER",
+      authProvider: "staff-password",
+      staffVerificationMethod: "PASSWORD_SMS",
+      mfaVerifiedUntil: null,
+    });
+    const result = await f.service.enroll(principal, now);
+    expect(result.expiresAt).toBe(
+      new Date(now.getTime() + 600_000).toISOString(),
+    );
+    expect(f.tx.mfaCredential.upsert).toHaveBeenCalledTimes(1);
+    expect(f.tx.session.updateMany).not.toHaveBeenCalled();
   });
   it("rejects a customer or a disabled account", async () => {
     const f = fixture();

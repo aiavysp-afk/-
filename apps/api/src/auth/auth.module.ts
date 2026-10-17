@@ -19,6 +19,8 @@ import { TechnicianH5AuthService } from "./technician-h5-auth.service.js";
 import { TechnicianH5AuthController } from "./technician-h5-auth.controller.js";
 import { StaffPasswordController } from "./staff-password.controller.js";
 import { StaffPasswordService } from "./staff-password.service.js";
+import { StaffPasswordSetupController } from "./staff-password-setup.controller.js";
+import { StaffPasswordSetupService } from "./staff-password-setup.service.js";
 import { TrustedDeviceController } from "./trusted-device.controller.js";
 import { TrustedDeviceService } from "./trusted-device.service.js";
 import { CustomerLoginController } from "./customer-login.controller.js";
@@ -35,6 +37,7 @@ import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.
     MfaRecoveryController,
     TechnicianH5AuthController,
     StaffPasswordController,
+    StaffPasswordSetupController,
     TrustedDeviceController,
     CustomerLoginController,
   ],
@@ -51,6 +54,7 @@ import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.
     WechatH5Client,
     TechnicianH5AuthService,
     StaffPasswordService,
+    StaffPasswordSetupService,
     TrustedDeviceService,
     CustomerLoginService,
     CustomerPhoneIdentityService,

@@ -84,7 +84,7 @@ export class MfaService {
       (session.createdAt.getTime() < now.getTime() - 300_000 ||
         session.createdAt > now)
     )
-      throw new UnauthorizedException("绑定验证器前请重新完成微信登录");
+      throw new UnauthorizedException("请重新登录后在五分钟内绑定验证器");
     return session;
   }
 

@@ -2,6 +2,7 @@ import { authenticatedFetch } from "./authenticated-fetch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthSession } from "@zydj/contracts";
 import { createLoginGeneration, deliverBrowserSession } from "./login-state";
+import { StaffFirstPasswordSetup } from "./staff-first-password-setup";
 import {
   currentStaffPasswordChallenge,
   isValidStaffLoginAccount,
@@ -23,7 +24,7 @@ type PasswordChallenge = {
   expiresAt: string;
   retryAfterSeconds: number;
 };
-type LoginMethod = "wechat" | "password";
+type LoginMethod = "wechat" | "password" | "setup";
 const LOGIN_TIMEOUT_MS = 15_000;
 const RESPONSE_FORMAT_ERROR =
   "登录服务响应格式异常，请稍后重试；仍失败请联系管理员。";
@@ -173,7 +174,7 @@ export function BrowserLogin({
 }: {
   onSession: (session: AuthSession) => void;
 }) {
-  const [method, setMethod] = useState<LoginMethod>("wechat");
+  const [method, setMethod] = useState<LoginMethod>("password");
   const [wechatConfig, setWechatConfig] = useState<{
     enabled: boolean;
     provider: string;
@@ -181,6 +182,7 @@ export function BrowserLogin({
   const [passwordConfig, setPasswordConfig] = useState<{
     enabled: boolean;
     smsEnabled: boolean;
+    setupEnabled?: boolean;
   } | null>(null);
   const [configError, setConfigError] = useState("");
   const [pair, setPair] = useState<Pair | null>(null);
@@ -189,22 +191,47 @@ export function BrowserLogin({
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [smsCode, setSmsCode] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
   const [error, setError] = useState("");
+  const [smsRetryAt, setSmsRetryAt] = useState(0);
+  const [smsNow, setSmsNow] = useState(Date.now());
   const requests = useMemo(createLoginGeneration, []);
   const currentPair = useRef<Pair | null>(null);
   currentPair.current = pair;
+  const currentMethod = useRef(method);
+  currentMethod.current = method;
+  const operationBusy = useRef(false);
+  const setupScope = useRef<() => boolean>(() => false);
+  const setupRetryDeadline = useRef(0);
+  const setupEnabled = Boolean(
+    passwordConfig?.enabled === true &&
+      passwordConfig.smsEnabled === true &&
+      passwordConfig.setupEnabled === true,
+  );
+  const setupIsCurrent = setupScope.current;
+  const smsRetrySeconds = Math.max(0, Math.ceil((smsRetryAt - smsNow) / 1000));
+  function setSmsCooldown(deadline: number) {
+    setupRetryDeadline.current = deadline;
+    setSmsRetryAt(deadline);
+    setSmsNow(Date.now());
+  }
+  function setBusy(value: boolean) {
+    operationBusy.current = value;
+    setBusyState(value);
+  }
   const passwordDisabledReason = busy
     ? "正在验证密码并提交短信请求，请稍候，不要重复点击。"
-    : !account.trim()
-      ? "请先输入本人设置的用户名或已绑定的11位手机号。"
-      : !isValidStaffLoginAccount(account)
-        ? "账号格式不正确，请使用已绑定的11位手机号或符合下方规则的用户名。"
-        : password.length < 12
-          ? "密码至少12位；六位短信验证码或验证器动态码不能当作登录密码。"
-          : password.length > 128
-            ? "密码不能超过128位，请重新输入本人已设置的密码。"
-            : "";
+    : smsRetrySeconds > 0
+      ? `请等待 ${smsRetrySeconds} 秒后再申请短信验证码。`
+      : !account.trim()
+        ? "请先输入本人设置的用户名或已绑定的11位手机号。"
+        : !isValidStaffLoginAccount(account)
+          ? "账号格式不正确，请使用已绑定的11位手机号或符合下方规则的用户名。"
+          : password.length < 12
+            ? "密码至少12位；六位短信验证码或验证器动态码不能当作登录密码。"
+            : password.length > 128
+              ? "密码不能超过128位，请重新输入本人已设置的密码。"
+              : "";
 
   useEffect(() => {
     let active = true;
@@ -217,9 +244,11 @@ export function BrowserLogin({
       .catch(() => {
         if (active) setConfigError("微信登录配置暂时不可读，请稍后刷新。");
       });
-    void loginRequest<{ enabled: boolean; smsEnabled: boolean }>(
-      "/auth/staff-password/config",
-    )
+    void loginRequest<{
+      enabled: boolean;
+      smsEnabled: boolean;
+      setupEnabled?: boolean;
+    }>("/auth/staff-password/config")
       .then((data) => {
         if (active) setPasswordConfig(data);
       })
@@ -240,8 +269,21 @@ export function BrowserLogin({
     };
   }, [requests]);
 
+  useEffect(() => {
+    if (!smsRetryAt) return;
+    const timer = setInterval(() => {
+      const value = Date.now();
+      setSmsNow(value);
+      if (value >= smsRetryAt) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [smsRetryAt]);
+
   function resetAttempt(nextMethod: LoginMethod) {
     requests.invalidate();
+    currentMethod.current = nextMethod;
+    setupScope.current =
+      nextMethod === "setup" ? requests.begin() : () => false;
     const pending = currentPair.current;
     currentPair.current = null;
     setPair(null);
@@ -290,7 +332,13 @@ export function BrowserLogin({
     );
   }
   async function startWechat() {
-    if (busy || pair || !wechatConfig?.enabled) return;
+    if (
+      currentMethod.current !== "wechat" ||
+      operationBusy.current ||
+      pair ||
+      !wechatConfig?.enabled
+    )
+      return;
     const isCurrent = requests.begin();
     setBusy(true);
     setError("");
@@ -316,7 +364,8 @@ export function BrowserLogin({
     }
   }
   async function checkWechat() {
-    if (busy || !pair) return;
+    if (currentMethod.current !== "wechat" || operationBusy.current || !pair)
+      return;
     const pending = pair;
     const isCurrent = requests.begin();
     setBusy(true);
@@ -359,7 +408,9 @@ export function BrowserLogin({
   }
   async function startPassword() {
     if (
-      busy ||
+      currentMethod.current !== "password" ||
+      operationBusy.current ||
+      Date.now() < setupRetryDeadline.current ||
       !passwordConfig?.enabled ||
       !passwordConfig.smsEnabled ||
       !isValidStaffLoginAccount(account) ||
@@ -382,7 +433,16 @@ export function BrowserLogin({
           }),
         isCurrent,
       );
-      if (created && isCurrent()) setChallenge(created);
+      if (created && isCurrent()) {
+        setChallenge(created);
+        const wait =
+          Number.isInteger(created.retryAfterSeconds) &&
+          created.retryAfterSeconds >= 1 &&
+          created.retryAfterSeconds <= 3600
+            ? created.retryAfterSeconds
+            : 60;
+        setSmsCooldown(Date.now() + wait * 1000);
+      }
     } catch (caught) {
       if (isCurrent())
         setError(caught instanceof Error ? caught.message : "账号密码验证失败");
@@ -391,7 +451,13 @@ export function BrowserLogin({
     }
   }
   async function confirmSms() {
-    if (busy || !challenge || !/^\d{6}$/.test(smsCode)) return;
+    if (
+      currentMethod.current !== "password" ||
+      operationBusy.current ||
+      !challenge ||
+      !/^\d{6}$/.test(smsCode)
+    )
+      return;
     const pending = challenge;
     const isCurrent = requests.begin();
     const suppliedCode = smsCode;
@@ -423,11 +489,24 @@ export function BrowserLogin({
           <span className="eyebrow">SECURE SIGN IN</span>
           <h2>登录管理后台</h2>
           <p>
-            仅限已授权工作人员。微信登录为主方式，账号密码登录须验证本人手机号。
+            仅限已授权工作人员。默认使用账号密码加本人手机短信登录，微信登录保留为备用方式。
           </p>
         </div>
       </div>
       <div className="login-methods" role="tablist" aria-label="选择登录方式">
+        <button
+          role="tab"
+          aria-selected={method !== "wechat"}
+          className={method !== "wechat" ? "active" : ""}
+          onClick={() => {
+            if (method !== "password") resetAttempt("password");
+          }}
+        >
+          <strong>
+            账号密码登录 <em>默认方式</em>
+          </strong>
+          <span>用户名或手机号 + 本人手机短信</span>
+        </button>
         <button
           role="tab"
           aria-selected={method === "wechat"}
@@ -437,20 +516,9 @@ export function BrowserLogin({
           }}
         >
           <strong>
-            微信登录 <em>主方式</em>
+            微信登录 <em>备用方式</em>
           </strong>
           <span>小程序确认身份 + 动态码</span>
-        </button>
-        <button
-          role="tab"
-          aria-selected={method === "password"}
-          className={method === "password" ? "active" : ""}
-          onClick={() => {
-            if (method !== "password") resetAttempt("password");
-          }}
-        >
-          <strong>账号密码登录</strong>
-          <span>用户名或手机号 + 绑定手机短信验证</span>
         </button>
       </div>
       {configError && (
@@ -466,26 +534,52 @@ export function BrowserLogin({
       <div
         className="login-form"
         role="tabpanel"
-        aria-label={method === "wechat" ? "微信登录" : "账号密码登录"}
+        aria-label={
+          method === "wechat"
+            ? "微信登录"
+            : method === "setup"
+              ? "首次设置账号密码"
+              : "账号密码登录"
+        }
       >
         {method === "password" && !challenge && (
           <aside className="environment-banner" role="note">
-            <strong>首次使用请先完成微信登录</strong>
+            <strong>尚未设置过登录密码？</strong>
             <p>
-              先微信确认本人设备 → 在「账户安全」完成独立验证器动态码验证 →
-              本人设置用户名和密码，再使用本页登录。本页不会自动创建账号或设置密码。
+              已授权工作人员可用本人已绑定手机号验证后，手动首次设置用户名和密码。
+              不注册新账号、不重置已有密码、不增加权限，无需先进行微信配对。
             </p>
             <button
               type="button"
               className="ghost-action"
-              disabled={busy}
-              onClick={() => resetAttempt("wechat")}
+              disabled={busy || !setupEnabled}
+              onClick={() => {
+                if (!operationBusy.current && setupEnabled)
+                  resetAttempt("setup");
+              }}
             >
-              切换微信登录
+              首次设置账号密码
             </button>
+            {passwordConfig && !setupEnabled && (
+              <p>
+                首次设置账号密码尚未启用，请联系管理员；已有账号可继续正常登录。
+              </p>
+            )}
           </aside>
         )}
-        {method === "wechat" ? (
+        {method === "setup" ? (
+          <StaffFirstPasswordSetup
+            enabled={setupEnabled}
+            isParentCurrent={() =>
+              currentMethod.current === "setup" && setupIsCurrent()
+            }
+            retryDeadline={setupRetryDeadline}
+            onCooldown={setSmsCooldown}
+            request={loginRequest}
+            onSession={deliver}
+            onCancel={() => resetAttempt("password")}
+          />
+        ) : method === "wechat" ? (
           <>
             {wechatConfig?.provider === "mock" && (
               <div className="catalog-error">
@@ -618,7 +712,7 @@ export function BrowserLogin({
             </p>
             <p>
               可使用本人设置的用户名或原已绑定手机号登录；密码验证后仍需向本人绑定手机发送短信二次验证。
-              首次设置用户名和密码须先微信登录，在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
+              尚未设置密码的已授权工作人员可使用上方首次设置入口；修改已有密码仍须在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
             </p>
             <button
               type="submit"
@@ -630,6 +724,7 @@ export function BrowserLogin({
               }
               disabled={
                 busy ||
+                smsRetrySeconds > 0 ||
                 !isValidStaffLoginAccount(account) ||
                 password.length < 12 ||
                 password.length > 128

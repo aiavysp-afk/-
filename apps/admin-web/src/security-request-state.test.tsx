@@ -328,7 +328,7 @@ describe("account security actual async state", () => {
     await flush();
     button(
       render(),
-      "开始绑定验证器（需五分钟内的新微信登录）",
+      "开始绑定验证器（需五分钟内的新登录）",
     ).props.onClick();
     for (const effect of hooks.effects.values()) effect.cleanup?.();
     const updates = hooks.updates;
@@ -348,7 +348,7 @@ describe("account security actual async state", () => {
     reply(0, { ...base, enabled: false });
     reply(1, operator);
     await flush();
-    button(render(), "开始绑定验证器（需五分钟内的新微信登录）").props.onClick();
+    button(render(), "开始绑定验证器（需五分钟内的新登录）").props.onClick();
     reply(2, {
       secret: "isolated-not-a-real-provisioning-value",
       issuer: "Fixture",

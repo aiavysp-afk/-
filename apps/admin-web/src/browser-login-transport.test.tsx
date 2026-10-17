@@ -95,6 +95,11 @@ async function ready(response: Response) {
   render();
   hooks.current!.flushEffects();
   await flush();
+  nodes(render())
+    .find(
+      (node) => node.props.role === "tab" && text(node).includes("微信登录"),
+    )!
+    .props.onClick();
   return fetcher;
 }
 
@@ -387,12 +392,17 @@ describe("first-use password login guidance", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("offers an explicit first-use route back to WeChat without generating a pairing or sending SMS", async () => {
+  it("keeps disabled first setup accurate and WeChat explicitly optional without sending SMS", async () => {
     const fetcher = await openPasswordForm();
     const tree = render();
-    expect(text(tree)).toContain("首次使用请先完成微信登录");
-    expect(text(tree)).toContain("本人设置用户名和密码");
-    buttonWithText(tree, "切换微信登录").props.onClick();
+    expect(text(tree)).toContain("首次设置账号密码尚未启用");
+    expect(text(tree)).not.toContain("首次使用请先完成微信登录");
+    expect(buttonWithText(tree, "首次设置账号密码").props.disabled).toBe(true);
+    nodes(tree)
+      .find(
+        (node) => node.props.role === "tab" && text(node).includes("微信登录"),
+      )!
+      .props.onClick();
     const wechat = nodes(render()).find(
       (node) => node.props.role === "tab" && text(node).includes("微信登录"),
     );

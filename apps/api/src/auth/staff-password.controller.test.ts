@@ -22,7 +22,11 @@ const principal: AuthPrincipal = {
 };
 function fixture() {
   const service = {
-    configuration: vi.fn(() => ({ enabled: true, smsEnabled: true })),
+    configuration: vi.fn(() => ({
+      enabled: true,
+      smsEnabled: true,
+      setupEnabled: false,
+    })),
     assertBrowserOrigin: vi.fn((origin?: string) => {
       if (origin !== ORIGIN) throw new Error("origin denied");
     }),
@@ -42,7 +46,7 @@ describe("staff password controller request boundaries", () => {
   it("returns only readiness booleans in public configuration", () => {
     const f = fixture();
     expect(f.controller.configuration()).toEqual({
-      data: { enabled: true, smsEnabled: true },
+      data: { enabled: true, smsEnabled: true, setupEnabled: false },
     });
   });
   it("passes only the authenticated principal to self credential management", async () => {

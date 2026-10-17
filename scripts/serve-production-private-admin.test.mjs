@@ -51,7 +51,10 @@ before(async () => {
         });
       if (failure === "trust-cookie")
         return new Response('{"data":{"trusted":true}}', {
-          headers: { "Content-Type": "application/json", "Set-Cookie": `__Host-zydj_staff_trust=${"x".repeat(43)}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict` },
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": `__Host-zydj_staff_trust=${"x".repeat(43)}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict`,
+          },
         });
       if (
         new URL(url).pathname === walletLedger &&
@@ -61,7 +64,9 @@ before(async () => {
           status: 401,
           headers: { "Content-Type": "application/json" },
         });
-      if ([customerDirectory, customerPhoneReveal].includes(new URL(url).pathname)) {
+      if (
+        [customerDirectory, customerPhoneReveal].includes(new URL(url).pathname)
+      ) {
         const status = !options.headers.Authorization
           ? 401
           : options.headers.Authorization === "Bearer synthetic-denied"
@@ -70,7 +75,9 @@ before(async () => {
         return new Response(
           status === 200
             ? '{"data":{"fixture":"customer-directory"}}'
-            : JSON.stringify({ message: status === 401 ? "Unauthorized" : "Forbidden" }),
+            : JSON.stringify({
+                message: status === 401 ? "Unauthorized" : "Forbidden",
+              }),
           {
             status,
             headers: {
@@ -145,37 +152,157 @@ test("production ports are fixed and separate from acceptance", () => {
 });
 
 test("new login and device routes are exact and method restricted", () => {
-  assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password"), ["GET", "PUT"]);
-  assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password/login"), ["POST"]);
-  assert.deepEqual(allowedAdminMethods("/v1/auth/trusted-devices/accept"), ["POST"]);
-  assert.deepEqual(allowedAdminMethods("/v1/auth/trusted-devices"), ["GET", "POST"]);
-  for (const path of ["/v1/auth/staff-password/reset", "/v1/auth/trusted-devices/all", "/v1/auth/trusted-devices/accept/extra"]) assert.equal(allowedAdminMethods(path), undefined);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password"), [
+    "GET",
+    "PUT",
+  ]);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password/login"), [
+    "POST",
+  ]);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/trusted-devices/accept"), [
+    "POST",
+  ]);
+  assert.deepEqual(allowedAdminMethods("/v1/auth/trusted-devices"), [
+    "GET",
+    "POST",
+  ]);
+  for (const path of [
+    "/v1/auth/staff-password/reset",
+    "/v1/auth/trusted-devices/all",
+    "/v1/auth/trusted-devices/accept/extra",
+  ])
+    assert.equal(allowedAdminMethods(path), undefined);
+});
+
+test("first password setup has only two exact POST routes and forwards no ambient credentials", async () => {
+  for (const action of ["request", "confirm"]) {
+    const path = `/v1/auth/staff-password/setup/${action}`;
+    assert.deepEqual(allowedAdminMethods(path), ["POST"]);
+    const count = calls.length;
+    for (const method of ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"])
+      assert.equal((await send(path, { method })).status, 405);
+    assert.equal(calls.length, count);
+    const body =
+      action === "request"
+        ? JSON.stringify({ phone: "13800000000" })
+        : JSON.stringify({
+            challengeId: "synthetic-only",
+            code: "000000",
+            password: "synthetic-only-never-real",
+          });
+    const response = await send(path, {
+      method: "POST",
+      body,
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://admin.mtsc.top",
+        Cookie: "do-not-forward",
+        "X-Forwarded-For": "untrusted-source",
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.at(-1).url, API_ORIGIN + path);
+    assert.equal(calls.at(-1).options.body.toString(), body);
+    assert.deepEqual(calls.at(-1).options.headers, {
+      "Content-Type": "application/json",
+      Origin: "https://admin.mtsc.top",
+    });
+    assert.equal(response.headers["cache-control"], "no-store");
+    const after = calls.length;
+    assert.equal(
+      (
+        await send(path, {
+          method: "POST",
+          body: "{}",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: "https://evil.invalid",
+          },
+        })
+      ).status,
+      403,
+    );
+    assert.equal(calls.length, after);
+  }
+  for (const path of [
+    "/v1/auth/staff-password/setup",
+    "/v1/auth/staff-password/setup/reset",
+    "/v1/auth/staff-password/setup/request/extra",
+    "/v1/auth/staff-password/setup/confirm/extra",
+    "/v1/auth/staff-password/setup%2frequest",
+    "/v1/auth/staff-password/setup//request",
+  ]) {
+    const before = calls.length;
+    assert.equal((await send(path, { method: "POST" })).status, 404);
+    assert.equal(calls.length, before);
+  }
 });
 
 test("only one well-formed host device cookie is eligible for forwarding", () => {
   const token = "x".repeat(43);
-  assert.equal(limitedTrustRequestCookie(`analytics=private; __Host-zydj_staff_trust=${token}`), `__Host-zydj_staff_trust=${token}`);
-  assert.equal(limitedTrustRequestCookie(`__Host-zydj_staff_trust=${token}; __Host-zydj_staff_trust=${token}`), undefined);
-  assert.equal(limitedTrustRequestCookie("__Host-zydj_staff_trust=bad"), undefined);
+  assert.equal(
+    limitedTrustRequestCookie(
+      `analytics=private; __Host-zydj_staff_trust=${token}`,
+    ),
+    `__Host-zydj_staff_trust=${token}`,
+  );
+  assert.equal(
+    limitedTrustRequestCookie(
+      `__Host-zydj_staff_trust=${token}; __Host-zydj_staff_trust=${token}`,
+    ),
+    undefined,
+  );
+  assert.equal(
+    limitedTrustRequestCookie("__Host-zydj_staff_trust=bad"),
+    undefined,
+  );
   const secure = `__Host-zydj_staff_trust=${token}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Strict`;
   assert.equal(permittedTrustResponseCookie(secure), true);
-  for (const unsafe of [secure.replace("; Secure", ""), secure + "; Domain=mtsc.top", secure + "; Max-Age=999999", secure.replace("Strict", "None"), secure.replace("__Host-zydj_staff_trust", "other")]) assert.equal(permittedTrustResponseCookie(unsafe), false);
+  for (const unsafe of [
+    secure.replace("; Secure", ""),
+    secure + "; Domain=mtsc.top",
+    secure + "; Max-Age=999999",
+    secure.replace("Strict", "None"),
+    secure.replace("__Host-zydj_staff_trust", "other"),
+  ])
+    assert.equal(permittedTrustResponseCookie(unsafe), false);
 });
 
 test("cookie relay is restricted to trusted-device routes without widening other headers", async () => {
   failure = "trust-cookie";
   try {
-    const headers = { Cookie: `analytics=private; __Host-zydj_staff_trust=${"x".repeat(43)}`, "User-Agent": "synthetic-fixture-agent", "Content-Type": "application/json", Origin: "https://admin.mtsc.top" };
-    const trusted = await send("/v1/auth/trusted-devices/accept", { method: "POST", headers, body: "{}" });
+    const headers = {
+      Cookie: `analytics=private; __Host-zydj_staff_trust=${"x".repeat(43)}`,
+      "User-Agent": "synthetic-fixture-agent",
+      "Content-Type": "application/json",
+      Origin: "https://admin.mtsc.top",
+    };
+    const trusted = await send("/v1/auth/trusted-devices/accept", {
+      method: "POST",
+      headers,
+      body: "{}",
+    });
     assert.equal(trusted.status, 200);
     assert.equal(trusted.headers["set-cookie"].length, 1);
-    assert.equal(calls.at(-1).options.headers.Cookie, `__Host-zydj_staff_trust=${"x".repeat(43)}`);
-    assert.equal(calls.at(-1).options.headers["User-Agent"], "synthetic-fixture-agent");
-    const generic = await send("/v1/auth/mfa/verify", { method: "POST", headers, body: '{"code":"123456"}' });
+    assert.equal(
+      calls.at(-1).options.headers.Cookie,
+      `__Host-zydj_staff_trust=${"x".repeat(43)}`,
+    );
+    assert.equal(
+      calls.at(-1).options.headers["User-Agent"],
+      "synthetic-fixture-agent",
+    );
+    const generic = await send("/v1/auth/mfa/verify", {
+      method: "POST",
+      headers,
+      body: '{"code":"123456"}',
+    });
     assert.equal(generic.headers["set-cookie"], undefined);
     assert.equal(calls.at(-1).options.headers.Cookie, undefined);
     assert.equal(calls.at(-1).options.headers["User-Agent"], undefined);
-  } finally { failure = null; }
+  } finally {
+    failure = null;
+  }
 });
 test("SPA supports private blob previews and safe static assets", async () => {
   const result = await send("/");
@@ -391,7 +518,10 @@ test("complete-phone POST preserves only the explicit reason, real Origin and au
 });
 
 test("customer directory and reveal retain upstream anonymous 401 and authorization/MFA 403", async () => {
-  for (const [path, method] of [[customerDirectory, "GET"], [customerPhoneReveal, "POST"]]) {
+  for (const [path, method] of [
+    [customerDirectory, "GET"],
+    [customerPhoneReveal, "POST"],
+  ]) {
     for (const [Authorization, status, message] of [
       [undefined, 401, "Unauthorized"],
       ["Bearer synthetic-denied", 403, "Forbidden"],
@@ -404,7 +534,9 @@ test("customer directory and reveal retain upstream anonymous 401 and authorizat
           ...(Authorization ? { Authorization } : {}),
           "X-MFA-Verified": "true",
         },
-        ...(method === "POST" ? { body: JSON.stringify({ reason: "核对预约服务资料" }) } : {}),
+        ...(method === "POST"
+          ? { body: JSON.stringify({ reason: "核对预约服务资料" }) }
+          : {}),
       });
       assert.equal(result.status, status, `${method} ${path}`);
       assert.equal(result.headers["cache-control"], "no-store");
@@ -417,8 +549,19 @@ test("customer directory and reveal retain upstream anonymous 401 and authorizat
 
 test("customer directory routes reject alternate methods, namespace expansion and encoded separators locally", async () => {
   const count = calls.length;
-  for (const [path, permitted] of [[customerDirectory, "GET"], [customerPhoneReveal, "POST"]]) {
-    for (const method of ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"].filter((item) => item !== permitted)) {
+  for (const [path, permitted] of [
+    [customerDirectory, "GET"],
+    [customerPhoneReveal, "POST"],
+  ]) {
+    for (const method of [
+      "GET",
+      "POST",
+      "PATCH",
+      "PUT",
+      "DELETE",
+      "HEAD",
+      "OPTIONS",
+    ].filter((item) => item !== permitted)) {
       const result = await send(path, { method });
       assert.equal(result.status, 405, `${method} ${path}`);
       assert.equal(result.headers.allow, permitted);
@@ -446,15 +589,34 @@ test("customer directory routes reject alternate methods, namespace expansion an
     assert.equal(allowedAdminMethods(path), undefined, path);
     assert.equal((await send(path)).status, 404, path);
   }
-  assert.deepEqual(allowedAdminMethods("/v1/admin/organizations/org_A/customer-center/customers"), ["GET"]);
-  assert.deepEqual(allowedAdminMethods("/v1/admin/organizations/org_A/customer-center/customers/customer_B/reveal-phone"), ["POST"]);
+  assert.deepEqual(
+    allowedAdminMethods(
+      "/v1/admin/organizations/org_A/customer-center/customers",
+    ),
+    ["GET"],
+  );
+  assert.deepEqual(
+    allowedAdminMethods(
+      "/v1/admin/organizations/org_A/customer-center/customers/customer_B/reveal-phone",
+    ),
+    ["POST"],
+  );
   assert.equal(calls.length, count);
 });
 
 test("foreign Origins cannot forward customer-directory reads or complete-phone requests", async () => {
   const count = calls.length;
-  for (const [path, method] of [[customerDirectory, "GET"], [customerPhoneReveal, "POST"]]) {
-    for (const Origin of ["https://evil.invalid", "http://admin.mtsc.top", "https://admin.mtsc.top.evil.invalid", "https://admin.mtsc.top:3222", "null"]) {
+  for (const [path, method] of [
+    [customerDirectory, "GET"],
+    [customerPhoneReveal, "POST"],
+  ]) {
+    for (const Origin of [
+      "https://evil.invalid",
+      "http://admin.mtsc.top",
+      "https://admin.mtsc.top.evil.invalid",
+      "https://admin.mtsc.top:3222",
+      "null",
+    ]) {
       const result = await send(path, {
         method,
         headers: {
@@ -462,7 +624,9 @@ test("foreign Origins cannot forward customer-directory reads or complete-phone 
           Authorization: "Bearer synthetic",
           ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
         },
-        ...(method === "POST" ? { body: JSON.stringify({ reason: "核对预约服务资料" }) } : {}),
+        ...(method === "POST"
+          ? { body: JSON.stringify({ reason: "核对预约服务资料" }) }
+          : {}),
       });
       assert.equal(result.status, 403, `${method} ${Origin}`);
       assert.equal(result.body.length, 0);
@@ -591,7 +755,10 @@ test("private identity document binary is narrowly proxied without download, coo
 
   const count = calls.length;
   for (const method of ["POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"])
-    assert.equal(await send(identityDocument, { method }).then((item) => item.status), 405);
+    assert.equal(
+      await send(identityDocument, { method }).then((item) => item.status),
+      405,
+    );
   assert.equal(calls.length, count);
 });
 test("unsupported methods and non-JSON uploads are rejected without API effects", async () => {

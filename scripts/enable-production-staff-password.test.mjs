@@ -8,6 +8,9 @@ import {
   enableStaffPassword,
   inspectStaffEnvironment,
   prepareStaffPasswordEnable,
+  prepareStaffPasswordSetupEnable,
+  SETUP_METADATA_QUERY,
+  assertSetupMetadata,
   runCli,
 } from "./enable-production-staff-password.mjs";
 
@@ -146,6 +149,130 @@ function fixture(overrides = {}, bytes = original) {
 const activeBytes = (f) => f.files.get(f.envPath).bytes;
 const pendingFiles = (f) =>
   [...f.files.keys()].filter((path) => path.endsWith(".pending"));
+
+test("first-password activation changes only the separate setup gate and requires existing password/SMS login", () => {
+  const enabled = prepareStaffPasswordEnable(original).bytes;
+  const explicit = Buffer.concat([
+    enabled,
+    Buffer.from("export STAFF_PASSWORD_SETUP_ENABLED = 'false' # keep\r\n"),
+  ]);
+  const result = prepareStaffPasswordSetupEnable(explicit);
+  assert.equal(result.alreadyEnabled, false);
+  assert.deepEqual(
+    result.bytes,
+    Buffer.from(
+      explicit
+        .toString()
+        .replace(
+          "STAFF_PASSWORD_SETUP_ENABLED = 'false'",
+          "STAFF_PASSWORD_SETUP_ENABLED = true",
+        ),
+    ),
+  );
+  assert.equal(result.raw.STAFF_PASSWORD_LOGIN_ENABLED, "true");
+  assert.equal(result.raw.PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT, "20");
+  assert.deepEqual(
+    prepareStaffPasswordSetupEnable(result.bytes).bytes,
+    result.bytes,
+  );
+  const absent = prepareStaffPasswordSetupEnable(enabled).bytes;
+  assert.ok(absent.subarray(0, enabled.length).equals(enabled));
+  assert.ok(
+    absent
+      .subarray(enabled.length)
+      .equals(Buffer.from("STAFF_PASSWORD_SETUP_ENABLED=true\r\n")),
+  );
+  assert.throws(() => prepareStaffPasswordSetupEnable(original));
+  for (const value of ["1", "yes", "TRUE", "", "undefined"])
+    assert.throws(() =>
+      prepareStaffPasswordSetupEnable(
+        Buffer.concat([
+          enabled,
+          Buffer.from(`STAFF_PASSWORD_SETUP_ENABLED=${value}\r\n`),
+        ]),
+      ),
+    );
+});
+
+test("setup migration checks are metadata-only and require table, columns, FK, indexes and finished migration", () => {
+  const keys = [
+    "tableReady",
+    "columnsReady",
+    "foreignKeyReady",
+    "indexesReady",
+    "migrationReady",
+  ];
+  const good = Object.fromEntries(keys.map((key) => [key, true]));
+  assert.doesNotThrow(() => assertSetupMetadata([good]));
+  for (const key of keys)
+    assert.throws(() => assertSetupMetadata([{ ...good, [key]: false }]));
+  assert.throws(() => assertSetupMetadata([]));
+  assert.match(
+    SETUP_METADATA_QUERY,
+    /20261017060000_staff_password_initial_setup/,
+  );
+  assert.doesNotMatch(
+    SETUP_METADATA_QUERY,
+    /SELECT \*|phoneEncrypted|passwordHash|INSERT|UPDATE|DELETE|ALTER/,
+  );
+});
+
+function setupFixture() {
+  const enabled = prepareStaffPasswordEnable(original).bytes;
+  let f;
+  f = fixture(
+    {
+      async probe(expected) {
+        f.state.probes.push(expected);
+        const raw = inspectStaffEnvironment(activeBytes(f)).raw;
+        assert.equal(raw.STAFF_PASSWORD_LOGIN_ENABLED, "true");
+        assert.equal(raw.STAFF_PASSWORD_SETUP_ENABLED === "true", expected);
+      },
+    },
+    enabled,
+  );
+  return f;
+}
+
+test("setup activation reuses locked atomic backup and rollback without changing main login", async () => {
+  const f = setupFixture();
+  const before = activeBytes(f);
+  const result = await enableStaffPassword({ release, setup: true }, f.rt);
+  assert.equal(result.status, "ENABLED");
+  assert.deepEqual(
+    activeBytes(f),
+    prepareStaffPasswordSetupEnable(before).bytes,
+  );
+  assert.deepEqual(f.files.get(result.backup).bytes, before);
+  assert.deepEqual(f.state.probes, [false, true]);
+  assert.equal(f.state.restarts, 1);
+  assert.equal(f.state.released, true);
+  assert.equal(
+    (await enableStaffPassword({ release, setup: true }, f.rt)).status,
+    "ALREADY_ENABLED",
+  );
+});
+
+test("failed setup readiness restores exact original bytes and main password login remains open", async () => {
+  const f = setupFixture();
+  const before = activeBytes(f);
+  const probe = f.rt.probe;
+  f.rt.probe = async (enabled) => {
+    await probe(enabled);
+    if (enabled) throw Error("synthetic-readiness-failure");
+  };
+  await assert.rejects(
+    enableStaffPassword({ release, setup: true }, f.rt),
+    /restored and verified/,
+  );
+  assert.deepEqual(activeBytes(f), before);
+  assert.equal(
+    inspectStaffEnvironment(activeBytes(f)).raw.STAFF_PASSWORD_LOGIN_ENABLED,
+    "true",
+  );
+  assert.deepEqual(f.state.probes, [false, true, true, false]);
+  assert.equal(f.state.restarts, 2);
+});
 
 test("one gate changes, preserving every unrelated byte, CRLF, comments, daily budget and finance/safety flags", () => {
   const candidate = prepareStaffPasswordEnable(original);
@@ -602,8 +729,13 @@ test("production adapter pins paths/release, read-only metadata and auth probes,
     assert.ok(source.includes(fragment), fragment);
   assert.doesNotMatch(
     source,
-    /SendSms|dysmsapi\.aliyuncs|sms\/request|process\.env|\.\.\.process\.env|\.user\.create|\.staffMembership\.|password\/set/,
+    /SendSms|dysmsapi\.aliyuncs|sms\/request|process\.env|\.\.\.process\.env|\.user\.create|\.staffMembership\.|password\/set(?!up)/,
   );
+  assert.ok(source.includes('body: "{}"'));
+  assert.ok(
+    source.includes("wrongMethod.status !== 405 || invalid.status !== 400"),
+  );
+  assert.ok(source.includes("assertSetupMetadata(metadata)"));
   const handshake = source.match(
     /"process\.stdout\.write\('LOCKED[^\"]*"/,
   )?.[0];

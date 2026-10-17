@@ -164,11 +164,39 @@ function fixture(values: Record<string, string> = {}) {
 }
 
 describe("staff password configuration and caller boundaries", () => {
+  it("advertises first-time setup only with the independent flag and complete SMS login configuration", () => {
+    expect(
+      fixture({ STAFF_PASSWORD_SETUP_ENABLED: "true" }).service.configuration(),
+    ).toEqual({
+      enabled: true,
+      smsEnabled: true,
+      setupEnabled: true,
+    });
+    const disabledConfigurations: Record<string, string>[] = [
+      { STAFF_PASSWORD_SETUP_ENABLED: "false" },
+      {
+        STAFF_PASSWORD_SETUP_ENABLED: "true",
+        STAFF_PASSWORD_LOGIN_ENABLED: "false",
+      },
+      {
+        STAFF_PASSWORD_SETUP_ENABLED: "true",
+        PHONE_VERIFICATION_SMS_ENABLED: "false",
+      },
+      {
+        STAFF_PASSWORD_SETUP_ENABLED: "true",
+        NODE_ENV: "production",
+        AUTH_PROVIDER: "mock",
+      },
+    ];
+    for (const values of disabledConfigurations)
+      expect(fixture(values).service.configuration().setupEnabled).toBe(false);
+  });
   it("is opt-in and fails closed before DB reads or SMS", async () => {
     const f = fixture({ STAFF_PASSWORD_LOGIN_ENABLED: "false" });
     expect(f.service.configuration()).toEqual({
       enabled: false,
       smsEnabled: false,
+      setupEnabled: false,
     });
     await expect(f.issue()).rejects.toMatchObject({ status: 503 });
     expect(f.db.staffPasswordCredential.findUnique).not.toHaveBeenCalled();
@@ -186,6 +214,7 @@ describe("staff password configuration and caller boundaries", () => {
     expect(f.service.configuration()).toEqual({
       enabled: true,
       smsEnabled: false,
+      setupEnabled: false,
     });
     await expect(f.issue()).rejects.toMatchObject({ status: 503 });
     expect(f.sms.submitPhoneVerification).not.toHaveBeenCalled();

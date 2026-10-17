@@ -29,7 +29,9 @@ const BASE = "/opt/zhongyuan-daojia";
 const ENV = "/etc/zhongyuan-daojia/api.env";
 const UNIT = "zhongyuan-daojia-api.service";
 const GATE = "STAFF_PASSWORD_LOGIN_ENABLED";
+const SETUP_GATE = "STAFF_PASSWORD_SETUP_ENABLED";
 const MIGRATION = "20261016040000_staff_password_login_alias";
+const SETUP_MIGRATION = "20261017060000_staff_password_initial_setup";
 const REFUSED =
   "Staff password activation refused; active configuration unchanged";
 const RESTORED =
@@ -75,6 +77,8 @@ export function inspectStaffEnvironment(bytes) {
     raw.AUTH_PROVIDER !== "wechat" ||
     raw.SMS_PROVIDER !== "aliyun" ||
     ![undefined, "false", "true"].includes(raw[GATE]) ||
+    ![undefined, "false", "true"].includes(raw[SETUP_GATE]) ||
+    (raw[SETUP_GATE] === "true" && raw[GATE] !== "true") ||
     (raw.ALIYUN_SMS_SECURITY_TOKEN ?? "") !== "" ||
     !/^[1-9][0-9]{0,4}$/.test(
       raw.PHONE_VERIFICATION_SMS_DAILY_REQUEST_LIMIT ?? "",
@@ -96,8 +100,18 @@ export function inspectStaffEnvironment(bytes) {
 }
 
 export function prepareStaffPasswordEnable(original) {
+  return prepareStaffGate(original, GATE);
+}
+
+export function prepareStaffPasswordSetupEnable(original) {
+  if (inspectStaffEnvironment(original).raw[GATE] !== "true") fail();
+  return prepareStaffGate(original, SETUP_GATE);
+}
+
+function prepareStaffGate(original, gate) {
+  if (![GATE, SETUP_GATE].includes(gate)) fail();
   const before = inspectStaffEnvironment(original);
-  if (before.raw[GATE] === "true")
+  if (before.raw[gate] === "true")
     return {
       bytes: Buffer.from(original),
       raw: before.raw,
@@ -105,33 +119,31 @@ export function prepareStaffPasswordEnable(original) {
     };
   let text = before.records
     .map((record) => {
-      if (
-        !/^[ \t]*(?:export[ \t]+)?STAFF_PASSWORD_LOGIN_ENABLED[ \t]*=/.test(
-          record,
-        )
-      )
+      if (!new RegExp(`^[ \\t]*(?:export[ \\t]+)?${gate}[ \\t]*=`).test(record))
         return record;
       // Only the value changes; whitespace, inline comment and newline survive.
       const match = record.match(
-        /^([ \t]*(?:export[ \t]+)?STAFF_PASSWORD_LOGIN_ENABLED[ \t]*=[ \t]*)(?:false|'false'|"false")([ \t]*(?:#[^\r\n]*)?)(\r?\n|$)$/,
+        new RegExp(
+          `^([ \\t]*(?:export[ \\t]+)?${gate}[ \\t]*=[ \\t]*)(?:false|'false'|"false")([ \\t]*(?:#[^\\r\\n]*)?)(\\r?\\n|$)$`,
+        ),
       );
       if (!match) fail();
       return `${match[1]}true${match[2]}${match[3]}`;
     })
     .join("");
-  if (!before.keys.has(GATE)) {
+  if (!before.keys.has(gate)) {
     const newline = original.includes(Buffer.from("\r\n")) ? "\r\n" : "\n";
     if (text && !text.endsWith("\n")) text += newline;
-    text += `${GATE}=true${newline}`;
+    text += `${gate}=true${newline}`;
   }
   const bytes = Buffer.from(text);
   const after = inspectStaffEnvironment(bytes).raw;
-  if (after[GATE] !== "true") fail();
+  if (after[gate] !== "true") fail();
   for (const key of new Set([
     ...Object.keys(before.raw),
     ...Object.keys(after),
   ]))
-    if (key !== GATE && before.raw[key] !== after[key]) fail();
+    if (key !== gate && before.raw[key] !== after[key]) fail();
   return { bytes, raw: after, alreadyEnabled: false };
 }
 
@@ -269,7 +281,39 @@ export function assertAliasMetadata(rows) {
     fail();
 }
 
-function productionRuntime(release) {
+export const SETUP_METADATA_QUERY = `SELECT
+  EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public'
+    AND table_name='StaffPasswordSetupChallenge') AS "tableReady",
+  (SELECT count(*) = 12 FROM information_schema.columns WHERE table_schema='public'
+    AND table_name='StaffPasswordSetupChallenge' AND column_name IN
+    ('id','userId','phoneHash','secretHash','codeHash','status','attempts','expiresAt','createdAt','consumedAt','providerRequestId','providerBizId')) AS "columnsReady",
+  EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='public'
+    AND t.relname='StaffPasswordSetupChallenge' AND c.conname='StaffPasswordSetupChallenge_userId_fkey'
+    AND c.contype='f' AND c.convalidated) AS "foreignKeyReady",
+  (SELECT count(*) = 2 FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class x ON x.oid=i.indexrelid
+    JOIN pg_catalog.pg_class t ON t.oid=i.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
+    WHERE n.nspname='public' AND t.relname='StaffPasswordSetupChallenge' AND i.indisvalid
+    AND x.relname IN ('StaffPasswordSetupChallenge_userId_createdAt_idx','StaffPasswordSetupChallenge_expiresAt_idx')) AS "indexesReady",
+  EXISTS (SELECT 1 FROM public."_prisma_migrations" WHERE migration_name='${SETUP_MIGRATION}'
+    AND finished_at IS NOT NULL AND rolled_back_at IS NULL) AS "migrationReady"`;
+
+export function assertSetupMetadata(rows) {
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    [
+      "tableReady",
+      "columnsReady",
+      "foreignKeyReady",
+      "indexesReady",
+      "migrationReady",
+    ].some((key) => rows[0]?.[key] !== true)
+  )
+    fail();
+}
+
+function productionRuntime(release, setup) {
   const expected = `${BASE}/releases/${release}`;
   const ctl = (...args) =>
     execFileSync("/usr/bin/systemctl", args, {
@@ -343,6 +387,29 @@ function productionRuntime(release) {
         { maxWait: 3000, timeout: 5000 },
       );
       assertAliasMetadata(rows);
+      if (setup) {
+        const metadata = await prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+            await tx.$executeRawUnsafe(
+              "SET LOCAL statement_timeout = '3000ms'",
+            );
+            return tx.$queryRawUnsafe(SETUP_METADATA_QUERY);
+          },
+          { maxWait: 3000, timeout: 5000 },
+        );
+        assertSetupMetadata(metadata);
+        const setupService = readFileSync(
+          `${expected}/apps/api/dist/auth/staff-password-setup.service.js`,
+          "utf8",
+        );
+        if (
+          !service.includes(SETUP_GATE) ||
+          !setupService.includes("StaffPasswordSetupService") ||
+          !setupService.includes("setupEnabled")
+        )
+          fail();
+      }
     } finally {
       await prisma.$disconnect();
     }
@@ -377,14 +444,37 @@ function productionRuntime(release) {
     if (
       c.data?.wechatPhoneLoginEnabled !== true ||
       c.data?.smsLoginEnabled !== true ||
-      s.data?.enabled !== enabled ||
-      s.data?.smsEnabled !== enabled ||
+      s.data?.enabled !== (setup ? true : enabled) ||
+      s.data?.smsEnabled !== (setup ? true : enabled) ||
+      (setup && s.data?.setupEnabled !== enabled) ||
       b.data?.enabled !== true ||
       b.data?.provider !== "wechat" ||
       t.data?.enabled !== true ||
       t.data?.maxDays !== 7
     )
       fail();
+    if (setup) {
+      // Invalid empty bodies stop in strict validation: no phone, OTP, or
+      // password is supplied and no SMS/account write is possible.
+      for (const action of ["request", "confirm"]) {
+        const url = `http://127.0.0.1:3222/v1/auth/staff-password/setup/${action}`;
+        const wrongMethod = await fetch(url, {
+          signal: AbortSignal.timeout(1500),
+          redirect: "error",
+        });
+        const invalid = await fetch(url, {
+          method: "POST",
+          body: "{}",
+          signal: AbortSignal.timeout(1500),
+          redirect: "error",
+          headers: {
+            Origin: "https://admin.mtsc.top",
+            "Content-Type": "application/json",
+          },
+        });
+        if (wrongMethod.status !== 405 || invalid.status !== 400) fail();
+      }
+    }
   }
   return {
     envPath: ENV,
@@ -411,9 +501,10 @@ function productionRuntime(release) {
   };
 }
 
-export async function enableStaffPassword({ release }, runtime) {
+export async function enableStaffPassword({ release, setup = false }, runtime) {
   if (!/^[a-f0-9]{40}$/.test(release ?? "")) throw new Error(REFUSED);
-  const rt = runtime ?? productionRuntime(release);
+  if (typeof setup !== "boolean") throw new Error(REFUSED);
+  const rt = runtime ?? productionRuntime(release, setup);
   let lock,
     original,
     candidate,
@@ -450,7 +541,9 @@ export async function enableStaffPassword({ release }, runtime) {
     lock.assertHeld();
     rt.checkContext();
     original = rt.readSecure(rt.envPath);
-    candidate = prepareStaffPasswordEnable(original.bytes);
+    candidate = setup
+      ? prepareStaffPasswordSetupEnable(original.bytes)
+      : prepareStaffPasswordEnable(original.bytes);
     await rt.validate(candidate.raw);
     await rt.assertAliasReady(candidate.raw);
     await verify(candidate.alreadyEnabled);
@@ -531,12 +624,24 @@ export async function runCli(
   try {
     if (
       args.length !== 2 ||
-      args[0] !== "--confirm-enable-staff-password" ||
+      ![
+        "--confirm-enable-staff-password",
+        "--confirm-enable-staff-password-setup",
+      ].includes(args[0]) ||
       !/^[a-f0-9]{40}$/.test(args[1] ?? "") ||
       process.getuid?.() !== 0
     )
       fail();
-    const result = await enableStaffPassword({ release: args[1] });
+    const setup = args[0] === "--confirm-enable-staff-password-setup";
+    const result = await enableStaffPassword({ release: args[1], setup });
+    if (setup) {
+      io.log(
+        result.status === "ALREADY_ENABLED"
+          ? "Staff first-password setup already enabled and verified; no configuration changed and no SMS sent."
+          : "Staff first-password setup enabled and verified; only its gate changed, no credentials created and no SMS sent.",
+      );
+      return 0;
+    }
     io.log(
       result.status === "ALREADY_ENABLED"
         ? "Staff password/SMS login already enabled and verified; no configuration changed and no SMS sent."

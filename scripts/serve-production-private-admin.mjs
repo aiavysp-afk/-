@@ -19,6 +19,7 @@ const rules = [
   [/^\/v1\/auth\/staff-password\/config$/, ["GET"]],
   [/^\/v1\/auth\/staff-password$/, ["GET", "PUT"]],
   [/^\/v1\/auth\/staff-password\/(?:login|confirm)$/, ["POST"]],
+  [/^\/v1\/auth\/staff-password\/setup\/(?:request|confirm)$/, ["POST"]],
   [/^\/v1\/auth\/trusted-devices\/config$/, ["GET"]],
   [/^\/v1\/auth\/trusted-devices$/, ["GET", "POST"]],
   [/^\/v1\/auth\/trusted-devices\/(?:accept|revoke)$/, ["POST"]],
@@ -103,7 +104,9 @@ const rules = [
   [new RegExp(`^${organization}/customer-center/wallet-ledger$`), ["GET"]],
   [new RegExp(`^${organization}/customer-center/customers$`), ["GET"]],
   [
-    new RegExp(`^${organization}/customer-center/customers/${segment}/reveal-phone$`),
+    new RegExp(
+      `^${organization}/customer-center/customers/${segment}/reveal-phone$`,
+    ),
     ["POST"],
   ],
 ];
@@ -126,15 +129,38 @@ const trustCookieName = "__Host-zydj_staff_trust";
 const trustPaths = /^\/v1\/auth\/trusted-devices(?:\/(?:accept|revoke))?$/;
 export function limitedTrustRequestCookie(header) {
   if (typeof header !== "string" || header.length > 16_384) return undefined;
-  const matches = header.split(";").map((part) => part.trim()).filter((part) => part.startsWith(`${trustCookieName}=`));
-  return matches.length === 1 && new RegExp(`^${trustCookieName}=[A-Za-z0-9_-]{43}$`).test(matches[0]) ? matches[0] : undefined;
+  const matches = header
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(`${trustCookieName}=`));
+  return matches.length === 1 &&
+    new RegExp(`^${trustCookieName}=[A-Za-z0-9_-]{43}$`).test(matches[0])
+    ? matches[0]
+    : undefined;
 }
 export function permittedTrustResponseCookie(cookie) {
-  if (typeof cookie !== "string" || cookie.length > 1024 || /[\r\n]/.test(cookie)) return false;
-  const [nameValue, ...attributes] = cookie.split(";").map((part) => part.trim());
-  if (!new RegExp(`^${trustCookieName}=(?:[A-Za-z0-9_-]{43})?$`).test(nameValue)) return false;
+  if (
+    typeof cookie !== "string" ||
+    cookie.length > 1024 ||
+    /[\r\n]/.test(cookie)
+  )
+    return false;
+  const [nameValue, ...attributes] = cookie
+    .split(";")
+    .map((part) => part.trim());
+  if (
+    !new RegExp(`^${trustCookieName}=(?:[A-Za-z0-9_-]{43})?$`).test(nameValue)
+  )
+    return false;
   const attrs = attributes.map((part) => part.toLowerCase());
-  if (!attrs.includes("httponly") || !attrs.includes("secure") || !attrs.includes("samesite=strict") || !attrs.includes("path=/") || attrs.some((part) => part.startsWith("domain="))) return false;
+  if (
+    !attrs.includes("httponly") ||
+    !attrs.includes("secure") ||
+    !attrs.includes("samesite=strict") ||
+    !attrs.includes("path=/") ||
+    attrs.some((part) => part.startsWith("domain="))
+  )
+    return false;
   for (const key of ["path=", "max-age=", "samesite="]) {
     if (attrs.filter((part) => part.startsWith(key)).length !== 1) return false;
   }
@@ -251,7 +277,12 @@ export async function createPrivateAdminServer(
           const cookie = limitedTrustRequestCookie(req.headers.cookie);
           if (cookie) headers.Cookie = cookie;
           const agent = req.headers["user-agent"];
-          if (typeof agent === "string" && agent.length <= 1024 && !/[\r\n\x00]/.test(agent)) headers["User-Agent"] = agent;
+          if (
+            typeof agent === "string" &&
+            agent.length <= 1024 &&
+            !/[\r\n\x00]/.test(agent)
+          )
+            headers["User-Agent"] = agent;
         }
         const response = await fetchApi(
           `${API_ORIGIN}${url.pathname}${url.search}`,

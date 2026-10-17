@@ -243,8 +243,8 @@ function SecurityWorkspaceScope({
       <p className="eyebrow">ACCOUNT SECURITY</p>
       <h2>后台安全验证</h2>
       <p>
-        微信确认 + 动态码为主方式，也可使用本人账号密码 +
-        手机短信。常用设备信任只简化登录，敏感操作仍须独立验证器动态码。
+        默认使用本人账号密码 + 手机短信登录，微信确认为备用方式。
+        常用设备信任只简化登录，敏感操作仍须独立验证器动态码。
       </p>
       {!token ? (
         <BrowserLogin onSession={onSession} />
@@ -301,7 +301,7 @@ function SecurityWorkspaceScope({
                 <>
                   {!status.enabled && !status.enrollmentPending && (
                     <button disabled={busy} onClick={() => void enroll()}>
-                      开始绑定验证器（需五分钟内的新微信登录）
+                      开始绑定验证器（需五分钟内的新登录）
                     </button>
                   )}
                   {enrollment && (
@@ -336,7 +336,7 @@ function SecurityWorkspaceScope({
                         <p>
                           若未保存密钥，或已经退出、更换登录会话，请等待该次未激活绑定自创建起
                           10 分钟的有效期结束，
-                          再刷新安全状态。确认待激活状态结束后，注销并重新微信登录，在新登录会话创建后
+                          再刷新安全状态。确认待激活状态结束后，注销并重新登录，在新登录会话创建后
                           5 分钟内重新开始绑定。
                           重新登录不能激活旧会话的待激活绑定，请勿反复提交动态码。
                         </p>

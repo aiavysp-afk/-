@@ -54,6 +54,7 @@ const EnvSchema = z.object({
   STAFF_MFA_REQUIRED: z.enum(["false", "true"]).default("false"),
   STAFF_BROWSER_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
   STAFF_PASSWORD_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
+  STAFF_PASSWORD_SETUP_ENABLED: z.enum(["false", "true"]).default("false"),
   STAFF_TRUSTED_DEVICE_ENABLED: z.enum(["false", "true"]).default("false"),
   AUTH_SESSION_TTL_SECONDS: z.coerce
     .number()

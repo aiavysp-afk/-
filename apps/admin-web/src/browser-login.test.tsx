@@ -7,13 +7,14 @@ import { StaffSecurity } from "./staff-security";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("dual admin login rendering", () => {
-  it("shows parallel methods and retains WeChat as the selected primary method", () => {
+  it("shows password plus SMS by default and retains WeChat as an alternate method", () => {
     const html = renderToStaticMarkup(<BrowserLogin onSession={() => {}} />);
     expect(html).toContain("微信登录");
-    expect(html).toContain("主方式");
+    expect(html).toContain("默认方式");
+    expect(html).toContain("备用方式");
     expect(html).toContain("账号密码登录");
     expect(html).toContain('aria-selected="true"');
-    expect(html).toContain('aria-label="微信登录"');
+    expect(html).toContain('aria-label="账号密码登录"');
     expect(html).not.toContain("我的 → 后台登录确认");
     expect(html).not.toContain('type="checkbox"');
     expect(html).not.toContain("已登录成功");

@@ -71,7 +71,14 @@ export class StaffPasswordService {
         "ALIYUN_SMS_ACCESS_KEY_SECRET",
         "ALIYUN_SMS_SIGN_NAME",
       ].every((name) => Boolean(String(this.config.get(name) ?? "").trim()));
-    return { enabled, smsEnabled: enabled && smsEnabled };
+    return {
+      enabled,
+      smsEnabled: enabled && smsEnabled,
+      setupEnabled:
+        enabled &&
+        smsEnabled &&
+        this.config.get("STAFF_PASSWORD_SETUP_ENABLED") === "true",
+    };
   }
 
   assertBrowserOrigin(origin?: string) {
