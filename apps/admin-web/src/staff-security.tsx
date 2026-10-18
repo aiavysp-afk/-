@@ -467,7 +467,7 @@ function StaffSecurityScope({
             )}
             {(!passwordConfig?.enabled || !passwordConfig.smsEnabled) && (
               <p>
-                账号密码短信登录尚未开放。仍可使用现有微信登录；开启后才可通过短信验证登录。
+                账号密码短信登录尚未开放，请联系管理员检查短信通道与登录配置；本页不会改用其他方式或降低验证要求。
               </p>
             )}
             {!freshTotp && (

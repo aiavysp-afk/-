@@ -243,8 +243,8 @@ function SecurityWorkspaceScope({
       <p className="eyebrow">ACCOUNT SECURITY</p>
       <h2>后台安全验证</h2>
       <p>
-        默认使用本人账号密码 + 手机短信登录，微信确认为备用方式。
-        常用设备信任只简化登录，敏感操作仍须独立验证器动态码。
+        使用本人账号密码 + 手机短信登录，无需扫码。
+        常用设备信任不免账号密码和短信验证，敏感操作仍须独立验证器动态码。
       </p>
       {!token ? (
         <BrowserLogin onSession={onSession} />

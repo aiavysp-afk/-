@@ -67,6 +67,22 @@ function validWechatPair(value: unknown): value is Pair {
   );
 }
 
+function passwordLoginFailure(
+  caught: unknown,
+  fallback: string,
+  allowWechat: boolean,
+) {
+  const message = caught instanceof Error ? caught.message : fallback;
+  if (allowWechat) return message;
+  // Only replace the two old API hints that point to a deliberately hidden
+  // sign-in option; retain all other failures verbatim and do not alter state.
+  if (message === "账号密码短信登录尚未开放，请使用微信登录")
+    return "账号密码短信登录尚未开放，请联系管理员完成登录服务配置后重试。";
+  if (message === "登录验证码发送失败，请使用微信登录或稍后重试")
+    return "登录验证码发送失败，请稍后重试；仍失败请联系管理员。";
+  return message;
+}
+
 export async function loginRequest<T>(
   path: string,
   body?: unknown,
@@ -171,8 +187,11 @@ export function StaffPasswordCredentialsFields({
 
 export function BrowserLogin({
   onSession,
+  allowWechat = false,
 }: {
   onSession: (session: AuthSession) => void;
+  // Compatibility only; the deployed app deliberately exposes password/SMS alone.
+  allowWechat?: boolean;
 }) {
   const [method, setMethod] = useState<LoginMethod>("password");
   const [wechatConfig, setWechatConfig] = useState<{
@@ -196,10 +215,19 @@ export function BrowserLogin({
   const [smsRetryAt, setSmsRetryAt] = useState(0);
   const [smsNow, setSmsNow] = useState(Date.now());
   const requests = useMemo(createLoginGeneration, []);
+  const currentWechatAllowance = useRef(allowWechat);
+  if (currentWechatAllowance.current !== allowWechat) {
+    // Revoke the old caller's attempt before passive effects run, so an
+    // already-resolved pairing/claim cannot reach the newly restricted view.
+    requests.invalidate();
+    currentWechatAllowance.current = allowWechat;
+  }
+  const visibleMethod =
+    method === "wechat" && !allowWechat ? "password" : method;
   const currentPair = useRef<Pair | null>(null);
   currentPair.current = pair;
-  const currentMethod = useRef(method);
-  currentMethod.current = method;
+  const currentMethod = useRef(visibleMethod);
+  currentMethod.current = visibleMethod;
   const operationBusy = useRef(false);
   const setupScope = useRef<() => boolean>(() => false);
   const setupRetryDeadline = useRef(0);
@@ -235,15 +263,18 @@ export function BrowserLogin({
 
   useEffect(() => {
     let active = true;
-    void loginRequest<{ enabled: boolean; provider: string }>(
-      "/auth/browser-login/config",
-    )
-      .then((data) => {
-        if (active) setWechatConfig(data);
-      })
-      .catch(() => {
-        if (active) setConfigError("微信登录配置暂时不可读，请稍后刷新。");
-      });
+    setConfigError("");
+    if (allowWechat) {
+      void loginRequest<{ enabled: boolean; provider: string }>(
+        "/auth/browser-login/config",
+      )
+        .then((data) => {
+          if (active) setWechatConfig(data);
+        })
+        .catch(() => {
+          if (active) setConfigError("微信登录配置暂时不可读，请稍后刷新。");
+        });
+    }
     void loginRequest<{
       enabled: boolean;
       smsEnabled: boolean;
@@ -267,7 +298,11 @@ export function BrowserLogin({
           () => {},
         );
     };
-  }, [requests]);
+  }, [requests, allowWechat]);
+
+  useEffect(() => {
+    resetAttempt("password");
+  }, [allowWechat]);
 
   useEffect(() => {
     if (!smsRetryAt) return;
@@ -333,6 +368,7 @@ export function BrowserLogin({
   }
   async function startWechat() {
     if (
+      !allowWechat ||
       currentMethod.current !== "wechat" ||
       operationBusy.current ||
       pair ||
@@ -364,7 +400,12 @@ export function BrowserLogin({
     }
   }
   async function checkWechat() {
-    if (currentMethod.current !== "wechat" || operationBusy.current || !pair)
+    if (
+      !allowWechat ||
+      currentMethod.current !== "wechat" ||
+      operationBusy.current ||
+      !pair
+    )
       return;
     const pending = pair;
     const isCurrent = requests.begin();
@@ -445,7 +486,7 @@ export function BrowserLogin({
       }
     } catch (caught) {
       if (isCurrent())
-        setError(caught instanceof Error ? caught.message : "账号密码验证失败");
+        setError(passwordLoginFailure(caught, "账号密码验证失败", allowWechat));
     } finally {
       if (isCurrent()) setBusy(false);
     }
@@ -476,7 +517,7 @@ export function BrowserLogin({
       await deliver(session, isCurrent);
     } catch (caught) {
       if (isCurrent())
-        setError(caught instanceof Error ? caught.message : "短信验证失败");
+        setError(passwordLoginFailure(caught, "短信验证失败", allowWechat));
     } finally {
       if (isCurrent()) setBusy(false);
     }
@@ -489,38 +530,40 @@ export function BrowserLogin({
           <span className="eyebrow">SECURE SIGN IN</span>
           <h2>登录管理后台</h2>
           <p>
-            仅限已授权工作人员。默认使用账号密码加本人手机短信登录，微信登录保留为备用方式。
+            仅限已授权工作人员。使用账号密码登录，并通过本人手机短信完成二次验证。
           </p>
         </div>
       </div>
-      <div className="login-methods" role="tablist" aria-label="选择登录方式">
-        <button
-          role="tab"
-          aria-selected={method !== "wechat"}
-          className={method !== "wechat" ? "active" : ""}
-          onClick={() => {
-            if (method !== "password") resetAttempt("password");
-          }}
-        >
-          <strong>
-            账号密码登录 <em>默认方式</em>
-          </strong>
-          <span>用户名或手机号 + 本人手机短信</span>
-        </button>
-        <button
-          role="tab"
-          aria-selected={method === "wechat"}
-          className={method === "wechat" ? "active" : ""}
-          onClick={() => {
-            if (method !== "wechat") resetAttempt("wechat");
-          }}
-        >
-          <strong>
-            微信登录 <em>备用方式</em>
-          </strong>
-          <span>小程序确认身份 + 动态码</span>
-        </button>
-      </div>
+      {allowWechat && (
+        <div className="login-methods" role="tablist" aria-label="选择登录方式">
+          <button
+            role="tab"
+            aria-selected={method !== "wechat"}
+            className={method !== "wechat" ? "active" : ""}
+            onClick={() => {
+              if (method !== "password") resetAttempt("password");
+            }}
+          >
+            <strong>
+              账号密码登录 <em>默认方式</em>
+            </strong>
+            <span>用户名或手机号 + 本人手机短信</span>
+          </button>
+          <button
+            role="tab"
+            aria-selected={method === "wechat"}
+            className={method === "wechat" ? "active" : ""}
+            onClick={() => {
+              if (method !== "wechat") resetAttempt("wechat");
+            }}
+          >
+            <strong>
+              微信登录 <em>备用方式</em>
+            </strong>
+            <span>小程序确认身份 + 动态码</span>
+          </button>
+        </div>
+      )}
       {configError && (
         <p className="catalog-error" role="alert">
           {configError}
@@ -533,21 +576,21 @@ export function BrowserLogin({
       )}
       <div
         className="login-form"
-        role="tabpanel"
+        role={allowWechat ? "tabpanel" : "region"}
         aria-label={
-          method === "wechat"
+          visibleMethod === "wechat"
             ? "微信登录"
-            : method === "setup"
+            : visibleMethod === "setup"
               ? "首次设置账号密码"
               : "账号密码登录"
         }
       >
-        {method === "password" && !challenge && (
+        {visibleMethod === "password" && !challenge && (
           <aside className="environment-banner" role="note">
             <strong>尚未设置过登录密码？</strong>
             <p>
               已授权工作人员可用本人已绑定手机号验证后，手动首次设置用户名和密码。
-              不注册新账号、不重置已有密码、不增加权限，无需先进行微信配对。
+              不注册新账号、不重置已有密码、不增加权限。
             </p>
             <button
               type="button"
@@ -567,7 +610,7 @@ export function BrowserLogin({
             )}
           </aside>
         )}
-        {method === "setup" ? (
+        {visibleMethod === "setup" ? (
           <StaffFirstPasswordSetup
             enabled={setupEnabled}
             isParentCurrent={() =>
@@ -579,7 +622,7 @@ export function BrowserLogin({
             onSession={deliver}
             onCancel={() => resetAttempt("password")}
           />
-        ) : method === "wechat" ? (
+        ) : allowWechat && visibleMethod === "wechat" ? (
           <>
             {wechatConfig?.provider === "mock" && (
               <div className="catalog-error">
@@ -637,7 +680,7 @@ export function BrowserLogin({
           <p>正在读取账号密码登录配置…</p>
         ) : !passwordConfig.enabled || !passwordConfig.smsEnabled ? (
           <p>
-            账号密码与短信登录尚未启用。请先使用微信登录；后台完成短信通道验收后开放。
+            账号密码与短信登录尚未启用，请联系管理员完成登录服务配置后重试。
           </p>
         ) : challenge ? (
           <form
@@ -745,8 +788,9 @@ export function BrowserLogin({
         )}
       </div>
       <p className="login-security-note">
-        请仅在自己打开的电脑上登录。不接受他人配对码，不向客服提供密码、短信验证码、令牌或动态码。已登记的常用设备可在
-        7 天内免登录动态码；审核、发布、资金及账号安全操作仍须新的动态码。
+        请仅在自己打开的电脑上登录，不向客服提供密码、短信验证码、令牌或动态码。已登记的常用设备可在
+        7
+        天内免登录动态码，但不免账号密码与短信验证；审核、发布、资金及账号安全操作仍须新的动态码。
       </p>
     </section>
   );

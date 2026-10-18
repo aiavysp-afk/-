@@ -76,7 +76,9 @@ function text(value: unknown): string {
   return text((value as Node).props?.children);
 }
 function render() {
-  return hooks.current!.render(() => BrowserLogin({ onSession: () => {} }));
+  return hooks.current!.render(() =>
+    BrowserLogin({ onSession: () => {}, allowWechat: true }),
+  );
 }
 function startButton(tree: unknown) {
   const button = nodes(tree).find(

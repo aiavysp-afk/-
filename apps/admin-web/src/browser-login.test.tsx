@@ -6,21 +6,31 @@ import { StaffSecurity } from "./staff-security";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("dual admin login rendering", () => {
-  it("shows password plus SMS by default and retains WeChat as an alternate method", () => {
+describe("admin password login rendering", () => {
+  it("shows password plus SMS alone by default without any scan or pairing option", () => {
     const html = renderToStaticMarkup(<BrowserLogin onSession={() => {}} />);
-    expect(html).toContain("微信登录");
-    expect(html).toContain("默认方式");
-    expect(html).toContain("备用方式");
+    expect(html).not.toContain("微信");
+    expect(html).not.toContain("扫码");
+    expect(html).not.toContain("配对");
+    expect(html).not.toContain('role="tab"');
     expect(html).toContain("账号密码登录");
-    expect(html).toContain('aria-selected="true"');
     expect(html).toContain('aria-label="账号密码登录"');
-    expect(html).not.toContain("我的 → 后台登录确认");
+    expect(html).toContain("首次设置账号密码");
+    expect(html).toContain("但不免账号密码与短信验证");
     expect(html).not.toContain('type="checkbox"');
     expect(html).not.toContain("已登录成功");
   });
 
-  it("makes both methods available in account security for an anonymous browser", () => {
+  it("can explicitly retain the legacy alternate flow for isolated compatibility callers", () => {
+    const html = renderToStaticMarkup(
+      <BrowserLogin onSession={() => {}} allowWechat />,
+    );
+    expect(html).toContain("微信登录");
+    expect(html).toContain("备用方式");
+    expect(html).toContain('aria-selected="true"');
+  });
+
+  it("shows only the password entry in account security for an anonymous browser", () => {
     const html = renderToStaticMarkup(
       <SecurityWorkspace
         token=""
@@ -28,7 +38,9 @@ describe("dual admin login rendering", () => {
         onSession={() => {}}
       />,
     );
-    expect(html).toContain("选择登录方式");
+    expect(html).not.toContain("选择登录方式");
+    expect(html).not.toContain("微信确认为备用方式");
+    expect(html).not.toContain("发起微信后台登录");
     expect(html).toContain("账号密码登录");
     expect(html).not.toContain("暂无已登记的信任设备");
     expect(html).not.toContain("验证器丢失恢复复核");
