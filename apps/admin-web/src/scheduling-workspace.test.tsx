@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHookRenderer } from "./test-hook-renderer";
 import { SchedulingWorkspace } from "./admin-resources";
 
@@ -21,11 +21,17 @@ vi.mock("react", async (importOriginal) => {
       hooks.current!.useEffect(args[0], args[1] ?? []),
   };
 });
+beforeEach(() => {
+  // Day A must stay distinct from the explicit day B fixture (2026-10-20).
+  // Only mock Date.now; real timers are needed by the async flush helper.
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-18T04:00:00.000Z"));
+});
 afterEach(() => {
   hooks.current?.unmount();
   hooks.current = null;
   hooks.key = "";
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 function deferred<T>() {
   let resolve!: (value: T) => void;

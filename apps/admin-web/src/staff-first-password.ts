@@ -21,6 +21,29 @@ export type StaffSetupDraft = {
   confirmation: string;
 };
 
+/** Static guidance only: never include the supplied credentials in feedback. */
+export function getStaffSetupDraftIssues(
+  draft: StaffSetupDraft,
+): Record<keyof StaffSetupDraft, string | null> {
+  return {
+    code: /^\d{6}$/.test(draft.code)
+      ? null
+      : "请填写手机实际收到的6位短信验证码。",
+    loginAlias: isValidStaffLoginAlias(draft.loginAlias)
+      ? null
+      : "首次用户名须4–32位、英文字母开头，仅含英文字母、数字、下划线或短横线；不能直接填写手机号或中文。",
+    password:
+      draft.password.length >= 12 && draft.password.length <= 128
+        ? null
+        : "新密码须12–128个字符，请检查长度。",
+    confirmation: !draft.confirmation
+      ? "请再次输入新密码，且两次填写一致。"
+      : draft.password !== draft.confirmation
+        ? "两次新密码不一致，请重新核对。"
+        : null,
+  };
+}
+
 export function parseStaffSetupChallenge(
   value: unknown,
 ): StaffSetupChallenge | null {
@@ -60,14 +83,7 @@ export function buildStaffSetupConfirmation(
   draft: StaffSetupDraft,
 ) {
   const checked = parseStaffSetupChallenge(challenge);
-  if (
-    !checked ||
-    !/^\d{6}$/.test(draft.code) ||
-    !isValidStaffLoginAlias(draft.loginAlias) ||
-    draft.password.length < 12 ||
-    draft.password.length > 128 ||
-    draft.password !== draft.confirmation
-  )
+  if (!checked || Object.values(getStaffSetupDraftIssues(draft)).some(Boolean))
     return null;
   return {
     challengeId: checked.challengeId,

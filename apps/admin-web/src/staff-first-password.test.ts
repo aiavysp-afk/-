@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStaffSetupConfirmation,
+  getStaffSetupDraftIssues,
   isValidStaffSetupPhone,
   normalizeStaffSetupPhone,
   parseStaffSetupChallenge,
+  type StaffSetupDraft,
 } from "./staff-first-password";
 
 const challenge = {
@@ -82,4 +84,72 @@ describe("first password setup input boundary", () => {
   it("requires a valid challenge before building a confirmation", () => {
     expect(buildStaffSetupConfirmation(null, draft)).toBeNull();
   });
+  it("reports all pending fields using static guidance, without reflecting supplied values", () => {
+    const invalid = {
+      code: "123",
+      loginAlias: "synthetic-invalid@alias",
+      password: "shrt-key",
+      confirmation: "synthetic-confirmation",
+    };
+    const issues = getStaffSetupDraftIssues(invalid);
+    expect(issues.code).toContain("6位短信验证码");
+    expect(issues.loginAlias).toContain("不能直接填写手机号或中文");
+    expect(issues.password).toContain("12–128");
+    expect(issues.confirmation).toContain("不一致");
+    for (const supplied of Object.values(invalid))
+      expect(JSON.stringify(issues)).not.toContain(supplied);
+    expect(
+      getStaffSetupDraftIssues({
+        code: "",
+        loginAlias: "",
+        password: "",
+        confirmation: "",
+      }),
+    ).toEqual({
+      code: expect.any(String),
+      loginAlias: expect.any(String),
+      password: expect.any(String),
+      confirmation: expect.any(String),
+    });
+  });
+  it.each<{ field: keyof StaffSetupDraft; value: string }>([
+    { field: "code", value: "" },
+    { field: "code", value: "12345" },
+    { field: "code", value: " 000001 " },
+    { field: "loginAlias", value: "13800138000" },
+    { field: "loginAlias", value: "管理员" },
+    { field: "loginAlias", value: "adm" },
+    { field: "loginAlias", value: "a".repeat(33) },
+    { field: "password", value: "p".repeat(11) },
+    { field: "password", value: "p".repeat(129) },
+    { field: "confirmation", value: "" },
+    { field: "confirmation", value: "not-the-same-password" },
+  ])(
+    "keeps $field feedback and confirmation validity in sync",
+    ({ field, value }) => {
+      const supplied = { ...draft, [field]: value };
+      expect(getStaffSetupDraftIssues(supplied)[field]).toEqual(
+        expect.any(String),
+      );
+      expect(buildStaffSetupConfirmation(challenge, supplied)).toBeNull();
+    },
+  );
+  it.each([12, 128])(
+    "retains password boundary %i and server-owned challenge expiry",
+    (length) => {
+      const supplied = {
+        ...draft,
+        password: "p".repeat(length),
+        confirmation: "p".repeat(length),
+      };
+      expect(
+        Object.values(getStaffSetupDraftIssues(supplied)).every(
+          (issue) => issue === null,
+        ),
+      ).toBe(true);
+      expect(buildStaffSetupConfirmation(challenge, supplied)?.password).toBe(
+        supplied.password,
+      );
+    },
+  );
 });

@@ -9,6 +9,7 @@ import { AuthSessionSchema, type AuthSession } from "@zydj/contracts";
 import { createLoginGeneration } from "./login-state";
 import {
   buildStaffSetupConfirmation,
+  getStaffSetupDraftIssues,
   isValidStaffSetupPhone,
   normalizeStaffSetupPhone,
   parseStaffSetupChallenge,
@@ -69,6 +70,10 @@ export function StaffFirstPasswordSetup({
   };
   const operationBusy = useRef(false);
   const retrySeconds = Math.max(0, Math.ceil((retryAt - now) / 1000));
+  const draftIssues = getStaffSetupDraftIssues(draft);
+  const pendingIssues = Object.values(draftIssues).filter(
+    (issue): issue is string => Boolean(issue),
+  );
   const canConfirm = Boolean(
     enabled &&
       challenge &&
@@ -298,14 +303,19 @@ export function StaffFirstPasswordSetup({
                   maxLength={6}
                   value={draft.code}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      code: event.target.value.replace(/\D/g, "").slice(0, 6),
-                    })
-                  }
+                  aria-invalid={!busy && Boolean(draftIssues.code)}
+                  aria-describedby="staff-setup-code-help"
+                  onChange={(event) => {
+                    const value = event.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 6);
+                    setDraft((previous) => ({ ...previous, code: value }));
+                  }}
                 />
               </label>
+              <p id="staff-setup-code-help">
+                短信验证码须为手机实际收到的6位数字，提交后由服务器验证。
+              </p>
               <label>
                 设置登录用户名
                 <input
@@ -319,13 +329,19 @@ export function StaffFirstPasswordSetup({
                   value={draft.loginAlias}
                   disabled={busy}
                   placeholder="4–32位，以字母开头"
-                  onChange={(event) =>
-                    setDraft({ ...draft, loginAlias: event.target.value })
-                  }
+                  aria-invalid={!busy && Boolean(draftIssues.loginAlias)}
+                  aria-describedby="staff-setup-alias-help"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDraft((previous) => ({
+                      ...previous,
+                      loginAlias: value,
+                    }));
+                  }}
                 />
               </label>
-              <p>
-                用户名为4–32位，以字母开头，可使用英文字母、数字、下划线或短横线，提交时规范为小写。
+              <p id="staff-setup-alias-help">
+                首次用户名须4–32位、英文字母开头，仅含英文字母、数字、下划线或短横线；不能直接填写手机号或中文。提交时规范为小写，设置成功后也可用原绑定手机号登录。
               </p>
               <label>
                 设置新密码
@@ -336,11 +352,15 @@ export function StaffFirstPasswordSetup({
                   maxLength={128}
                   value={draft.password}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft({ ...draft, password: event.target.value })
-                  }
+                  aria-invalid={!busy && Boolean(draftIssues.password)}
+                  aria-describedby="staff-setup-password-help"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDraft((previous) => ({ ...previous, password: value }));
+                  }}
                 />
               </label>
+              <p id="staff-setup-password-help">新密码须12–128个字符。</p>
               <label>
                 再次输入新密码
                 <input
@@ -350,18 +370,54 @@ export function StaffFirstPasswordSetup({
                   maxLength={128}
                   value={draft.confirmation}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft({ ...draft, confirmation: event.target.value })
-                  }
+                  aria-invalid={!busy && Boolean(draftIssues.confirmation)}
+                  aria-describedby="staff-setup-confirmation-help"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDraft((previous) => ({
+                      ...previous,
+                      confirmation: value,
+                    }));
+                  }}
                 />
               </label>
+              <p id="staff-setup-confirmation-help">请再次输入相同的新密码。</p>
               <p>
                 密码须12–128个字符，两次填写一致。短信验证码和验证器动态码不是登录密码。提交成功后直接进入本人原有后台账号，敏感操作仍需独立验证器动态码。
               </p>
+              <div
+                id="staff-setup-confirm-status"
+                role="status"
+                aria-live="polite"
+              >
+                {busy ? (
+                  <p>
+                    正在提交首次设置，请勿重复点击；提交完成前暂不可再次操作。
+                  </p>
+                ) : pendingIssues.length > 0 ? (
+                  <>
+                    <p>还不能设置密码并登录，请完成以下项目：</p>
+                    <ul>
+                      {pendingIssues.map((issue) => (
+                        <li key={issue}>{issue}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : canConfirm ? (
+                  <p>
+                    填写符合格式，提交后由服务器验证。请本人点击下方按钮完成首次设置。
+                  </p>
+                ) : (
+                  <p>
+                    当前首次设置凭据不可用，请手动重新发送验证码；已有账号请返回账号密码登录。
+                  </p>
+                )}
+              </div>
               <button
                 type="submit"
                 className="primary-action"
                 disabled={!canConfirm}
+                aria-describedby="staff-setup-confirm-status"
               >
                 本人确认设置密码并登录
               </button>

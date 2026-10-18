@@ -121,6 +121,20 @@ function confirm() {
     preventDefault() {},
   });
 }
+function confirmButton(tree: unknown) {
+  const result = nodes(tree).find(
+    (node) => node.type === "button" && text(node) === "本人确认设置密码并登录",
+  );
+  if (!result) throw Error("Missing fixture confirmation button");
+  return result;
+}
+function confirmationFeedback(tree: unknown) {
+  const result = nodes(tree).find(
+    (node) => node.props.id === "staff-setup-confirm-status",
+  );
+  if (!result) throw Error("Missing fixture confirmation guidance");
+  return result;
+}
 async function ready() {
   render();
   hooks.current!.flushEffects();
@@ -225,6 +239,20 @@ describe("first staff password setup requires deliberate human actions", () => {
       (node) => node.type === "input" && node.props.type === "password",
     ))
       expect(node.props.value).toBe("");
+    const pendingTree = render();
+    expect(confirmButton(pendingTree).props.disabled).toBe(true);
+    expect(text(confirmationFeedback(pendingTree))).toContain(
+      "正在提交首次设置",
+    );
+    expect(text(confirmationFeedback(pendingTree))).not.toContain("请填写");
+    expect(text(confirmationFeedback(pendingTree))).not.toContain("须12");
+    for (const label of [
+      "短信验证码",
+      "设置登录用户名",
+      "设置新密码",
+      "再次输入新密码",
+    ])
+      expect(input(pendingTree, label).props["aria-invalid"]).toBe(false);
     pending.resolve(session);
     await flush();
     expect(authenticated).toHaveBeenCalledWith(session);
@@ -232,6 +260,102 @@ describe("first staff password setup requires deliberate human actions", () => {
     expect(revoked).not.toHaveBeenCalled();
     expect(localStorage.setItem).not.toHaveBeenCalled();
     expect(sessionStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it("always explains the disabled button and links each field and action to accessible guidance", async () => {
+    await ready();
+    const tree = render();
+    expect(confirmButton(tree).props.disabled).toBe(true);
+    expect(confirmButton(tree).props["aria-describedby"]).toBe(
+      "staff-setup-confirm-status",
+    );
+    const feedback = confirmationFeedback(tree);
+    expect(feedback.props.role).toBe("status");
+    expect(feedback.props["aria-live"]).toBe("polite");
+    for (const message of [
+      "6位短信验证码",
+      "不能直接填写手机号或中文",
+      "新密码须12–128",
+      "请再次输入新密码",
+    ])
+      expect(text(feedback)).toContain(message);
+    for (const label of [
+      "短信验证码",
+      "设置登录用户名",
+      "设置新密码",
+      "再次输入新密码",
+    ]) {
+      const field = input(tree, label);
+      expect(field.props["aria-invalid"]).toBe(true);
+      expect(
+        nodes(tree).some(
+          (node) => node.props.id === field.props["aria-describedby"],
+        ),
+      ).toBe(true);
+    }
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { label: "短信验证码", value: "123", issue: "6位短信验证码" },
+    {
+      label: "设置登录用户名",
+      value: "13800138000",
+      issue: "不能直接填写手机号或中文",
+    },
+    {
+      label: "设置登录用户名",
+      value: "管理员",
+      issue: "不能直接填写手机号或中文",
+    },
+    { label: "设置登录用户名", value: "abc", issue: "4–32位" },
+    { label: "设置新密码", value: "p".repeat(11), issue: "新密码须12–128" },
+    { label: "设置新密码", value: "p".repeat(129), issue: "新密码须12–128" },
+    { label: "再次输入新密码", value: "", issue: "请再次输入新密码" },
+    {
+      label: "再次输入新密码",
+      value: "different-password",
+      issue: "两次新密码不一致",
+    },
+  ])(
+    "updates the disabled reason when $label is invalid",
+    async ({ label, value, issue }) => {
+      await ready();
+      fill();
+      change(label, value);
+      const tree = render();
+      expect(confirmButton(tree).props.disabled).toBe(true);
+      expect(text(confirmationFeedback(tree))).toContain(issue);
+      expect(input(tree, label).props["aria-invalid"]).toBe(true);
+      expect(text(confirmationFeedback(tree))).not.toContain(
+        value || "synthetic-never-shown",
+      );
+      confirm();
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("accepts rapid multi-field edits captured from a single render without dropping earlier fields", async () => {
+    await ready();
+    const tree = render();
+    const updates = [
+      ["短信验证码", "000001"],
+      ["设置登录用户名", "  Admin_01  "],
+      ["设置新密码", "synthetic-password-42"],
+      ["再次输入新密码", "synthetic-password-42"],
+    ] as const;
+    for (const [label, value] of updates)
+      input(tree, label).props.onChange({ target: { value } });
+    const complete = render();
+    for (const [label, value] of updates)
+      expect(input(complete, label).props.value).toBe(value);
+    expect(confirmButton(complete).props.disabled).toBe(false);
+    const feedback = text(confirmationFeedback(complete));
+    expect(feedback).toContain("填写符合格式，提交后由服务器验证");
+    expect(feedback).not.toContain("验证码已验证");
+    expect(feedback).not.toContain("还不能");
+    expect(text(complete)).toContain("设置成功后也可用原绑定手机号登录");
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("does not confirm short or mismatched passwords even when its submit handler is directly invoked", async () => {
