@@ -69,6 +69,12 @@ describe("staff password first-time setup controller", () => {
       expect(f.service.confirm).not.toHaveBeenCalled();
     },
   );
+  it("accepts omitted alias for bound-phone login without inventing an alias", async () => {
+    const f = fixture();
+    const { loginAlias: _ignored, ...phoneOnly } = INPUT;
+    await f.controller.confirm(phoneOnly, ORIGIN, REQUEST);
+    expect(f.service.confirm).toHaveBeenCalledExactlyOnceWith(phoneOnly, "actual-peer");
+  });
   it.each([
     { phone: "123" },
     { phone: "13800001234", userId: "other" },
@@ -86,6 +92,12 @@ describe("staff password first-time setup controller", () => {
     { challengeSecret: "short" },
     { code: "12345" },
     { code: 123456 },
+    { loginAlias: "" },
+    { loginAlias: " " },
+    { loginAlias: null },
+    { loginAlias: 123456 },
+    { loginAlias: "13800001234" },
+    { loginAlias: "管理员" },
     { loginAlias: "123admin" },
     { loginAlias: "a".repeat(33) },
     { password: "123456" },

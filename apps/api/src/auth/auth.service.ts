@@ -269,6 +269,58 @@ export class AuthService {
     }
     const now = new Date();
     const customerSms = session.authProvider === "customer-sms";
+    const technicianPhone =
+      session.authChannel === "TECHNICIAN_PHONE" ||
+      session.authProvider === "technician-sms";
+    let phoneTechnicianOrganization: string | null = null;
+    if (technicianPhone) {
+      if (
+        session.authChannel !== "TECHNICIAN_PHONE" ||
+        session.authProvider !== "technician-sms" ||
+        this.config.get("TECHNICIAN_PHONE_LOGIN_ENABLED", { infer: true }) !==
+          "true" ||
+        session.wechatIdentityId ||
+        session.mfaVerifiedUntil ||
+        session.staffVerifiedUntil ||
+        session.staffVerificationMethod ||
+        session.staffPasswordVersion ||
+        session.trustedDeviceId ||
+        !session.customerPhoneHash ||
+        !session.user.phoneEncrypted ||
+        !session.user.phoneVerifiedAt
+      )
+        throw new UnauthorizedException("技师手机号登录已失效，请重新登录");
+      let phoneHash: string;
+      try {
+        phoneHash = this.crypto.hashPhoneVerification(
+          "phone",
+          this.crypto.decrypt(session.user.phoneEncrypted),
+        );
+      } catch {
+        throw new UnauthorizedException("手机号安全资料已变更，请重新登录");
+      }
+      const binding = await this.prisma.customerPhoneIdentity.findUnique({
+        where: { userId: session.userId },
+        select: { phoneHash: true },
+      });
+      if (
+        phoneHash !== session.customerPhoneHash ||
+        binding?.phoneHash !== phoneHash
+      )
+        throw new UnauthorizedException("手机号安全资料已变更，请重新登录");
+      if (
+        this.config.get("TECHNICIAN_PHONE_WORKBENCH_ENABLED", {
+          infer: true,
+        }) === "true"
+      ) {
+        const profile = await this.prisma.technicianProfile.findUnique({
+          where: { technicianId: session.userId },
+          select: { organizationId: true, status: true },
+        });
+        if (profile && ["APPROVED", "PUBLISHED"].includes(profile.status))
+          phoneTechnicianOrganization = profile.organizationId;
+      }
+    }
     if (
       customerSms &&
       (session.authChannel !== "CUSTOMER_SMS" ||
@@ -373,23 +425,31 @@ export class AuthService {
       sessionId: session.id,
       userId: session.user.id,
       displayName: session.user.displayName,
-      mfaVerifiedUntil: customerSms ? null : session.mfaVerifiedUntil,
+      mfaVerifiedUntil:
+        customerSms || technicianPhone ? null : session.mfaVerifiedUntil,
       staffVerifiedUntil,
       staffVerificationMethod,
-      staffPasswordVersion: customerSms ? null : session.staffPasswordVersion,
+      staffPasswordVersion:
+        customerSms || technicianPhone ? null : session.staffPasswordVersion,
       trustedDeviceId:
         staffVerificationMethod === "TRUSTED_DEVICE"
           ? session.trustedDeviceId
           : null,
       authChannel: session.authChannel,
       authProvider: session.authProvider,
-      wechatIdentityId: customerSms ? null : (session.wechatIdentityId ?? null),
+      wechatIdentityId:
+        customerSms || technicianPhone
+          ? null
+          : (session.wechatIdentityId ?? null),
       phoneVerified: Boolean(
         session.user.phoneEncrypted && session.user.phoneVerifiedAt,
       ),
       memberships: session.user.memberships
-        .filter(
-          (membership) => !customerSms || membership.role === UserRole.CUSTOMER,
+        .filter((membership) =>
+          technicianPhone
+            ? membership.role === UserRole.THERAPIST &&
+              membership.organizationId === phoneTechnicianOrganization
+            : !customerSms || membership.role === UserRole.CUSTOMER,
         )
         .map((membership) => ({
           organizationId: membership.organizationId,

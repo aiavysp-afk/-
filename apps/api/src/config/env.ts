@@ -39,6 +39,11 @@ const EnvSchema = z.object({
   WECHAT_MINIAPP_SECRET: z.string().default(""),
   WECHAT_OFFICIAL_ACCOUNT_ID: z.string().default("gh_a4b5f9d63539"),
   TECHNICIAN_H5_ONBOARDING_ENABLED: z.enum(["false", "true"]).default("false"),
+  TECHNICIAN_PHONE_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),
+  // Separate opt-in: phone onboarding never implicitly opens operational orders.
+  TECHNICIAN_PHONE_WORKBENCH_ENABLED: z
+    .enum(["false", "true"])
+    .default("false"),
   TECHNICIAN_H5_APP_ID: z.string().default(""),
   TECHNICIAN_H5_APP_SECRET: z.string().default(""),
   TECHNICIAN_H5_ENTRY_URL: z
@@ -366,7 +371,8 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
     }
     if (
       env.PHONE_VERIFICATION_SMS_ENABLED === "true" ||
-      env.CUSTOMER_SMS_LOGIN_ENABLED === "true"
+      env.CUSTOMER_SMS_LOGIN_ENABLED === "true" ||
+      env.TECHNICIAN_PHONE_LOGIN_ENABLED === "true"
     ) {
       if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
       if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");
@@ -379,11 +385,17 @@ export const validateEnv = (raw: Record<string, unknown>): AppEnv => {
       )
         invalid.push("ALIYUN_SMS_PHONE_VERIFICATION_TEMPLATE_CODE");
       if (
-        env.CUSTOMER_SMS_LOGIN_ENABLED === "true" &&
+        (env.CUSTOMER_SMS_LOGIN_ENABLED === "true" ||
+          env.TECHNICIAN_PHONE_LOGIN_ENABLED === "true") &&
         env.PHONE_VERIFICATION_SMS_ENABLED !== "true"
       )
         invalid.push("PHONE_VERIFICATION_SMS_ENABLED");
     }
+    if (
+      env.TECHNICIAN_PHONE_WORKBENCH_ENABLED === "true" &&
+      env.TECHNICIAN_PHONE_LOGIN_ENABLED !== "true"
+    )
+      invalid.push("TECHNICIAN_PHONE_LOGIN_ENABLED");
     if (env.SAFETY_NOTIFICATION_DISPATCH_ENABLED === "true") {
       if (env.SMS_PROVIDER !== "aliyun") invalid.push("SMS_PROVIDER");
       if (env.SMS_SEND_ENABLED !== "true") invalid.push("SMS_SEND_ENABLED");

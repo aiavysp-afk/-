@@ -4,6 +4,15 @@ import { describe, expect, it } from "vitest";
 const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 describe("sign-in remains reachable in narrow browser panels", () => {
+  it("uses the blocked cursor for invalid forms and the waiting cursor only for explicit pending operations", () => {
+    expect(css).toMatch(
+      /\.primary-action:disabled,\s*\.ghost-action:disabled,\s*\.danger-action:disabled\s*\{[^}]*cursor:\s*not-allowed/,
+    );
+    expect(css).toMatch(
+      /\.primary-action:disabled\[aria-busy="true"\],[^}]*cursor:\s*wait/,
+    );
+    expect(css).not.toMatch(/\.danger-action:disabled\s*\{[^}]*cursor:\s*wait/);
+  });
   it("does not force the document to a desktop-only width", () => {
     expect(css).toMatch(/body\s*\{[^}]*min-width:\s*320px/);
     expect(css).not.toMatch(/body\s*\{[^}]*min-width:\s*1120px/);

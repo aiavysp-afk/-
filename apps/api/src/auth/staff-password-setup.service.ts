@@ -257,15 +257,23 @@ export class StaffPasswordSetupService {
       challengeId: string;
       challengeSecret: string;
       code: string;
-      loginAlias: string;
+      loginAlias?: string;
       password: string;
     },
     remoteAddress: string,
     now = new Date(),
   ): Promise<AuthSession> {
     this.gate();
-    const loginAlias = normalizeStaffLoginAlias(input.loginAlias);
-    if (!loginAlias || !isStaffPasswordValid(input.password))
+    const loginAlias =
+      input.loginAlias === undefined
+        ? null
+        : typeof input.loginAlias === "string"
+          ? normalizeStaffLoginAlias(input.loginAlias)
+          : null;
+    if (
+      (input.loginAlias !== undefined && !loginAlias) ||
+      !isStaffPasswordValid(input.password)
+    )
       throw new BadRequestException("登录名或密码格式无效");
     await this.take("setup-global-confirm", "all", 3_000, now);
     await this.take("setup-peer-confirm", remoteAddress, 120, now);
@@ -363,7 +371,7 @@ export class StaffPasswordSetupService {
           data: {
             userId: eligible.user.id,
             phoneHash: challenge.phoneHash,
-            loginAlias,
+            ...(loginAlias ? { loginAlias } : {}),
             passwordHash,
             version: 1,
           },
@@ -401,7 +409,7 @@ export class StaffPasswordSetupService {
             metadata: {
               method: "PASSWORD_SMS",
               credentialVersion: 1,
-              loginAliasConfigured: true,
+              loginAliasConfigured: Boolean(loginAlias),
             },
           },
         });

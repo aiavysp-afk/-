@@ -145,7 +145,6 @@ async function ready() {
 }
 function fill() {
   change("短信验证码", "000001");
-  change("设置登录用户名", "  Admin_01  ");
   change("设置新密码", "synthetic-password-42");
   change("再次输入新密码", "synthetic-password-42");
 }
@@ -218,7 +217,7 @@ describe("first staff password setup requires deliberate human actions", () => {
     expect(authenticated).not.toHaveBeenCalled();
   });
 
-  it("requires valid alias, matching long passwords and a manual final confirmation, clearing secrets before waiting", async () => {
+  it("requires matching long passwords and manual confirmation without another username, clearing secrets before waiting", async () => {
     await ready();
     fill();
     expect(request).toHaveBeenCalledTimes(1);
@@ -232,7 +231,6 @@ describe("first staff password setup requires deliberate human actions", () => {
       challengeId: challenge.challengeId,
       challengeSecret: challenge.challengeSecret,
       code: "000001",
-      loginAlias: "admin_01",
       password: "synthetic-password-42",
     });
     for (const node of nodes(render()).filter(
@@ -241,17 +239,13 @@ describe("first staff password setup requires deliberate human actions", () => {
       expect(node.props.value).toBe("");
     const pendingTree = render();
     expect(confirmButton(pendingTree).props.disabled).toBe(true);
+    expect(confirmButton(pendingTree).props["aria-busy"]).toBe(true);
     expect(text(confirmationFeedback(pendingTree))).toContain(
       "正在提交首次设置",
     );
     expect(text(confirmationFeedback(pendingTree))).not.toContain("请填写");
     expect(text(confirmationFeedback(pendingTree))).not.toContain("须12");
-    for (const label of [
-      "短信验证码",
-      "设置登录用户名",
-      "设置新密码",
-      "再次输入新密码",
-    ])
+    for (const label of ["短信验证码", "设置新密码", "再次输入新密码"])
       expect(input(pendingTree, label).props["aria-invalid"]).toBe(false);
     pending.resolve(session);
     await flush();
@@ -266,6 +260,7 @@ describe("first staff password setup requires deliberate human actions", () => {
     await ready();
     const tree = render();
     expect(confirmButton(tree).props.disabled).toBe(true);
+    expect(confirmButton(tree).props["aria-busy"]).toBe(false);
     expect(confirmButton(tree).props["aria-describedby"]).toBe(
       "staff-setup-confirm-status",
     );
@@ -274,17 +269,11 @@ describe("first staff password setup requires deliberate human actions", () => {
     expect(feedback.props["aria-live"]).toBe("polite");
     for (const message of [
       "6位短信验证码",
-      "不能直接填写手机号或中文",
       "新密码须12–128",
       "请再次输入新密码",
     ])
       expect(text(feedback)).toContain(message);
-    for (const label of [
-      "短信验证码",
-      "设置登录用户名",
-      "设置新密码",
-      "再次输入新密码",
-    ]) {
+    for (const label of ["短信验证码", "设置新密码", "再次输入新密码"]) {
       const field = input(tree, label);
       expect(field.props["aria-invalid"]).toBe(true);
       expect(
@@ -298,17 +287,6 @@ describe("first staff password setup requires deliberate human actions", () => {
 
   it.each([
     { label: "短信验证码", value: "123", issue: "6位短信验证码" },
-    {
-      label: "设置登录用户名",
-      value: "13800138000",
-      issue: "不能直接填写手机号或中文",
-    },
-    {
-      label: "设置登录用户名",
-      value: "管理员",
-      issue: "不能直接填写手机号或中文",
-    },
-    { label: "设置登录用户名", value: "abc", issue: "4–32位" },
     { label: "设置新密码", value: "p".repeat(11), issue: "新密码须12–128" },
     { label: "设置新密码", value: "p".repeat(129), issue: "新密码须12–128" },
     { label: "再次输入新密码", value: "", issue: "请再次输入新密码" },
@@ -340,7 +318,6 @@ describe("first staff password setup requires deliberate human actions", () => {
     const tree = render();
     const updates = [
       ["短信验证码", "000001"],
-      ["设置登录用户名", "  Admin_01  "],
       ["设置新密码", "synthetic-password-42"],
       ["再次输入新密码", "synthetic-password-42"],
     ] as const;
@@ -354,7 +331,11 @@ describe("first staff password setup requires deliberate human actions", () => {
     expect(feedback).toContain("填写符合格式，提交后由服务器验证");
     expect(feedback).not.toContain("验证码已验证");
     expect(feedback).not.toContain("还不能");
-    expect(text(complete)).toContain("设置成功后也可用原绑定手机号登录");
+    expect(text(complete)).toContain("本人已绑定的手机号就是登录账号");
+    expect(text(complete)).not.toContain("设置登录用户名");
+    expect(
+      nodes(complete).filter((node) => node.type === "input"),
+    ).toHaveLength(4);
     expect(request).toHaveBeenCalledTimes(1);
   });
 

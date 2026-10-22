@@ -31,7 +31,6 @@ type Props = {
 };
 const blankDraft = (): StaffSetupDraft => ({
   code: "",
-  loginAlias: "",
   password: "",
   confirmation: "",
 });
@@ -234,6 +233,7 @@ export function StaffFirstPasswordSetup({
       <p>
         仅限手机号已绑定的现有授权工作人员。此流程只首次设置密码，不注册新账号、不重置已有密码、不增加权限；全程由本人手动操作。
       </p>
+      <p>本人已绑定的手机号就是登录账号，无需再设置用户名。</p>
       {!enabled ? (
         <p role="status">
           首次设置账号密码尚未启用，请联系管理员；已有账号仍可正常登录。
@@ -268,6 +268,7 @@ export function StaffFirstPasswordSetup({
             <button
               type="submit"
               className="primary-action"
+              aria-busy={busy}
               disabled={
                 busy || !isValidStaffSetupPhone(phone) || retrySeconds > 0
               }
@@ -315,33 +316,6 @@ export function StaffFirstPasswordSetup({
               </label>
               <p id="staff-setup-code-help">
                 短信验证码须为手机实际收到的6位数字，提交后由服务器验证。
-              </p>
-              <label>
-                设置登录用户名
-                <input
-                  type="text"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  minLength={4}
-                  maxLength={32}
-                  value={draft.loginAlias}
-                  disabled={busy}
-                  placeholder="4–32位，以字母开头"
-                  aria-invalid={!busy && Boolean(draftIssues.loginAlias)}
-                  aria-describedby="staff-setup-alias-help"
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setDraft((previous) => ({
-                      ...previous,
-                      loginAlias: value,
-                    }));
-                  }}
-                />
-              </label>
-              <p id="staff-setup-alias-help">
-                首次用户名须4–32位、英文字母开头，仅含英文字母、数字、下划线或短横线；不能直接填写手机号或中文。提交时规范为小写，设置成功后也可用原绑定手机号登录。
               </p>
               <label>
                 设置新密码
@@ -416,6 +390,7 @@ export function StaffFirstPasswordSetup({
               <button
                 type="submit"
                 className="primary-action"
+                aria-busy={busy}
                 disabled={!canConfirm}
                 aria-describedby="staff-setup-confirm-status"
               >

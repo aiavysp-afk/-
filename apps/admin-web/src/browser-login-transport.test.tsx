@@ -389,7 +389,8 @@ describe("first-use password login guidance", () => {
     );
     expect(text(tree)).toContain("12–128");
     expect(text(tree)).toContain("密码至少12位");
-    expect(text(tree)).toContain("字母开头");
+    expect(text(tree)).toContain("默认使用已绑定的11位手机号");
+    expect(text(tree)).toContain("已有用户名仍可继续使用");
     expect(text(tree)).not.toContain("000001");
     expect(fetcher).toHaveBeenCalledTimes(2);
   });

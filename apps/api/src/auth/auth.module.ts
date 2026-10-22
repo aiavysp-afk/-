@@ -26,6 +26,8 @@ import { TrustedDeviceService } from "./trusted-device.service.js";
 import { CustomerLoginController } from "./customer-login.controller.js";
 import { CustomerLoginService } from "./customer-login.service.js";
 import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.js";
+import { TechnicianPhoneAuthController } from "./technician-phone-auth.controller.js";
+import { TechnicianPhoneAuthService } from "./technician-phone-auth.service.js";
 
 @Module({
   imports: [IntegrationsModule],
@@ -40,6 +42,7 @@ import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.
     StaffPasswordSetupController,
     TrustedDeviceController,
     CustomerLoginController,
+    TechnicianPhoneAuthController,
   ],
   providers: [
     AuthService,
@@ -58,6 +61,7 @@ import { CustomerPhoneIdentityService } from "./customer-phone-identity.service.
     TrustedDeviceService,
     CustomerLoginService,
     CustomerPhoneIdentityService,
+    TechnicianPhoneAuthService,
   ],
   exports: [
     AuthService,

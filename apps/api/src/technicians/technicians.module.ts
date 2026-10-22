@@ -15,12 +15,14 @@ import {
 import { TechnicianInvitationsService } from "./technician-invitations.service.js";
 import { TechniciansService } from "./technicians.service.js";
 import { TechnicianPhotoService } from "./technician-photo.service.js";
+import { TechnicianPhoneOnboardingController } from "./technician-phone-onboarding.controller.js";
 
 @Module({
   imports: [AuthModule],
   controllers: [
     TechnicianOnboardingController,
     TechnicianH5OnboardingController,
+    TechnicianPhoneOnboardingController,
     AdminTechnicianApplicationsController,
     PublicTechniciansController,
     TechnicianInvitationsController,

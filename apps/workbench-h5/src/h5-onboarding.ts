@@ -52,7 +52,7 @@ export function isConfigurationUnavailableRoute(hash: string) {
 }
 
 export function normalizeList(value: string | string[]) {
-  const parts = Array.isArray(value) ? value : value.split(/[，,\n]/);
+  const parts = Array.isArray(value) ? value : value.split(/[，,、\n]/);
   return [
     ...new Set(parts.map((item) => item.trim()).filter(Boolean)),
   ];

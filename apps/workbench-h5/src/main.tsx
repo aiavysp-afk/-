@@ -26,6 +26,7 @@ import {
   Navigation,
   RefreshCw,
   ShieldAlert,
+  Smartphone,
   UserRound,
   WalletCards,
 } from "lucide-react";
@@ -56,7 +57,13 @@ import {
   TechnicianH5Onboarding,
   TechnicianMiniappEntry,
 } from "./h5-onboarding-page";
-import { isOnboardingRoute } from "./h5-onboarding";
+import { TechnicianPhoneOnboarding } from "./phone-onboarding-page";
+import { PhoneWorkbenchSession } from "./phone-workbench-session";
+import {
+  storePhoneToken,
+  technicianEntryRoute,
+  technicianRequest,
+} from "./phone-onboarding";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -125,24 +132,8 @@ async function apiRequest<T>(
   options: RequestInit = {},
   token = "",
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
-  const body = (await response.json().catch(() => ({}))) as {
-    message?: string;
-  };
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(body.message ?? `请求失败（${response.status}）`),
-      { status: response.status },
-    );
-  }
-  return body as T;
+  const data = await technicianRequest<unknown>(path, options, token);
+  return { data } as T;
 }
 
 function formatTime(value: string) {
@@ -166,9 +157,13 @@ function formatMoney(value: number) {
   return `¥${(value / 100).toFixed(2)}`;
 }
 
-function App() {
+function App({
+  phoneToken,
+  onPhoneExit,
+}: { phoneToken?: string; onPhoneExit?: () => void } = {}) {
+  const phoneMode = phoneToken !== undefined;
   const [token, setToken] = useState(
-    () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
+    () => phoneToken ?? sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
   );
   const [storedWorkbench, setWorkbench] = useState<TechnicianWorkbench | null>(
     null,
@@ -193,6 +188,22 @@ function App() {
   const loadingRequest = useRef<symbol | null>(null);
   const tokenRef = useRef(token);
   const loginAttempt = useRef(0);
+  const phoneExitRef = useRef(onPhoneExit);
+  phoneExitRef.current = onPhoneExit;
+  const phoneSession = useMemo(
+    () =>
+      new PhoneWorkbenchSession(
+        (path, accessToken) => technicianRequest(path, {}, accessToken),
+        (expiredToken) => {
+          if (tokenRef.current !== expiredToken) return;
+          tokenRef.current = "";
+          storePhoneToken("");
+          setToken("");
+          phoneExitRef.current?.();
+        },
+      ),
+    [],
+  );
   const mfaSession = useMemo(
     () =>
       new MfaSession(
@@ -224,16 +235,22 @@ function App() {
     mfaSession.subscribe,
     mfaSession.getSnapshot,
   );
-  const mfaReady = mfaSession.isReady(token);
-  const workbench = mfaReady ? storedWorkbench : null;
+  const phoneSnapshot = useSyncExternalStore(
+    phoneSession.subscribe,
+    phoneSession.getSnapshot,
+  );
+  const accessSession = phoneMode ? phoneSession : mfaSession;
+  const workbenchReady = accessSession.isReady(token);
+  const workbench = workbenchReady ? storedWorkbench : null;
 
   const selectSessionToken = useCallback(
     (next: string) => {
       loginAttempt.current++;
       tokenRef.current = next;
-      if (next) sessionStorage.setItem(TOKEN_STORAGE_KEY, next);
+      if (phoneMode) storePhoneToken(next);
+      else if (next) sessionStorage.setItem(TOKEN_STORAGE_KEY, next);
       else sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      mfaSession.setToken(next);
+      accessSession.setToken(next);
       setToken(next);
       setWorkbench(null);
       setEarnings(null);
@@ -244,16 +261,16 @@ function App() {
       loadingRequest.current = null;
       dismissedIncoming.current.clear();
     },
-    [mfaSession],
+    [accessSession, phoneMode],
   );
 
   useEffect(() => {
-    mfaSession.setToken(token);
-    return () => mfaSession.clearIfToken(token);
-  }, [mfaSession, token]);
+    accessSession.setToken(token);
+    return () => accessSession.clearIfToken(token);
+  }, [accessSession, token]);
 
   useEffect(() => {
-    if (mfaReady) return;
+    if (workbenchReady) return;
     setWorkbench(null);
     setEarnings(null);
     setIncomingOrders([]);
@@ -262,7 +279,7 @@ function App() {
     setLoading(false);
     loadingRequest.current = null;
     dismissedIncoming.current.clear();
-  }, [token, mfaReady]);
+  }, [token, workbenchReady]);
 
   useEffect(() => {
     const enrollment = mfaSnapshot.enrollment;
@@ -289,7 +306,7 @@ function App() {
   }, [mfaSession, mfaSnapshot.enrollment, token]);
 
   useEffect(() => {
-    if (!mfaReady || !mfaSnapshot.status?.required) return;
+    if (phoneMode || !workbenchReady || !mfaSnapshot.status?.required) return;
     const deadline = Date.parse(mfaSnapshot.status.verifiedUntil ?? "");
     const expireIfCurrent = () => {
       if (
@@ -314,19 +331,20 @@ function App() {
       window.removeEventListener("focus", checkAfterBackground);
       document.removeEventListener("visibilitychange", checkAfterBackground);
     };
-  }, [mfaSession, mfaReady, mfaSnapshot.status, token]);
+  }, [mfaSession, workbenchReady, mfaSnapshot.status, token, phoneMode]);
 
   const handlePrivateFailure = useCallback(
     (failure: Error & { status?: number }) => {
       if (failure.status === 401) {
         selectSessionToken("");
         setError("登录会话已过期，请重新登录");
+        if (phoneMode) phoneExitRef.current?.();
       } else if (failure.status === 403) {
         // Permissions and fresh-MFA failures share 403. Re-read authoritative status.
-        void mfaSession.recheckAfterForbidden(token);
+        void accessSession.recheckAfterForbidden(token);
       }
     },
-    [mfaSession, token, selectSessionToken],
+    [accessSession, token, selectSessionToken, phoneMode],
   );
 
   useEffect(() => {
@@ -348,8 +366,8 @@ function App() {
 
   const load = useCallback(
     async (silent = false) => {
-      if (!mfaSession.isReady(token) || loadingRequest.current) return;
-      const current = mfaSession.guard(token, true);
+      if (!accessSession.isReady(token) || loadingRequest.current) return;
+      const current = accessSession.guard(token, true);
       const request = Symbol("workbench-load");
       loadingRequest.current = request;
       if (!silent) {
@@ -400,7 +418,7 @@ function App() {
         if (current() && !silent) setLoading(false);
       }
     },
-    [token, mfaSession, mfaReady, handlePrivateFailure],
+    [token, accessSession, workbenchReady, handlePrivateFailure],
   );
 
   useEffect(() => {
@@ -408,12 +426,12 @@ function App() {
   }, [load]);
 
   useEffect(() => {
-    if (!mfaReady) return;
+    if (!workbenchReady) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load(true);
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [load, mfaReady]);
+  }, [load, workbenchReady]);
 
   useEffect(() => {
     if (!loginChallenge || token) return;
@@ -544,12 +562,13 @@ function App() {
   async function logout() {
     const previousToken = tokenRef.current;
     selectSessionToken("");
-    const stillLoggedOut = mfaSession.guard("");
+    const stillLoggedOut = accessSession.guard("");
     setLoginChallenge(null);
     setLoginBusy(false);
     setError("");
     setMessage("");
     setView("today");
+    if (phoneMode) phoneExitRef.current?.();
     try {
       await apiRequest(
         "/auth/logout",
@@ -566,8 +585,8 @@ function App() {
   }
 
   async function advanceOrder(order: TechnicianWorkbenchOrder) {
-    if (!mfaSession.isReady(token)) return false;
-    const current = mfaSession.guard(token, true);
+    if (!accessSession.isReady(token)) return false;
+    const current = accessSession.guard(token, true);
     const operation = actionByStatus[order.status];
     if (!operation) return false;
     if (operation.confirmation && !window.confirm(operation.confirmation)) {
@@ -600,7 +619,7 @@ function App() {
   }
 
   async function acceptIncomingOrder(order: TechnicianWorkbenchOrder) {
-    const current = mfaSession.guard(token, true);
+    const current = accessSession.guard(token, true);
     const accepted = await advanceOrder(order);
     if (!accepted || !current()) return;
     dismissedIncoming.current.add(order.id);
@@ -617,8 +636,8 @@ function App() {
   }
 
   async function reportAndRoute(order: TechnicianWorkbenchOrder) {
-    if (!mfaSession.isReady(token)) return;
-    const current = mfaSession.guard(token, true);
+    if (!accessSession.isReady(token)) return;
+    const current = accessSession.guard(token, true);
     if (!order.destination) {
       setError("该订单缺少 GCJ-02 上门坐标，请联系调度处理。");
       return;
@@ -755,7 +774,7 @@ function App() {
           </section>
         )}
 
-        {token && !mfaReady && (
+        {token && !workbenchReady && !phoneMode && (
           <MfaGate
             key={token}
             session={mfaSession}
@@ -764,7 +783,29 @@ function App() {
           />
         )}
 
-        {token && mfaReady && !workbench && (
+        {token && phoneMode && !workbenchReady && (
+          <section className="workbench-gate">
+            <Smartphone />
+            <h2>
+              {phoneSnapshot.busy ? "正在校验技师资格" : "暂不能进入工作台"}
+            </h2>
+            <p>
+              {phoneSnapshot.error ||
+                "正在由服务器核验本人手机号、审核状态和工作台开通资格。"}
+            </p>
+            <button
+              disabled={phoneSnapshot.busy}
+              onClick={() => void phoneSession.refresh()}
+            >
+              重新校验
+            </button>
+            <button className="secondary" onClick={() => void logout()}>
+              返回手机号入驻
+            </button>
+          </section>
+        )}
+
+        {token && workbenchReady && !workbench && (
           <section className="workbench-gate">
             <RefreshCw className={loading ? "spinning" : ""} />
             <h2>{loading ? "正在读取工作台" : "工作台暂不可用"}</h2>
@@ -814,7 +855,7 @@ function App() {
                 workbench={workbench}
                 earnings={earnings}
                 token={token}
-                session={mfaSession}
+                session={accessSession}
                 onPrivateFailure={handlePrivateFailure}
                 onLogout={logout}
               />
@@ -822,7 +863,7 @@ function App() {
           </>
         )}
       </main>
-      {mfaReady && incomingOrders[0] && (
+      {workbenchReady && incomingOrders[0] && (
         <div className="incoming-backdrop" role="dialog" aria-modal="true">
           <section className="incoming-order">
             <Bell size={26} />
@@ -1187,7 +1228,7 @@ function ProfileView({
   workbench: TechnicianWorkbench;
   earnings: TechnicianEarnings | null;
   token: string;
-  session: MfaSession;
+  session: Pick<MfaSession, "guard">;
   onPrivateFailure: (failure: Error & { status?: number }) => void;
   onLogout: () => Promise<void>;
 }) {
@@ -1782,16 +1823,34 @@ function NextOrder({
   );
 }
 
+function PhoneEntry() {
+  const [workbenchToken, setWorkbenchToken] = useState("");
+  const exit = () => {
+    storePhoneToken("");
+    setWorkbenchToken("");
+  };
+  return workbenchToken ? (
+    <App key={workbenchToken} phoneToken={workbenchToken} onPhoneExit={exit} />
+  ) : (
+    <TechnicianPhoneOnboarding onWorkbench={setWorkbenchToken} />
+  );
+}
+
+const entryRoute = technicianEntryRoute(
+  window.location.hash,
+  window.location.search,
+  import.meta.env.VITE_TECHNICIAN_ONBOARDING_CHANNEL === "h5",
+);
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {isOnboardingRoute(window.location.pathname, window.location.hash) ? (
-      import.meta.env.VITE_TECHNICIAN_ONBOARDING_CHANNEL === "h5" ? (
-        <TechnicianH5Onboarding />
-      ) : (
-        <TechnicianMiniappEntry />
-      )
-    ) : (
+    {entryRoute === "wechat-onboarding" ? (
+      <TechnicianH5Onboarding />
+    ) : entryRoute === "miniapp" ? (
+      <TechnicianMiniappEntry />
+    ) : entryRoute === "wechat-workbench" ? (
       <App />
+    ) : (
+      <PhoneEntry />
     )}
   </React.StrictMode>,
 );

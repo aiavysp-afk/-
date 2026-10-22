@@ -122,7 +122,7 @@ describe("username or phone credential fields", () => {
     });
     const html = renderToStaticMarkup(fields);
     expect(html).toContain("登录账号");
-    expect(html).toContain('placeholder="用户名或已绑定手机号"');
+    expect(html).toContain('placeholder="请输入已绑定手机号"');
     expect(html).toContain('type="text"');
     expect(html).toContain('value="admin"');
     expect(html).toContain('maxLength="32"');

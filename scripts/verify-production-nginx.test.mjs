@@ -79,6 +79,42 @@ test("single-popup customer login exposes only four exact resources and rejects 
   assert.doesNotMatch(config, /location (?:\^~ |~[^\n]*)?\/v1\/auth\/\s*\{/);
 });
 
+test("technician phone routes are exact, purpose-bound, unlogged and method restricted", () => {
+  const routes = [
+    ["/v1/auth/technician-phone/capabilities", "GET"],
+    ["/v1/auth/technician-phone/sms/request", "POST"],
+    ["/v1/auth/technician-phone/sms/confirm", "POST"],
+    ["/v1/technician/phone-onboarding/status", "GET"],
+    ["/v1/technician/phone-onboarding/register", "POST"],
+    ["/v1/technician/phone-onboarding/profile", "PATCH"],
+    ["/v1/technician/phone-onboarding/photos", "POST"],
+    ["/v1/technician/phone-onboarding/documents", "POST"],
+    ["/v1/technician/phone-onboarding/submit", "POST"],
+  ];
+  const declarations = config.split(/\r?\n/).map((line) => line.trim());
+  assert.deepEqual(
+    declarations.filter((line) => /^location .*\/v1\/(?:auth\/technician-phone|technician\/phone-onboarding)/.test(line)),
+    routes.map(([path]) => `location = ${path} {`),
+  );
+  for (const [path, method] of routes) {
+    const block = assertAllowedMethods(`= ${path}`, [method, "OPTIONS"]);
+    assert.ok(block.includes(`if ($request_method !~ ^(${method}|OPTIONS)$) { return 404; }`));
+    assert.ok(block.includes("access_log off;"));
+    assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
+    assert.ok(block.includes("proxy_set_header X-Real-IP $remote_addr;"));
+    assert.ok(block.includes("proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;"));
+    assert.doesNotMatch(block, /auth_request|proxy_set_header (?:Authorization|Origin|Cookie)|add_header|satisfy any/);
+  }
+  const deploy = readFileSync(new URL("./deploy-production-nginx.sh", import.meta.url), "utf8");
+  for (const [path] of routes) assert.ok(deploy.includes(`'location = ${path} {'`));
+  const probes = deploy.slice(deploy.indexOf("# Technician phone gateway probe helpers."), deploy.indexOf("# End technician phone gateway probe helpers."));
+  assert.ok(probes.includes("local expected=(200 400 400 401 401 401 401 401 401)"));
+  assert.ok(probes.includes("technician_phone_deadline=$((SECONDS + 45))"));
+  assert.ok(probes.includes("--data '{}'"));
+  assert.ok(deploy.includes("\nverify_technician_phone_gateway\n"));
+  assert.doesNotMatch(probes, /Authorization|Cookie|Bearer|--insecure|agreementsAccepted|challengeSecret/);
+});
+
 test("production nginx exposes staff pairing and the technician workbench without opening a catch-all API", () => {
   assertAllowedMethods("= /v1/auth/browser-login/config", ["GET", "OPTIONS"]);
   assertAllowedMethods(

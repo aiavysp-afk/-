@@ -16,7 +16,8 @@ export type StaffSetupChallenge = {
 };
 export type StaffSetupDraft = {
   code: string;
-  loginAlias: string;
+  /** Compatibility only; the current first-use form uses the bound phone. */
+  loginAlias?: string;
   password: string;
   confirmation: string;
 };
@@ -29,9 +30,10 @@ export function getStaffSetupDraftIssues(
     code: /^\d{6}$/.test(draft.code)
       ? null
       : "请填写手机实际收到的6位短信验证码。",
-    loginAlias: isValidStaffLoginAlias(draft.loginAlias)
-      ? null
-      : "首次用户名须4–32位、英文字母开头，仅含英文字母、数字、下划线或短横线；不能直接填写手机号或中文。",
+    loginAlias:
+      draft.loginAlias === undefined || isValidStaffLoginAlias(draft.loginAlias)
+        ? null
+        : "首次用户名须4–32位、英文字母开头，仅含英文字母、数字、下划线或短横线；不能直接填写手机号或中文。",
     password:
       draft.password.length >= 12 && draft.password.length <= 128
         ? null
@@ -89,7 +91,9 @@ export function buildStaffSetupConfirmation(
     challengeId: checked.challengeId,
     challengeSecret: checked.challengeSecret,
     code: draft.code,
-    loginAlias: normalizeStaffLoginAlias(draft.loginAlias),
+    ...(draft.loginAlias === undefined
+      ? {}
+      : { loginAlias: normalizeStaffLoginAlias(draft.loginAlias) }),
     password: draft.password,
   };
 }

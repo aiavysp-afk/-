@@ -42,6 +42,56 @@ export function customerSmsRouteAllowed(method: string, route: string) {
   );
 }
 
+export function technicianPhoneRouteAllowed(
+  method: string,
+  route: string,
+  workbench: boolean,
+) {
+  const path = route.replace(/^\/v1(?=\/)/, "").split("?")[0] ?? "";
+  const verb = method.toUpperCase();
+  if (
+    (path === "/auth/me" && verb === "GET") ||
+    (path === "/auth/logout" && verb === "POST")
+  )
+    return true;
+  if (path === "/technician/phone-onboarding/status") return verb === "GET";
+  if (path === "/technician/phone-onboarding/profile") return verb === "PATCH";
+  if (
+    /^\/technician\/phone-onboarding\/(?:register|photos|documents|submit)$/.test(
+      path,
+    )
+  )
+    return verb === "POST";
+  if (
+    /^\/technician\/workbench\/profile\/photos\/(?:[A-Za-z0-9-]+|:photoId)$/.test(
+      path,
+    )
+  )
+    return verb === "GET";
+  if (!workbench) return false;
+  if (path === "/technician/workbench/profile")
+    return ["GET", "PATCH"].includes(verb);
+  if (/^\/technician\/workbench\/profile\/(?:submit-review|photos)$/.test(path))
+    return verb === "POST";
+  if (/^\/technician\/workbench(?:\/earnings)?$/.test(path))
+    return verb === "GET";
+  if (path === "/technician/workbench/location") return verb === "POST";
+  if (
+    /^\/technician\/workbench\/orders\/(?:[A-Za-z0-9_-]+|:orderId)\/route$/.test(
+      path,
+    )
+  )
+    return verb === "GET";
+  if (
+    /^\/technician\/workbench\/orders\/(?:[A-Za-z0-9_-]+|:orderId)\/actions$/.test(
+      path,
+    )
+  )
+    return verb === "POST";
+  // Photo reads are needed to preview the applicant's unpublished owner image.
+  return false;
+}
+
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
   constructor(
@@ -57,6 +107,22 @@ export class SessionAuthGuard implements CanActivate {
     const match = authorization?.match(/^Bearer\s+([^\s]+)$/i);
     if (!match?.[1]) throw new UnauthorizedException("请先登录");
     request.authPrincipal = await this.auth.authenticate(match[1]);
+    if (
+      (request.authPrincipal.authChannel === "TECHNICIAN_PHONE" ||
+        request.authPrincipal.authProvider === "technician-sms") &&
+      (this.config?.get("TECHNICIAN_PHONE_LOGIN_ENABLED") !== "true" ||
+        !technicianPhoneRouteAllowed(
+          request.method,
+          request.routeOptions?.url ?? request.url,
+          this.config?.get("TECHNICIAN_PHONE_WORKBENCH_ENABLED") === "true" &&
+            request.authPrincipal.memberships.some(
+              (row) => row.role === "THERAPIST",
+            ),
+        ))
+    )
+      throw new ForbiddenException(
+        "此登录仅可用于本人技师入驻及已审核的本人服务",
+      );
     if (
       (request.authPrincipal.authProvider === "customer-sms" ||
         request.authPrincipal.authChannel === "CUSTOMER_SMS") &&

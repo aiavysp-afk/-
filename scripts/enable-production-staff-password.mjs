@@ -313,7 +313,7 @@ export function assertSetupMetadata(rows) {
     fail();
 }
 
-function productionRuntime(release, setup) {
+export function productionRuntime(release, setup) {
   const expected = `${BASE}/releases/${release}`;
   const ctl = (...args) =>
     execFileSync("/usr/bin/systemctl", args, {
@@ -541,9 +541,11 @@ export async function enableStaffPassword({ release, setup = false }, runtime) {
     lock.assertHeld();
     rt.checkContext();
     original = rt.readSecure(rt.envPath);
-    candidate = setup
-      ? prepareStaffPasswordSetupEnable(original.bytes)
-      : prepareStaffPasswordEnable(original.bytes);
+    candidate = rt.prepareCandidate
+      ? rt.prepareCandidate(original.bytes)
+      : setup
+        ? prepareStaffPasswordSetupEnable(original.bytes)
+        : prepareStaffPasswordEnable(original.bytes);
     await rt.validate(candidate.raw);
     await rt.assertAliasReady(candidate.raw);
     await verify(candidate.alreadyEnabled);

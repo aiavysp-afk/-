@@ -25,6 +25,7 @@ import type {
   TechnicianH5OnboardingStatus,
   TechnicianH5PhotoUpload,
   TechnicianH5ProfileUpdate,
+  TechnicianPhoneProfileDraft,
   TechnicianIdentityDocumentUpload,
   TechnicianProfile,
   TechnicianProfileUpdate,
@@ -34,6 +35,7 @@ import type {
   TechnicianReviewCreate,
   TechnicianOnboarding,
 } from "@zydj/contracts";
+import { TechnicianH5ProfileUpdateSchema } from "@zydj/contracts";
 import { AccessControlService } from "../auth/access-control.service.js";
 import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
@@ -117,6 +119,91 @@ export class TechniciansService {
 
   async register(principal: AuthPrincipal): Promise<TechnicianOnboarding> {
     this.assertWechatRegistration(principal);
+    await this.registerApplication(principal);
+    return this.onboarding(principal);
+  }
+
+  async phoneOnboardingStatus(principal: AuthPrincipal) {
+    this.assertPhoneApplicant(principal);
+    return this.applicationStatus(principal);
+  }
+  async registerPhone(principal: AuthPrincipal) {
+    this.assertPhoneApplicant(principal);
+    await this.registerApplication(principal);
+    return this.applicationStatus(principal);
+  }
+  async updatePhoneApplication(
+    principal: AuthPrincipal,
+    input: TechnicianPhoneProfileDraft,
+  ) {
+    this.assertPhoneApplicant(principal);
+    const current = await this.getH5ApplicationRecord(principal);
+    this.assertH5Editable(current);
+    const existing = this.toH5Application(current, []);
+    return this.updateApplicationProfile(
+      principal,
+      {
+        realName: input.realName ?? existing.realName ?? "",
+        serviceCity:
+          input.serviceCity ??
+          (existing.serviceCity ||
+            this.config?.get("SERVICE_CITY", { infer: true }) ||
+            ""),
+        serviceAreas: input.serviceAreas ?? existing.serviceAreas,
+        availableTimeSlots:
+          input.availableTimeSlots ?? existing.availableTimeSlots,
+        bio: input.bio ?? existing.bio,
+        serviceIds: input.serviceIds ?? existing.serviceIds,
+      },
+      current.version ?? 0,
+    );
+  }
+  async uploadPhoneApplicationPhoto(
+    principal: AuthPrincipal,
+    input: TechnicianH5PhotoUpload,
+  ) {
+    this.assertPhoneApplicant(principal);
+    return this.uploadApplicationPhoto(principal, input);
+  }
+  async uploadPhoneIdentityDocument(
+    principal: AuthPrincipal,
+    input: TechnicianIdentityDocumentUpload,
+  ) {
+    this.assertPhoneApplicant(principal);
+    return this.uploadApplicationIdentityDocument(principal, input);
+  }
+  async submitPhoneApplication(principal: AuthPrincipal) {
+    this.assertPhoneApplicant(principal);
+    return this.submitApplication(principal);
+  }
+
+  private assertPhoneApplicant(principal: AuthPrincipal) {
+    if (
+      this.config?.get("TECHNICIAN_PHONE_LOGIN_ENABLED", { infer: true }) !==
+        "true" ||
+      principal.authChannel !== "TECHNICIAN_PHONE" ||
+      principal.authProvider !== "technician-sms" ||
+      !principal.phoneVerified
+    )
+      throw new ForbiddenException("请使用本人手机号验证码登录技师入驻");
+  }
+  // Only explicit phone wrappers and shared owner helpers use this assertion.
+  // Native/H5 controllers retain their stricter channel-specific assertions.
+  private assertApplicationRegistration(
+    principal: AuthPrincipal,
+    requirePhone = true,
+  ) {
+    if (
+      principal.authChannel === "TECHNICIAN_PHONE" ||
+      principal.authProvider === "technician-sms"
+    )
+      this.assertPhoneApplicant(principal);
+    else this.assertWechatRegistration(principal, requirePhone);
+  }
+
+  private async registerApplication(principal: AuthPrincipal): Promise<void> {
+    this.assertApplicationRegistration(principal);
+    const phoneApplicant = principal.authChannel === "TECHNICIAN_PHONE";
     const identityProvider =
       principal.authChannel === "WECHAT_H5"
         ? IdentityProvider.WECHAT_H5
@@ -129,6 +216,7 @@ export class TechniciansService {
           status: true,
           phoneEncrypted: true,
           phoneVerifiedAt: true,
+          customerPhoneIdentity: { select: { phoneHash: true } },
           identities: {
             where: { provider: identityProvider },
             select: { id: true, unionIdHash: true },
@@ -140,8 +228,11 @@ export class TechniciansService {
         user.status !== "ACTIVE" ||
         !user.phoneEncrypted ||
         !user.phoneVerifiedAt ||
-        !user.identities.length ||
-        (identityProvider === IdentityProvider.WECHAT_H5 &&
+        (phoneApplicant
+          ? !this.validPhoneBinding(user)
+          : !user.identities.length) ||
+        (!phoneApplicant &&
+          identityProvider === IdentityProvider.WECHAT_H5 &&
           !user.identities[0]?.unionIdHash)
       ) {
         throw new ForbiddenException("请完成本人微信和手机号验证后再入驻");
@@ -149,7 +240,13 @@ export class TechniciansService {
       const existing = await tx.technicianProfile.findUnique({
         where: { technicianId: principal.userId },
       });
-      if (existing) return;
+      if (existing) {
+        if (phoneApplicant && !existing.selfRegistered)
+          throw new ConflictException(
+            "已有平台登记资料，请联系管理后台核验后继续，原资料不会覆盖",
+          );
+        return;
+      }
       // The applicant cannot select a tenant or grant themselves membership.
       const organizations = await tx.organization.findMany({
         where: { services: { some: { published: true } } },
@@ -192,7 +289,31 @@ export class TechniciansService {
         },
       });
     });
-    return this.onboarding(principal);
+  }
+
+  private validPhoneBinding(user: {
+    phoneEncrypted: string | null;
+    phoneVerifiedAt: Date | null;
+    customerPhoneIdentity: { phoneHash: string } | null;
+  }) {
+    if (
+      !this.crypto ||
+      !user.phoneEncrypted ||
+      !user.phoneVerifiedAt ||
+      !user.customerPhoneIdentity
+    )
+      return false;
+    try {
+      return (
+        user.customerPhoneIdentity.phoneHash ===
+        this.crypto.hashPhoneVerification(
+          "phone",
+          this.crypto.decrypt(user.phoneEncrypted),
+        )
+      );
+    } catch {
+      return false;
+    }
   }
 
   async registerH5(
@@ -218,7 +339,7 @@ export class TechniciansService {
   private async applicationStatus(
     principal: AuthPrincipal,
   ): Promise<TechnicianH5OnboardingStatus> {
-    this.assertWechatRegistration(principal, false);
+    this.assertApplicationRegistration(principal, false);
     if (!this.crypto)
       throw new InternalServerErrorException("身份加密服务未就绪");
     const [user, profile] = await Promise.all([
@@ -284,11 +405,17 @@ export class TechniciansService {
   private async updateApplicationProfile(
     principal: AuthPrincipal,
     input: TechnicianH5ProfileUpdate,
+    expectedVersion?: number,
   ): Promise<TechnicianH5OnboardingStatus> {
-    this.assertWechatRegistration(principal);
+    this.assertApplicationRegistration(principal);
     if (!this.crypto)
       throw new InternalServerErrorException("身份加密服务未就绪");
     const current = await this.getH5ApplicationRecord(principal);
+    if (
+      expectedVersion !== undefined &&
+      expectedVersion !== (current.version ?? 0)
+    )
+      throw new ConflictException("入驻资料已变化，请重新读取后再保存");
     this.assertH5Editable(current);
     const expectedCity = this.config?.get("SERVICE_CITY", { infer: true });
     if (expectedCity && input.serviceCity !== expectedCity) {
@@ -330,10 +457,12 @@ export class TechniciansService {
           version: locked.version,
         },
         data: {
-          realNameEncrypted: this.crypto!.encryptScoped(
-            this.realNamePurpose(current.id),
-            input.realName,
-          ),
+          realNameEncrypted: input.realName
+            ? this.crypto!.encryptScoped(
+                this.realNamePurpose(current.id),
+                input.realName,
+              )
+            : null,
           serviceCity: input.serviceCity,
           serviceAreas: input.serviceAreas,
           availableTimeSlots: input.availableTimeSlots,
@@ -396,7 +525,7 @@ export class TechniciansService {
     principal: AuthPrincipal,
     input: TechnicianH5PhotoUpload,
   ): Promise<TechnicianH5OnboardingStatus> {
-    this.assertWechatRegistration(principal);
+    this.assertApplicationRegistration(principal);
     const current = await this.getH5ApplicationRecord(principal);
     this.assertH5Editable(current);
     await this.savePhoto(
@@ -429,7 +558,7 @@ export class TechniciansService {
     principal: AuthPrincipal,
     input: TechnicianIdentityDocumentUpload,
   ): Promise<TechnicianH5OnboardingStatus> {
-    this.assertWechatRegistration(principal);
+    this.assertApplicationRegistration(principal);
     if (!this.photos || !this.crypto)
       throw new InternalServerErrorException("证件处理服务未就绪");
     const current = await this.getH5ApplicationRecord(principal);
@@ -524,7 +653,7 @@ export class TechniciansService {
   private async submitApplication(
     principal: AuthPrincipal,
   ): Promise<TechnicianH5OnboardingStatus> {
-    this.assertWechatRegistration(principal);
+    this.assertApplicationRegistration(principal);
     const current = await this.getH5ApplicationRecord(principal);
     if (current.status === TechnicianProfileStatus.PENDING_REVIEW) {
       return this.applicationStatus(principal);
@@ -1390,7 +1519,7 @@ export class TechniciansService {
   private async getOwnMembership(principal: AuthPrincipal) {
     const membership = await this.findOwnActiveMembership(principal);
     if (!membership) {
-      this.assertWechatRegistration(principal);
+      this.assertApplicationRegistration(principal);
       const application = await this.prisma.technicianProfile.findFirst({
         where: {
           technicianId: principal.userId,
@@ -1546,6 +1675,7 @@ export class TechniciansService {
             status: true,
             phoneEncrypted: true,
             phoneVerifiedAt: true,
+            customerPhoneIdentity: { select: { phoneHash: true } },
             identities: {
               where: {
                 provider:
@@ -1562,7 +1692,9 @@ export class TechniciansService {
           user.status !== "ACTIVE" ||
           !user.phoneEncrypted ||
           !user.phoneVerifiedAt ||
-          !user.identities.length ||
+          (current.registrationChannel === "TECHNICIAN_PHONE"
+            ? !this.validPhoneBinding(user)
+            : !user.identities.length) ||
           (current.registrationChannel === "WECHAT_H5" &&
             !user.identities[0]?.unionIdHash)
         ) {
@@ -1712,6 +1844,8 @@ export class TechniciansService {
     if (
       profile.registrationChannel === "WECHAT_H5" ||
       (profile.selfRegistered &&
+        profile.registrationChannel === "TECHNICIAN_PHONE") ||
+      (profile.selfRegistered &&
         profile.registrationChannel === "WECHAT_MINIAPP")
     ) {
       await this.assertApplicationComplete(profile);
@@ -1719,6 +1853,22 @@ export class TechniciansService {
   }
 
   private async assertApplicationComplete(profile: ProfileRecord) {
+    if (profile.registrationChannel === "TECHNICIAN_PHONE") {
+      const privateView = this.toH5Application(profile, []);
+      if (
+        !TechnicianH5ProfileUpdateSchema.safeParse({
+          realName: privateView.realName,
+          serviceCity: privateView.serviceCity,
+          serviceAreas: privateView.serviceAreas,
+          availableTimeSlots: privateView.availableTimeSlots,
+          bio: privateView.bio,
+          serviceIds: privateView.serviceIds,
+        }).success
+      )
+        throw new ForbiddenException(
+          "请填写完整姓名、城市、区域、时段、简介和擅长项目后提交审核",
+        );
+    }
     const serviceIds = this.stringArray(profile.serviceIds ?? [], "擅长项目");
     const documents = await this.prisma.technicianIdentityDocument.findMany({
       where: { profileId: profile.id },

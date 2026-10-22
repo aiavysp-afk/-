@@ -529,6 +529,26 @@ model CustomerSmsLoginChallenge {
   @@index([expiresAt])
 }
 
+// Purpose-isolated from customer and administrator verification challenges.
+model TechnicianPhoneLoginChallenge {
+  id                String    @id
+  phoneHash         String
+  phoneEncrypted    String
+  requestIpHash     String
+  secretHash        String
+  codeHash          String
+  status            String    @default("PENDING")
+  attempts          Int       @default(0)
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  consumedAt        DateTime?
+  providerRequestId String?
+  providerBizId     String?
+
+  @@index([phoneHash, createdAt])
+  @@index([expiresAt])
+}
+
 model StaffPasswordCredential {
   userId         String    @id
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)

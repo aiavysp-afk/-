@@ -153,7 +153,7 @@ export function StaffPasswordCredentialsFields({
   return (
     <>
       <label>
-        登录账号
+        登录账号（绑定手机号）
         <input
           type="text"
           inputMode="text"
@@ -164,7 +164,7 @@ export function StaffPasswordCredentialsFields({
           maxLength={32}
           aria-describedby="staff-password-format"
           value={account}
-          placeholder="用户名或已绑定手机号"
+          placeholder="请输入已绑定手机号"
           onChange={(event) => onAccountChange(event.target.value)}
         />
       </label>
@@ -252,9 +252,9 @@ export function BrowserLogin({
     : smsRetrySeconds > 0
       ? `请等待 ${smsRetrySeconds} 秒后再申请短信验证码。`
       : !account.trim()
-        ? "请先输入本人设置的用户名或已绑定的11位手机号。"
+        ? "请先输入本人已绑定的11位手机号；已有用户名也可登录。"
         : !isValidStaffLoginAccount(account)
-          ? "账号格式不正确，请使用已绑定的11位手机号或符合下方规则的用户名。"
+          ? "账号格式不正确，请填写11位绑定手机号；已有用户名请核对原设置内容。"
           : password.length < 12
             ? "密码至少12位；六位短信验证码或验证器动态码不能当作登录密码。"
             : password.length > 128
@@ -530,7 +530,7 @@ export function BrowserLogin({
           <span className="eyebrow">SECURE SIGN IN</span>
           <h2>登录管理后台</h2>
           <p>
-            仅限已授权工作人员。使用账号密码登录，并通过本人手机短信完成二次验证。
+            仅限已授权工作人员。使用已绑定手机号和密码登录，再填写手机收到的短信验证码。
           </p>
         </div>
       </div>
@@ -547,7 +547,7 @@ export function BrowserLogin({
             <strong>
               账号密码登录 <em>默认方式</em>
             </strong>
-            <span>用户名或手机号 + 本人手机短信</span>
+            <span>绑定手机号和密码 + 本人手机短信</span>
           </button>
           <button
             role="tab"
@@ -589,7 +589,7 @@ export function BrowserLogin({
           <aside className="environment-banner" role="note">
             <strong>尚未设置过登录密码？</strong>
             <p>
-              已授权工作人员可用本人已绑定手机号验证后，手动首次设置用户名和密码。
+              本人已绑定的手机号就是登录账号，首次使用只需验证手机号并设置密码，无需另起用户名。
               不注册新账号、不重置已有密码、不增加权限。
             </p>
             <button
@@ -719,6 +719,7 @@ export function BrowserLogin({
               <button
                 type="submit"
                 className="primary-action"
+                aria-busy={busy}
                 disabled={busy || !/^\d{6}$/.test(smsCode)}
               >
                 验证并登录
@@ -750,16 +751,17 @@ export function BrowserLogin({
               onPasswordChange={setPassword}
             />
             <p id="staff-password-format">
-              账号可填写已绑定的11位手机号，或本人设置的4–32位用户名（字母开头，仅英文字母、数字、下划线或短横线）。
+              登录账号默认使用已绑定的11位手机号；已有用户名仍可继续使用，无需重新设置。
               密码必须为12–128个字符，不是六位短信验证码或验证器动态码。
             </p>
             <p>
-              可使用本人设置的用户名或原已绑定手机号登录；密码验证后仍需向本人绑定手机发送短信二次验证。
+              密码验证后向本人绑定手机发送短信二次验证。
               尚未设置密码的已授权工作人员可使用上方首次设置入口；修改已有密码仍须在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
             </p>
             <button
               type="submit"
               className="primary-action"
+              aria-busy={busy}
               aria-describedby={
                 passwordDisabledReason
                   ? "staff-password-submit-reason"

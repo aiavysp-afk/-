@@ -1080,6 +1080,7 @@ function AdminTechnicianProfilePanel({
                     {
                       WECHAT_H5: "微信 H5 入驻",
                       WECHAT_MINIAPP: "微信小程序入驻",
+                      TECHNICIAN_PHONE: "技师手机号入驻",
                       LEGACY: "历史资料",
                     }[application.registrationChannel]
                   }

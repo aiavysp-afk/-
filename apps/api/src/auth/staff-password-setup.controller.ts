@@ -64,7 +64,8 @@ export class StaffPasswordSetupController {
               return z.NEVER;
             }
             return alias;
-          }),
+          })
+          .optional(),
         password: z.string().min(12).max(128).refine(isStaffPasswordValid),
       })
       .strict()

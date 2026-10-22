@@ -227,8 +227,13 @@ form.login-form {
 .primary-action:disabled,
 .ghost-action:disabled,
 .danger-action:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.55;
+}
+.primary-action:disabled[aria-busy="true"],
+.ghost-action:disabled[aria-busy="true"],
+.danger-action:disabled[aria-busy="true"] {
+  cursor: wait;
 }
 .catalog-gate {
   display: flex;

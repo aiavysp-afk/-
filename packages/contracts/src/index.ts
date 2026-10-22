@@ -707,6 +707,40 @@ export const TechnicianH5ProfileUpdateSchema = z
   })
   .strict();
 
+// Saving an incomplete phone-application draft is distinct from submitting it.
+// Validation of every required field remains mandatory at explicit submission.
+export const TechnicianPhoneProfileDraftSchema =
+  TechnicianH5ProfileUpdateSchema.partial()
+    .extend({
+      realName: z
+        .string()
+        .trim()
+        .max(40)
+        .refine((value) => !/[\u0000-\u001f\u007f]/.test(value))
+        .optional(),
+      serviceAreas: z
+        .array(z.string().trim().min(2).max(40))
+        .max(20)
+        .refine((values) => new Set(values).size === values.length)
+        .optional(),
+      availableTimeSlots: z
+        .array(TechnicianH5TimeSlotSchema)
+        .max(28)
+        .refine((values) => new Set(values).size === values.length)
+        .optional(),
+      bio: z.string().trim().max(2_000).optional(),
+      serviceIds: z
+        .array(z.string().trim().min(1).max(128))
+        .max(20)
+        .refine((values) => new Set(values).size === values.length)
+        .optional(),
+    })
+    .strict()
+    .refine((value) => Object.keys(value).length > 0, "请至少保存一项资料");
+export type TechnicianPhoneProfileDraft = z.infer<
+  typeof TechnicianPhoneProfileDraftSchema
+>;
+
 export const TechnicianH5PhotoUploadSchema = z
   .object({
     kind: z.enum(["AVATAR", "GALLERY"]),
@@ -759,13 +793,54 @@ export const TechnicianH5OnboardingStatusSchema = z.object({
   application: TechnicianH5ApplicationSchema.nullable(),
 });
 
+export const TechnicianPhoneLoginCapabilitiesSchema = z.object({
+  enabled: z.boolean(),
+  workbenchEnabled: z.boolean(),
+});
+export const TechnicianPhoneSmsRequestSchema = z
+  .object({
+    phone: z.string().regex(/^1[3-9]\d{9}$/),
+    agreementsAccepted: z.literal(true),
+  })
+  .strict();
+export const TechnicianPhoneSmsConfirmSchema =
+  TechnicianPhoneSmsRequestSchema.extend({
+    challengeId: z.string().uuid(),
+    challengeSecret: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+    code: z.string().regex(/^\d{6}$/),
+  }).strict();
+export const TechnicianPhoneSmsRequestResultSchema = z.object({
+  challengeId: z.string().uuid(),
+  challengeSecret: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  maskedPhone: z.string(),
+  expiresAt: IsoDateTimeSchema,
+  retryAfterSeconds: z.number().int().positive(),
+});
+export type TechnicianPhoneLoginCapabilities = z.infer<
+  typeof TechnicianPhoneLoginCapabilitiesSchema
+>;
+export type TechnicianPhoneSmsRequest = z.infer<
+  typeof TechnicianPhoneSmsRequestSchema
+>;
+export type TechnicianPhoneSmsConfirm = z.infer<
+  typeof TechnicianPhoneSmsConfirmSchema
+>;
+export type TechnicianPhoneSmsRequestResult = z.infer<
+  typeof TechnicianPhoneSmsRequestResultSchema
+>;
+
 export const TechnicianApplicationSchema = TechnicianProfileSchema.extend({
   realName: z.string().nullable(),
   serviceCity: z.string(),
   serviceAreas: z.array(z.string()),
   availableTimeSlots: z.array(TechnicianH5TimeSlotSchema),
   serviceIds: z.array(z.string()),
-  registrationChannel: z.enum(["LEGACY", "WECHAT_MINIAPP", "WECHAT_H5"]),
+  registrationChannel: z.enum([
+    "LEGACY",
+    "WECHAT_MINIAPP",
+    "WECHAT_H5",
+    "TECHNICIAN_PHONE",
+  ]),
   identityDocuments: z.object({
     idFrontUploaded: z.boolean(),
     idBackUploaded: z.boolean(),

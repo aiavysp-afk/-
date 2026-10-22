@@ -64,6 +64,8 @@ describe("production safety gate", () => {
     expect(env.SMS_SEND_ENABLED).toBe("false");
     expect(env.CUSTOMER_SMS_LOGIN_ENABLED).toBe("false");
     expect(env.STAFF_PASSWORD_SETUP_ENABLED).toBe("false");
+    expect(env.TECHNICIAN_PHONE_LOGIN_ENABLED).toBe("false");
+    expect(env.TECHNICIAN_PHONE_WORKBENCH_ENABLED).toBe("false");
     expect(() =>
       validateEnv({ STAFF_PASSWORD_SETUP_ENABLED: "yes" }),
     ).toThrow();

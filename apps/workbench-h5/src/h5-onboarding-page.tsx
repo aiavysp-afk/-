@@ -34,6 +34,7 @@ import {
   type H5OnboardingStatus,
 } from "./h5-onboarding";
 import { prepareTechnicianPhoto } from "./technician-photo";
+import { technicianRequest } from "./phone-onboarding";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -54,7 +55,6 @@ const STANDARD_SLOTS = DAYS.flatMap(([day, label]) => [
   { value: `${day}:18:00-22:00`, label: `${label} 18:00-22:00` },
 ]);
 
-type ApiEnvelope<T> = { data: T; message?: string };
 type UploadSelection = {
   name: string;
   base64: string;
@@ -67,26 +67,7 @@ function readStoredToken() {
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token = "") {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    credentials: "omit",
-    redirect: "error",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
-  const body = (await response.json().catch(() => ({}))) as ApiEnvelope<T> & {
-    message?: string;
-  };
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(body.message || `请求失败（${response.status}）`),
-      { status: response.status },
-    );
-  }
-  return body.data;
+  return technicianRequest<T>(path, options, token);
 }
 
 function OnboardingHeader({ step }: { step: number }) {
@@ -582,18 +563,33 @@ export function OnboardingProfileFields({
   );
 }
 
-function ProfileForm({
+export function ProfileForm({
   token,
   status,
   services,
   onUpdated,
   onExpired,
+  paths = PATHS,
+  onReloadCatalog,
+  catalogError = "",
+  allowDraftSave = false,
 }: {
   token: string;
   status: H5OnboardingStatus;
   services: H5CatalogService[];
   onUpdated: (status: H5OnboardingStatus) => void;
   onExpired: () => void;
+  paths?:
+    | Pick<typeof PATHS, "profile" | "photos" | "documents" | "submit">
+    | {
+        profile: string;
+        photos: string;
+        documents: string;
+        submit: string;
+      };
+  onReloadCatalog?: () => void;
+  catalogError?: string;
+  allowDraftSave?: boolean;
 }) {
   const application = status.application;
   const [draft, setDraft] = useState(() => draftFromApplication(application));
@@ -605,6 +601,21 @@ function ProfileForm({
   const imagesRef = useRef(images);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const busyRef = useRef(false);
+  const imageSequence = useRef<Record<string, number>>({});
+  const pendingReads = useRef(0);
+  const [preparingPhotos, setPreparingPhotos] = useState(0);
+  const [photoConsent, setPhotoConsent] = useState(false);
+  const mounted = useRef(true);
+  const operation = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      operation.current++;
+    };
+  }, []);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -622,9 +633,21 @@ function ProfileForm({
     kind: H5OnboardingPhotoKind | H5OnboardingDocumentKind,
     file: File,
   ) {
+    if (busyRef.current) return;
+    const attempt = operation.current;
+    const sequence = (imageSequence.current[kind] ?? 0) + 1;
+    imageSequence.current[kind] = sequence;
+    pendingReads.current++;
+    setPreparingPhotos(pendingReads.current);
     setError("");
     try {
       const base64 = await prepareTechnicianPhoto(file);
+      if (
+        !mounted.current ||
+        attempt !== operation.current ||
+        sequence !== imageSequence.current[kind]
+      )
+        return;
       setImages((current) => {
         const previous = current[kind];
         if (previous) URL.revokeObjectURL(previous.previewUrl);
@@ -638,11 +661,22 @@ function ProfileForm({
         };
       });
     } catch (caught) {
+      if (
+        !mounted.current ||
+        attempt !== operation.current ||
+        sequence !== imageSequence.current[kind]
+      )
+        return;
       setError(caught instanceof Error ? caught.message : "图片读取失败");
+    } finally {
+      pendingReads.current--;
+      if (mounted.current && attempt === operation.current)
+        setPreparingPhotos(pendingReads.current);
     }
   }
 
   async function submit() {
+    if (busyRef.current || pendingReads.current > 0) return;
     const draftError = validateOnboardingDraft(draft);
     if (draftError) return setError(draftError);
     const hasAvatar = Boolean(images.AVATAR || application?.avatarUrl);
@@ -651,11 +685,17 @@ function ProfileForm({
     if (!hasAvatar) return setError("请上传一张本人形象照");
     if (!hasFront || !hasBack)
       return setError("请完整上传身份证正面和反面照片");
+    if (images.AVATAR && !photoConsent)
+      return setError("请本人确认形象照用于审核及审核发布后公开展示");
+    const attempt = ++operation.current;
+    const current = () => mounted.current && operation.current === attempt;
+    busyRef.current = true;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await request<H5OnboardingStatus>(
-        PATHS.profile,
+        paths.profile,
         {
           method: "PATCH",
           body: JSON.stringify({
@@ -666,9 +706,10 @@ function ProfileForm({
         },
         token,
       );
+      if (!current()) return;
       if (images.AVATAR) {
         await request<H5OnboardingStatus>(
-          PATHS.photos,
+          paths.photos,
           {
             method: "POST",
             body: JSON.stringify({
@@ -679,31 +720,80 @@ function ProfileForm({
           },
           token,
         );
+        if (!current()) return;
       }
       for (const kind of ["ID_FRONT", "ID_BACK"] as const) {
         const image = images[kind];
         if (image)
           await request<H5OnboardingStatus>(
-            PATHS.documents,
+            paths.documents,
             {
               method: "POST",
               body: JSON.stringify({ kind, contentBase64: image.base64 }),
             },
             token,
           );
+        if (!current()) return;
       }
       const next = await request<H5OnboardingStatus>(
-        PATHS.submit,
+        paths.submit,
         { method: "POST", body: "{}" },
         token,
       );
+      if (!current()) return;
       onUpdated(next);
     } catch (caught) {
+      if (!current()) return;
       const failure = caught as Error & { status?: number };
-      if (failure.status === 401) onExpired();
+      if (failure.status === 401 || (allowDraftSave && failure.status === 403))
+        onExpired();
       setError(failure.message || "资料提交失败，请稍后重试");
     } finally {
-      setBusy(false);
+      if (current()) {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
+  }
+
+  async function saveDraft() {
+    if (busyRef.current || pendingReads.current > 0 || !allowDraftSave) return;
+    const attempt = ++operation.current;
+    const current = () => mounted.current && operation.current === attempt;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await request<H5OnboardingStatus>(
+        paths.profile,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            ...draft,
+            ...(draft.serviceCity.trim()
+              ? { serviceCity: draft.serviceCity.trim() }
+              : { serviceCity: undefined }),
+            serviceAreas: normalizeList(draft.serviceAreas),
+            availableTimeSlots: normalizeList(draft.availableTimeSlots),
+          }),
+        },
+        token,
+      );
+      if (current())
+        setNotice(
+          "文字草稿已保存到后台，尚未提交审核。已选择但未提交的照片仅保留在本页，请完成后点击提交后台审核。",
+        );
+    } catch (caught) {
+      if (!current()) return;
+      const failure = caught as Error & { status?: number };
+      if ([401, 403].includes(failure.status ?? 0)) onExpired();
+      else setError(failure.message || "草稿保存失败，请重试");
+    } finally {
+      if (current()) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -727,36 +817,74 @@ function ProfileForm({
           {application.rejectionReason}
         </p>
       )}
-      <OnboardingProfileFields
-        draft={draft}
-        services={services}
-        onChange={setDraft}
-      />
-      <section className="onboarding-upload-block">
-        <h3>照片与身份证明</h3>
-        <p>支持直接拍照或从相册选择 JPG/PNG 图片。</p>
-        <ImagePicker
-          label="本人形象照"
-          description="用于后台审核；审核发布后展示在技师卡片与详情页。"
-          selected={images.AVATAR}
-          uploaded={Boolean(application?.avatarUrl)}
-          onSelect={(file) => selectImage("AVATAR", file)}
+      <fieldset className="onboarding-editable" disabled={busy}>
+        <OnboardingProfileFields
+          draft={draft}
+          services={services}
+          onChange={setDraft}
         />
-        <ImagePicker
-          label="身份证正面"
-          description="仅限实名认证与资质审核，不对客户公开。"
-          selected={images.ID_FRONT}
-          uploaded={application?.hasIdFront}
-          onSelect={(file) => selectImage("ID_FRONT", file)}
-        />
-        <ImagePicker
-          label="身份证反面"
-          description="仅限实名认证与资质审核，不对客户公开。"
-          selected={images.ID_BACK}
-          uploaded={application?.hasIdBack}
-          onSelect={(file) => selectImage("ID_BACK", file)}
-        />
-      </section>
+        {allowDraftSave && (
+          <button
+            type="button"
+            className="onboarding-secondary"
+            disabled={busy || preparingPhotos > 0}
+            onClick={() => void saveDraft()}
+          >
+            {busy ? "正在保存…" : "保存文字草稿，稍后继续"}
+          </button>
+        )}
+        {notice && (
+          <p className="onboarding-hint" role="status">
+            {notice}
+          </p>
+        )}
+        {catalogError && (
+          <p className="onboarding-error" role="alert">
+            {catalogError}
+          </p>
+        )}
+        {onReloadCatalog && !services.length && (
+          <button className="onboarding-secondary" onClick={onReloadCatalog}>
+            重新读取擅长项目
+          </button>
+        )}
+        <section className="onboarding-upload-block">
+          <h3>照片与身份证明</h3>
+          <p>支持直接拍照或从相册选择 JPG/PNG 图片。</p>
+          <ImagePicker
+            label="本人形象照"
+            description="用于后台审核；审核发布后展示在技师卡片与详情页。"
+            selected={images.AVATAR}
+            uploaded={Boolean(application?.avatarUrl)}
+            onSelect={(file) => selectImage("AVATAR", file)}
+          />
+          <ImagePicker
+            label="身份证正面"
+            description="仅限实名认证与资质审核，不对客户公开。"
+            selected={images.ID_FRONT}
+            uploaded={application?.hasIdFront}
+            onSelect={(file) => selectImage("ID_FRONT", file)}
+          />
+          <ImagePicker
+            label="身份证反面"
+            description="仅限实名认证与资质审核，不对客户公开。"
+            selected={images.ID_BACK}
+            uploaded={application?.hasIdBack}
+            onSelect={(file) => selectImage("ID_BACK", file)}
+          />
+        </section>
+        <label className="onboarding-agreements">
+          <input
+            type="checkbox"
+            checked={photoConsent}
+            disabled={busy}
+            onChange={(event) => setPhotoConsent(event.target.checked)}
+          />
+          <span>
+            本人同意形象照用于平台审核，并仅在审核发布后展示；身份证照片仅用于入驻审核，不对客户公开。
+          </span>
+        </label>
+      </fieldset>
       {error && (
         <p className="onboarding-error" role="alert">
           {error}
@@ -764,11 +892,15 @@ function ProfileForm({
       )}
       <button
         className="onboarding-primary"
-        disabled={busy || !services.length}
+        disabled={busy || preparingPhotos > 0 || !services.length}
         onClick={() => void submit()}
       >
         {busy && <LoaderCircle className="spinning" />}
-        {busy ? "正在安全提交…" : "提交后台审核"}
+        {busy
+          ? "正在安全提交…"
+          : preparingPhotos > 0
+            ? "正在处理照片…"
+            : "提交后台审核"}
       </button>
       <p className="onboarding-consent">
         身份证件仅用于入驻资格审核并按权限隔离保存。审核前不会对客户公开您的资料。
@@ -777,12 +909,14 @@ function ProfileForm({
   );
 }
 
-function ReviewStatus({
+export function ReviewStatus({
   status,
   onRefresh,
+  phoneOnly = false,
 }: {
   status: H5OnboardingStatus;
   onRefresh: () => Promise<void>;
+  phoneOnly?: boolean;
 }) {
   const application = status.application;
   return (
@@ -791,13 +925,17 @@ function ReviewStatus({
         <CheckCircle2 />
         <small>资料已成功提交</small>
         <h2>后台审核中</h2>
-        <p>无需重复提交。再次微信扫码进入本页面，也会直接显示当前审核进度。</p>
+        <p>
+          {phoneOnly
+            ? "无需重复提交。再次使用同一手机号验证，即可查看当前审核进度。"
+            : "无需重复提交。再次微信扫码进入本页面，也会直接显示当前审核进度。"}
+        </p>
       </section>
       <ol className="review-timeline">
         <li className="complete">
           <i />
           <div>
-            <b>微信及手机号验证</b>
+            <b>{phoneOnly ? "本人手机号验证" : "微信及手机号验证"}</b>
             <span>{status.phoneMasked || "已完成"}</span>
           </div>
         </li>
@@ -823,7 +961,11 @@ function ReviewStatus({
           <i />
           <div>
             <b>审核通过</b>
-            <span>同一微信再次进入即可登录技师端</span>
+            <span>
+              {phoneOnly
+                ? "同一手机号登录后，可按平台开通状态进入技师端"
+                : "同一微信再次进入即可登录技师端"}
+            </span>
           </div>
         </li>
       </ol>

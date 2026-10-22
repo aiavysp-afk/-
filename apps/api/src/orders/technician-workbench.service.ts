@@ -9,6 +9,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { OrderStatus, UserRole } from "@prisma/client";
+import { ConfigService } from "@nestjs/config";
+import type { AppEnv } from "../config/env.js";
 import type {
   TechnicianEarnings,
   TechnicianOrderAction,
@@ -77,17 +79,79 @@ export class TechnicianWorkbenchService {
     private readonly stateMachine: OrderStateMachine,
     @Optional() private readonly maps?: AmapClient,
     @Optional() private readonly crypto?: AuthCryptoService,
+    @Optional() private readonly config?: ConfigService<AppEnv, true>,
   ) {}
 
-  private async assertOwnAccess(principal: AuthPrincipal, organizationId: string) {
-    if (principal.authChannel === "WECHAT_MINIAPP" && principal.authProvider === "wechat" && principal.phoneVerified) {
-      const member = principal.memberships.some((row) => row.role === UserRole.THERAPIST && row.organizationId === organizationId);
-      if (!member) throw new ForbiddenException("当前账号不是已审核技师");
+  private async assertOwnAccess(
+    principal: AuthPrincipal,
+    organizationId: string,
+  ) {
+    if (
+      principal.authChannel === "TECHNICIAN_PHONE" ||
+      principal.authProvider === "technician-sms"
+    ) {
+      if (
+        principal.authChannel !== "TECHNICIAN_PHONE" ||
+        principal.authProvider !== "technician-sms" ||
+        !principal.phoneVerified ||
+        this.config?.get("TECHNICIAN_PHONE_LOGIN_ENABLED", { infer: true }) !==
+          "true" ||
+        this.config?.get("TECHNICIAN_PHONE_WORKBENCH_ENABLED", {
+          infer: true,
+        }) !== "true" ||
+        !principal.memberships.some(
+          (row) =>
+            row.role === UserRole.THERAPIST &&
+            row.organizationId === organizationId,
+        )
+      )
+        throw new ForbiddenException(
+          "技师手机号工作台尚未开放或本人身份不可用",
+        );
       const approved = await this.prisma.technicianProfile.findFirst({
-        where: { technicianId: principal.userId, organizationId, status: { in: ["APPROVED", "PUBLISHED"] }, technician: { status: "ACTIVE" } },
+        where: {
+          technicianId: principal.userId,
+          organizationId,
+          status: { in: ["APPROVED", "PUBLISHED"] },
+          technician: {
+            status: "ACTIVE",
+            memberships: {
+              some: {
+                role: UserRole.THERAPIST,
+                organizationId,
+                status: "ACTIVE",
+              },
+            },
+          },
+        },
         select: { id: true },
       });
-      if (!approved) throw new ForbiddenException("请等待后台审核通过后进入工作台");
+      if (!approved)
+        throw new ForbiddenException("请等待后台审核通过后进入工作台");
+      return;
+    }
+    if (
+      principal.authChannel === "WECHAT_MINIAPP" &&
+      principal.authProvider === "wechat" &&
+      principal.phoneVerified
+    ) {
+      const member = principal.memberships.some(
+        (row) =>
+          row.role === UserRole.THERAPIST &&
+          row.organizationId === organizationId,
+      );
+      if (!member) throw new ForbiddenException("当前账号不是已审核技师");
+      const approved = await this.prisma.technicianProfile.findFirst({
+        where: {
+          technicianId: principal.userId,
+          organizationId,
+          status: { in: ["APPROVED", "PUBLISHED"] },
+          technician: { status: "ACTIVE" },
+        },
+        select: { id: true },
+      });
+      if (!approved)
+        throw new ForbiddenException("请等待后台审核通过后进入工作台");
       return;
     }
     // Browser sessions and every management endpoint retain their MFA policy.

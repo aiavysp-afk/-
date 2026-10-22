@@ -420,6 +420,75 @@ describe("first-time staff password setup request", () => {
 });
 
 describe("one-time staff setup confirmation", () => {
+  it("uses the verified phone as the account when alias is omitted, without alias lookup or extra authority", async () => {
+    const f = fixture();
+    const { loginAlias: _ignored, ...input } = await f.issue();
+    const result = await f.service.confirm(input, "peer", NOW);
+    expect(AuthSessionSchema.parse(result).user.memberships).toEqual([
+      { organizationId: "org-1", role: "OPERATOR" },
+    ]);
+    expect(f.db.staffPasswordCredential.create).toHaveBeenCalledExactlyOnceWith(
+      {
+        data: {
+          userId: "staff-1",
+          phoneHash: f.phoneHash,
+          passwordHash: "scrypt-test-hash",
+          version: 1,
+        },
+      },
+    );
+    expect(f.state.credential).not.toHaveProperty("loginAlias");
+    for (const [query] of f.db.staffPasswordCredential.findUnique.mock.calls)
+      expect(query.where).toEqual({ userId: "staff-1" });
+    expect(f.db.session.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        mfaVerifiedUntil: null,
+        staffVerificationMethod: "PASSWORD_SMS",
+        staffPasswordVersion: 1,
+      }),
+    });
+    expect(f.db.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "AUTH_STAFF_PASSWORD_SETUP_SUCCEEDED",
+        metadata: expect.objectContaining({ loginAliasConfigured: false }),
+      }),
+    });
+    await expect(f.service.confirm(input, "peer", NOW)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(f.db.staffPasswordCredential.create).toHaveBeenCalledTimes(1);
+  });
+  it.each(["", " ", "13800001234", "管理员", "abc", null, 1234])(
+    "rejects an explicitly invalid optional alias %j before consuming a challenge",
+    async (loginAlias) => {
+      const f = fixture();
+      const input = await f.issue();
+      await expect(
+        f.service.confirm({ ...input, loginAlias } as never, "peer", NOW),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(f.db.staffPasswordCredential.create).not.toHaveBeenCalled();
+      expect(f.state.challenges.get(input.challengeId).consumedAt).toBeNull();
+    },
+  );
+  it("does not replace an existing alias or password through the phone-only first-use flow", async () => {
+    const f = fixture();
+    const { loginAlias: _ignored, ...input } = await f.issue();
+    f.state.credential = {
+      loginAlias: "keep-existing",
+      passwordHash: "keep-password",
+      version: 8,
+    };
+    await expect(f.service.confirm(input, "peer", NOW)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(f.state.credential).toEqual({
+      loginAlias: "keep-existing",
+      passwordHash: "keep-password",
+      version: 8,
+    });
+    expect(f.db.staffPasswordCredential.create).not.toHaveBeenCalled();
+    expect(f.db.session.create).not.toHaveBeenCalled();
+  });
   it("creates only a credential v1 and a normal SMS-verified browser session, never fresh TOTP", async () => {
     const f = fixture(),
       input = await f.issue();

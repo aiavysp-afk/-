@@ -84,6 +84,16 @@ describe("first password setup input boundary", () => {
   it("requires a valid challenge before building a confirmation", () => {
     expect(buildStaffSetupConfirmation(null, draft)).toBeNull();
   });
+  it("uses the bound-phone account by default without requiring or sending a username", () => {
+    const { loginAlias: _ignored, ...phoneOnly } = draft;
+    expect(getStaffSetupDraftIssues(phoneOnly).loginAlias).toBeNull();
+    expect(buildStaffSetupConfirmation(challenge, phoneOnly)).toEqual({
+      challengeId: challenge.challengeId,
+      challengeSecret: challenge.challengeSecret,
+      code: phoneOnly.code,
+      password: phoneOnly.password,
+    });
+  });
   it("reports all pending fields using static guidance, without reflecting supplied values", () => {
     const invalid = {
       code: "123",
@@ -116,6 +126,7 @@ describe("first password setup input boundary", () => {
     { field: "code", value: "" },
     { field: "code", value: "12345" },
     { field: "code", value: " 000001 " },
+    { field: "loginAlias", value: "" },
     { field: "loginAlias", value: "13800138000" },
     { field: "loginAlias", value: "管理员" },
     { field: "loginAlias", value: "adm" },

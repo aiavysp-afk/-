@@ -96,6 +96,15 @@ for marker in \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'location = /v1/technician/onboarding' \
+  'location = /v1/auth/technician-phone/capabilities {' \
+  'location = /v1/auth/technician-phone/sms/request {' \
+  'location = /v1/auth/technician-phone/sms/confirm {' \
+  'location = /v1/technician/phone-onboarding/status {' \
+  'location = /v1/technician/phone-onboarding/register {' \
+  'location = /v1/technician/phone-onboarding/profile {' \
+  'location = /v1/technician/phone-onboarding/photos {' \
+  'location = /v1/technician/phone-onboarding/documents {' \
+  'location = /v1/technician/phone-onboarding/submit {' \
   'location = /v1/auth/customer-login/capabilities {' \
   'location = /v1/auth/customer-login/wechat-phone {' \
   'location = /v1/auth/customer-login/sms/request {' \
@@ -302,6 +311,46 @@ verify_customer_login_gateway() {
 }
 # End customer login gateway probe helpers.
 
+# Technician phone gateway probe helpers. No identity, phone or code is sent.
+# Empty SMS bodies stop at validation; application probes stop at session auth.
+technician_phone_gateway_status() {
+  local method=$1 path=$2 remaining=$((technician_phone_deadline - SECONDS)) timeout=2
+  if (( remaining <= 0 )); then printf '%s' deadline-expired; return 0; fi
+  (( remaining >= timeout )) || timeout=$remaining
+  local args=(--silent --show-error --connect-timeout 1 --max-time "$timeout"
+    --http1.1 --header 'Connection: close' --noproxy '*'
+    --output /dev/null --write-out '%{http_code}'
+    --resolve api.mtsc.top:443:127.0.0.1)
+  if [[ $method == HEAD ]]; then args+=(--head); else args+=(--request "$method"); fi
+  if [[ $method == POST || $method == PATCH ]]; then args+=(--header 'Content-Type: application/json' --data '{}'); fi
+  curl "${args[@]}" "https://api.mtsc.top$path"
+}
+
+verify_technician_phone_gateway() {
+  local technician_phone_deadline=$((SECONDS + 45)) index path method status
+  local paths=(/v1/auth/technician-phone/capabilities /v1/auth/technician-phone/sms/request
+    /v1/auth/technician-phone/sms/confirm /v1/technician/phone-onboarding/status
+    /v1/technician/phone-onboarding/register /v1/technician/phone-onboarding/profile
+    /v1/technician/phone-onboarding/photos /v1/technician/phone-onboarding/documents
+    /v1/technician/phone-onboarding/submit)
+  local allowed=(GET POST POST GET POST PATCH POST POST POST)
+  local expected=(200 400 400 401 401 401 401 401 401)
+  for index in "${!paths[@]}"; do
+    path=${paths[$index]}
+    status=$(technician_phone_gateway_status "${allowed[$index]}" "$path") || status=transport-error
+    [[ $status == "${expected[$index]}" ]] || { printf 'Technician phone route failed: %s %s status=%s\n' "${allowed[$index]}" "$path" "$status" >&2; return 1; }
+    for method in HEAD DELETE; do
+      status=$(technician_phone_gateway_status "$method" "$path") || status=transport-error
+      [[ $status == 403 || $status == 404 ]] || { printf 'Technician phone method gate failed: %s %s status=%s\n' "$method" "$path" "$status" >&2; return 1; }
+    done
+  done
+  for path in /v1/auth/technician-phone/ /v1/auth/technician-phone/sms /v1/auth/technician-phone/sms/request/extra /v1/technician/phone-onboarding/ /v1/technician/phone-onboarding/status/extra; do
+    status=$(technician_phone_gateway_status GET "$path") || status=transport-error
+    [[ $status == 404 ]] || { printf 'Unexpected technician phone path is exposed: %s status=%s\n' "$path" "$status" >&2; return 1; }
+  done
+}
+# End technician phone gateway probe helpers.
+
 # Customer directory gateway probe helpers. No credentials, customer IDs, reason
 # or request body: allowed requests must stop at the existing session gate.
 customer_directory_gateway_status() {
@@ -346,6 +395,7 @@ verify_customer_directory_gateway() {
 wait_for_private_gateway
 verify_mfa_gateway 127.0.0.1
 verify_customer_login_gateway
+verify_technician_phone_gateway
 verify_customer_directory_gateway
 # Autonomous registration is session-only; no anonymous draft or identity grant.
 for onboarding_method in GET POST; do
