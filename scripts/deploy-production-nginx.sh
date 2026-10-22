@@ -323,6 +323,11 @@ technician_phone_gateway_status() {
     --resolve api.mtsc.top:443:127.0.0.1)
   if [[ $method == HEAD ]]; then args+=(--head); else args+=(--request "$method"); fi
   if [[ $method == POST || $method == PATCH ]]; then args+=(--header 'Content-Type: application/json' --data '{}'); fi
+  if [[ $method == OPTIONS ]]; then
+    args+=(--dump-header - --header 'Origin: https://mtsc.top'
+      --header 'Access-Control-Request-Method: PATCH'
+      --header 'Access-Control-Request-Headers: authorization,content-type')
+  fi
   curl "${args[@]}" "https://api.mtsc.top$path"
 }
 
@@ -348,6 +353,17 @@ verify_technician_phone_gateway() {
     status=$(technician_phone_gateway_status GET "$path") || status=transport-error
     [[ $status == 404 ]] || { printf 'Unexpected technician phone path is exposed: %s status=%s\n' "$path" "$status" >&2; return 1; }
   done
+  # A 204 alone is insufficient: browsers also require PATCH and the bearer
+  # request headers in CORS, otherwise a seemingly healthy form cannot save.
+  local preflight cors_origin cors_methods cors_headers
+  preflight=$(technician_phone_gateway_status OPTIONS /v1/technician/phone-onboarding/profile) || preflight=transport-error
+  [[ ${preflight: -3} == 204 ]] || { echo 'Technician phone CORS preflight status failed' >&2; return 1; }
+  cors_origin=$(printf '%s\n' "$preflight" | tr -d '\r' | awk 'tolower($0) ~ /^access-control-allow-origin:/ {sub(/^[^:]*:[[:space:]]*/, ""); print}')
+  cors_methods=$(printf '%s\n' "$preflight" | tr -d '\r ' | awk -F ':' 'tolower($1)=="access-control-allow-methods" {print toupper($2)}')
+  cors_headers=$(printf '%s\n' "$preflight" | tr -d '\r ' | awk -F ':' 'tolower($1)=="access-control-allow-headers" {print tolower($2)}')
+  [[ $cors_origin == https://mtsc.top && ,$cors_methods, == *,PATCH,* && ,$cors_headers, == *,authorization,* && ,$cors_headers, == *,content-type,* ]] || {
+    echo 'Technician phone CORS browser contract failed' >&2; return 1;
+  }
 }
 # End technician phone gateway probe helpers.
 

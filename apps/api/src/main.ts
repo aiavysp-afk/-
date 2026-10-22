@@ -11,6 +11,7 @@ import type { AppEnv } from "./config/env.js";
 import { HttpExceptionTelemetryFilter } from "./observability/http-exception.filter.js";
 import { safeRequestLog } from "./observability/safe-request-log.js";
 import { REVERSE_PROXY_TRUST } from "./config/proxy.js";
+import { apiCorsOptions } from "./config/cors.js";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -27,13 +28,7 @@ async function bootstrap() {
   await app.register(helmet, { contentSecurityPolicy: false });
   app.useGlobalFilters(new HttpExceptionTelemetryFilter());
   app.setGlobalPrefix("v1");
-  app.enableCors({
-    origin: config
-      .get("CORS_ORIGINS", { infer: true })
-      .split(",")
-      .map((item) => item.trim()),
-    credentials: true,
-  });
+  app.enableCors(apiCorsOptions(config.get("CORS_ORIGINS", { infer: true })));
   const port = Number(config.get("API_PORT"));
   app.enableShutdownHooks();
   await app.listen(port, config.get("API_HOST", { infer: true }));

@@ -29,6 +29,12 @@ curl() {
   [[ $fault != transport ]] || return 7
   path=\${url#https://api.mtsc.top}
   printf 'PROBE %s %s\n' "$method" "$path" >&2
+  if [[ $method == OPTIONS ]]; then
+    local methods='GET,HEAD,POST,PATCH'
+    [[ $fault != cors ]] || methods='GET,HEAD,POST'
+    printf 'HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: https://mtsc.top\r\nAccess-Control-Allow-Methods: %s\r\nAccess-Control-Allow-Headers: authorization,content-type\r\n\r\n204' "$methods"
+    return 0
+  fi
   case "$method:$path" in
     GET:/v1/auth/technician-phone/capabilities) printf 200 ;;
     POST:/v1/auth/technician-phone/sms/request|POST:/v1/auth/technician-phone/sms/confirm)
@@ -71,7 +77,7 @@ test("all nine exact routes are probed without sending SMS or creating a draft",
   }
 });
 
-for (const fault of ["schema", "missing", "anonymous", "method", "namespace", "transport"]) {
+for (const fault of ["schema", "missing", "anonymous", "method", "namespace", "transport", "cors"]) {
   test(`technician phone ${fault} regression rolls back the exact vhost`, { skip: !existsSync(bash) }, () => {
     const result = simulate(fault);
     assert.equal(result.status, 1, result.stderr);
