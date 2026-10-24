@@ -241,9 +241,9 @@ export class TechnicianNotificationsService
       const candidates = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT o."id" FROM "Order" o WHERE o."therapistId" = ${userId}
         AND o."organizationId" = ${grant.organizationId} AND o."status" IN ('PAID','DISPATCHING','ASSIGNED')
-        AND o."appointmentStart" > ${now}
+        AND o."appointmentStart" > (${now}::timestamptz AT TIME ZONE 'UTC')
         AND EXISTS (SELECT 1 FROM "Payment" p WHERE p."orderId" = o."id" AND p."status" = 'SUCCEEDED' AND p."provider" = 'WECHAT')
-        AND EXISTS (SELECT 1 FROM "OrderEvent" e WHERE e."orderId" = o."id" AND e."type" IN ('PAYMENT_SUCCEEDED','THERAPIST_ASSIGNED') AND e."createdAt" >= ${grant.createdAt})
+        AND EXISTS (SELECT 1 FROM "OrderEvent" e WHERE e."orderId" = o."id" AND e."type" IN ('PAYMENT_SUCCEEDED','THERAPIST_ASSIGNED') AND e."createdAt" >= (${grant.createdAt}::timestamptz AT TIME ZONE 'UTC'))
         AND NOT EXISTS (SELECT 1 FROM "OutboxEvent" n WHERE n."type" = ${NOTICE} AND n."aggregateId" = o."id")
         ORDER BY o."createdAt" ASC LIMIT 1 FOR UPDATE OF o SKIP LOCKED`;
       if (!candidates[0]) return null;

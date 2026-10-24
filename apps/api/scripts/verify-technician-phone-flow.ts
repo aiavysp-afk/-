@@ -458,8 +458,48 @@ try {
           },
         },
       });
+      assert.ok(
+        await tx.externalIdentity.findFirst({
+          where: {
+            id: wxPrincipal.wechatIdentityId!,
+            userId,
+            provider: "WECHAT_MINIAPP",
+            user: {
+              status: "ACTIVE",
+              memberships: {
+                some: {
+                  organizationId: grant.organizationId!,
+                  role: "THERAPIST",
+                  status: "ACTIVE",
+                },
+              },
+              technicianProfile: {
+                organizationId: grant.organizationId!,
+                status: { in: ["APPROVED", "PUBLISHED"] },
+              },
+            },
+          },
+        }),
+        "dispatch identity eligibility",
+      );
       await notifications.deliverNext(grant.id, userId, now);
-      assert.equal(messages, 1);
+      const dispatch = await tx.outboxEvent.findFirst({
+        where: { type: "TECHNICIAN_WECHAT_ORDER", aggregateId: order.id },
+      });
+      assert.equal(
+        messages,
+        1,
+        JSON.stringify({
+          dispatchState: dispatch?.lastErrorCode ?? "not-reserved",
+          profileStatus: (
+            await tx.technicianProfile.findUniqueOrThrow({
+              where: { technicianId: userId },
+            })
+          ).status,
+          grantCreatedAt: grant.createdAt,
+          eventAt: now,
+        }),
+      );
       await notifications.deliverNext(grant.id, userId, now);
       assert.equal(messages, 1);
       const notice = await tx.outboxEvent.findFirstOrThrow({
