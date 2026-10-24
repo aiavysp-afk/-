@@ -122,7 +122,7 @@ export class TechnicianNotificationsService
     // This acknowledgement is not treated as WeChat authorization evidence:
     // the provider independently checks the recipient's actual subscription.
     await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wx-subscription:${principal.userId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`wx-subscription:${principal.userId}`}))`;
       const id = `wx-grant-${hash(`${principal.userId}:${requestId}`)}`;
       if (await tx.outboxEvent.findUnique({ where: { id } })) return;
       const count = await tx.outboxEvent.count({
@@ -195,7 +195,7 @@ export class TechnicianNotificationsService
     const settings = notificationSettings(this.config);
     if (!settings.ready) return;
     const reserved = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wx-subscription:${userId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`wx-subscription:${userId}`}))`;
       const grant = await tx.outboxEvent.findUnique({ where: { id: grantId } });
       if (
         !grant ||

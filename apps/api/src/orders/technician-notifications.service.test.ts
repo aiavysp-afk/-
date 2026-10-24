@@ -35,6 +35,7 @@ function fixture() {
     payload: { identityId: "identity", templateId },
   };
   const db = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
     $queryRaw: vi.fn().mockResolvedValue([{ id: "order" }]),
     outboxEvent: {
       findUnique: vi.fn(async () => grant),
