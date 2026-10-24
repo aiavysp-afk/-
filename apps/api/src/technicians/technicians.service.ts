@@ -21,6 +21,7 @@ import {
 } from "@prisma/client";
 import type {
   AdminTechnicianReview,
+  AdminTechnicianApplicationUpdate,
   TechnicianApplication,
   TechnicianH5OnboardingStatus,
   TechnicianH5PhotoUpload,
@@ -1075,6 +1076,106 @@ export class TechniciansService {
       technicianId,
     );
     return this.toProfile(profile, false);
+  }
+
+  async updateAdminApplication(
+    principal: AuthPrincipal,
+    organizationId: string,
+    technicianId: string,
+    input: AdminTechnicianApplicationUpdate,
+  ): Promise<TechnicianApplication> {
+    const current = await this.getAuthorizedProfile(
+      principal,
+      organizationId,
+      technicianId,
+    );
+    if (!this.crypto)
+      throw new InternalServerErrorException("身份加密服务未就绪");
+    if (current.version !== input.expectedVersion)
+      throw new ConflictException("入驻资料已变化，请刷新后重新补录");
+    const draft = input.profile;
+    const city = this.config?.get("SERVICE_CITY", { infer: true });
+    if (draft.serviceCity !== undefined && city && draft.serviceCity !== city)
+      throw new BadRequestException(`当前仅支持${city}技师入驻`);
+    const services =
+      draft.serviceIds === undefined
+        ? undefined
+        : await this.prisma.service.findMany({
+            where: {
+              id: { in: draft.serviceIds },
+              organizationId,
+              published: true,
+            },
+            select: { id: true, name: true },
+          });
+    if (services && services.length !== draft.serviceIds!.length)
+      throw new BadRequestException("擅长项目包含已下架或不属于当前组织的服务");
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.technicianProfile.updateMany({
+        where: {
+          id: current.id,
+          organizationId,
+          technicianId,
+          version: input.expectedVersion,
+        },
+        data: {
+          ...(draft.realName !== undefined
+            ? {
+                realNameEncrypted: draft.realName
+                  ? this.crypto!.encryptScoped(
+                      this.realNamePurpose(current.id),
+                      draft.realName,
+                    )
+                  : null,
+              }
+            : {}),
+          ...(draft.serviceCity !== undefined
+            ? { serviceCity: draft.serviceCity }
+            : {}),
+          ...(draft.serviceAreas !== undefined
+            ? { serviceAreas: draft.serviceAreas }
+            : {}),
+          ...(draft.availableTimeSlots !== undefined
+            ? { availableTimeSlots: draft.availableTimeSlots }
+            : {}),
+          ...(draft.bio !== undefined ? { introduction: draft.bio } : {}),
+          ...(services
+            ? {
+                serviceIds: draft.serviceIds,
+                specialties: draft.serviceIds!.map(
+                  (id) => services.find((s) => s.id === id)!.name,
+                ),
+              }
+            : {}),
+          status: TechnicianProfileStatus.DRAFT,
+          version: { increment: 1 },
+          rejectionReason: null,
+          reviewedById: null,
+          reviewedAt: null,
+        },
+      });
+      if (changed.count !== 1)
+        throw new ConflictException("入驻资料已变化，请刷新后重新补录");
+      await tx.auditLog.create({
+        data: {
+          actorId: principal.userId,
+          organizationId,
+          action: "TECHNICIAN_APPLICATION_ADMIN_UPDATED",
+          resourceType: "TechnicianProfile",
+          resourceId: current.id,
+          metadata: {
+            changedFields: Object.keys(draft).sort(),
+            previousVersion: input.expectedVersion,
+            previousStatus: current.status,
+          },
+        },
+      });
+      return tx.technicianProfile.findUniqueOrThrow({
+        where: { id: current.id },
+        include: { technician: { select: { displayName: true } } },
+      });
+    });
+    return this.toApplication(updated);
   }
 
   async updateAdminProfile(

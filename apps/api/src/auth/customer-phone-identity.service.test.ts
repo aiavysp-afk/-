@@ -35,6 +35,26 @@ const fixture = () => {
 };
 
 describe("CustomerPhoneIdentityService", () => {
+  it("only attaches a first WeChat to a phone-only technician with no management credentials", async () => {
+    const f = fixture();
+    const tx = { ...f.tx, $queryRaw: vi.fn() };
+    const base = { status: "ACTIVE", role: "CUSTOMER", phoneVerifiedAt: new Date(),
+      technicianProfile: { registrationChannel: "TECHNICIAN_PHONE", organizationId: "org" },
+      memberships: [{ role: "THERAPIST", status: "ACTIVE", organizationId: "org" }], identities: [],
+      wechatUnionIdentity: null, mfaCredential: null, staffPasswordCredential: null };
+    tx.user.findUnique.mockResolvedValue(base as never);
+    expect(await f.service.canAttachFirstWechatToPhoneTechnician(tx as never, "tech")).toBe(true);
+    for (const override of [
+      { memberships: [{ role: "OPERATOR", status: "ACTIVE", organizationId: "org" }] },
+      { identities: [{ id: "previous-wechat" }] }, { mfaCredential: { userId: "tech" } },
+      { staffPasswordCredential: { userId: "tech" } }, { wechatUnionIdentity: { userId: "tech" } },
+      { technicianProfile: { registrationChannel: "WECHAT_MINIAPP", organizationId: "org" } },
+      { status: "SUSPENDED" }, { role: "SUPER_ADMIN" },
+    ]) {
+      tx.user.findUnique.mockResolvedValue({ ...base, ...override } as never);
+      expect(await f.service.canAttachFirstWechatToPhoneTechnician(tx as never, "tech")).toBe(false);
+    }
+  });
   it("reuses a verified legacy user's exact ID and creates only an authentication registry row", async () => {
     const f = fixture();
     f.tx.user.findMany.mockResolvedValue([

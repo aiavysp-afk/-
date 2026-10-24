@@ -138,6 +138,51 @@ export class WechatMiniappClient {
     return { phoneNumber: phone };
   }
 
+  async sendSubscription(input: {
+    openId: string;
+    templateId: string;
+    data: Record<string, { value: string }>;
+    state: "formal" | "trial" | "developer";
+  }): Promise<"ACCEPTED" | "REJECTED" | "UNKNOWN"> {
+    if (
+      this.config.get("AUTH_PROVIDER", { infer: true }) !== "wechat" ||
+      this.config.get("TECHNICIAN_WECHAT_NOTIFICATIONS_ENABLED", {
+        infer: true,
+      }) !== "true"
+    )
+      throw new ServiceUnavailableException("微信订单提醒尚未开启");
+    const accessToken = await this.getAccessToken();
+    const url = new URL(
+      "https://api.weixin.qq.com/cgi-bin/message/subscribe/send",
+    );
+    url.searchParams.set("access_token", accessToken);
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(8_000),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          touser: input.openId,
+          template_id: input.templateId,
+          page: "pages/technician-workbench/index",
+          miniprogram_state: input.state,
+          lang: "zh_CN",
+          data: input.data,
+        }),
+      });
+      if (!response.ok) return "UNKNOWN";
+      const payload = (await response.json()) as { errcode?: unknown };
+      return payload?.errcode === 0
+        ? "ACCEPTED"
+        : typeof payload?.errcode === "number"
+          ? "REJECTED"
+          : "UNKNOWN";
+    } catch {
+      return "UNKNOWN";
+    }
+  }
+
   private async getAccessToken() {
     if (this.accessToken && this.accessToken.expiresAt > Date.now()) {
       return this.accessToken.value;

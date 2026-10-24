@@ -21,6 +21,7 @@ import {
   TechnicianH5PhotoUploadSchema,
   TechnicianIdentityDocumentKindSchema,
   TechnicianIdentityDocumentUploadSchema,
+  AdminTechnicianApplicationUpdateSchema,
 } from "@zydj/contracts";
 import { TechnicianIdentityDocumentKind } from "@prisma/client";
 import { CurrentPrincipal } from "../auth/current-principal.decorator.js";
@@ -203,6 +204,25 @@ export class TechnicianOnboardingController {
 @UseGuards(SessionAuthGuard)
 export class AdminTechnicianApplicationsController {
   constructor(private readonly technicians: TechniciansService) {}
+  @Patch(":technicianId")
+  async update(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param("organizationId") organizationId: string,
+    @Param("technicianId") technicianId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = AdminTechnicianApplicationUpdateSchema.safeParse(body);
+    if (!parsed.success)
+      throw new BadRequestException("入驻补录资料格式无效，请检查字段与版本");
+    return {
+      data: await this.technicians.updateAdminApplication(
+        principal,
+        organizationId,
+        technicianId,
+        parsed.data,
+      ),
+    };
+  }
   @Get()
   async list(
     @CurrentPrincipal() principal: AuthPrincipal,

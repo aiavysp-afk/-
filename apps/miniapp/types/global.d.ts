@@ -11,6 +11,11 @@ declare function setTimeout(handler: () => void, timeout?: number): number;
 
 declare function clearTimeout(handle: number): void;
 declare const wx: {
+  requestSubscribeMessage(options: {
+    tmplIds: string[];
+    success?: (result: Record<string, string>) => void;
+    fail?: (error: { errMsg: string }) => void;
+  }): void;
   showShareMenu?(options: { menus: ("shareAppMessage" | "shareTimeline")[] }): void;
   hideShareMenu?(options: { menus: ("shareAppMessage" | "shareTimeline")[] }): void;
   chooseMedia(options: {

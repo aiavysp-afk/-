@@ -64,6 +64,7 @@ import { TechnicianPhoneAuthService } from "./technician-phone-auth.service.js";
     TechnicianPhoneAuthService,
   ],
   exports: [
+    WechatMiniappClient,
     AuthService,
     AuthCryptoService,
     SessionAuthGuard,

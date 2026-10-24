@@ -741,6 +741,16 @@ export type TechnicianPhoneProfileDraft = z.infer<
   typeof TechnicianPhoneProfileDraftSchema
 >;
 
+export const AdminTechnicianApplicationUpdateSchema = z
+  .object({
+    expectedVersion: z.number().int().nonnegative(),
+    profile: TechnicianPhoneProfileDraftSchema,
+  })
+  .strict();
+export type AdminTechnicianApplicationUpdate = z.infer<
+  typeof AdminTechnicianApplicationUpdateSchema
+>;
+
 export const TechnicianH5PhotoUploadSchema = z
   .object({
     kind: z.enum(["AVATAR", "GALLERY"]),

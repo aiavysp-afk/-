@@ -371,6 +371,7 @@ test("all required exact management routes have narrowly allowed methods", () =>
     ["/v1/admin/organizations/org-1/technicians", ["GET"]],
     ["/v1/admin/organizations/org-1/technician-applications", ["GET"]],
     [identityDocument, ["GET"]],
+    ["/v1/admin/organizations/org-1/technician-applications/tech-1", ["PATCH"]],
     [
       "/v1/admin/organizations/org-1/technician-applications/tech-1/documents/ID_BACK",
       ["GET"],

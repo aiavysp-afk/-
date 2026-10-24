@@ -1,4 +1,5 @@
 import { authenticatedFetch } from "./authenticated-fetch";
+import { ApplicationEditor } from "./application-editor";
 import {
   useCallback,
   useEffect,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import type {
   AdminReadiness,
+  AdminTechnicianApplicationUpdate,
   AdminServiceArea,
   AdminShift,
   AdminTechnicianBoard,
@@ -778,11 +780,7 @@ function AdminTechnicianProfilePanel({
       setIdentityPreview({ kind, url, snapshot: identitySnapshot });
     } catch (caught) {
       if (isCurrent()) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "证件预览读取失败",
-        );
+        setError(caught instanceof Error ? caught.message : "证件预览读取失败");
       }
     } finally {
       if (isCurrent()) setIdentityLoadingKind(null);
@@ -862,6 +860,40 @@ function AdminTechnicianProfilePanel({
     }
   }
 
+  async function saveApplication(value: AdminTechnicianApplicationUpdate) {
+    if (loading || operationBusy.current || dirty || applicationSnapshotStale)
+      return false;
+    operationBusy.current = true;
+    const isCurrent = requests.begin();
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const updated = await request<TechnicianOnboardingReviewProfile>(
+        `/admin/organizations/${encodeURIComponent(organizationId)}/technician-applications/${encodeURIComponent(technicianId)}`,
+        token,
+        value,
+        "PATCH",
+      );
+      if (!isCurrent()) return false;
+      setProfile(updated);
+      setDraft(profileUpdateFrom(updated));
+      await onReloadApplication();
+      if (isCurrent())
+        setMessage(
+          "入驻资料已补录并同步技师端，请核对照片和证件后重新提交审核。",
+        );
+      return true;
+    } catch (caught) {
+      if (isCurrent())
+        setError(caught instanceof Error ? caught.message : "补录保存失败");
+      return false;
+    } finally {
+      operationBusy.current = false;
+      if (isCurrent()) setSaving(false);
+    }
+  }
+
   async function runWorkflowAction(
     action: "submit-review" | "approve" | "reject" | "publish" | "unpublish",
   ) {
@@ -881,8 +913,15 @@ function AdminTechnicianProfilePanel({
       publish: "确认将这份资料公开给客户端客户查看？",
       unpublish: "确认暂停公开这份技师资料？",
     } as const;
-    const reason = action === "reject" ? window.prompt("请填写2至500字退回原因")?.trim() : undefined;
-    if (action === "reject" && (!reason || reason.length < 2 || reason.length > 500)) return;
+    const reason =
+      action === "reject"
+        ? window.prompt("请填写2至500字退回原因")?.trim()
+        : undefined;
+    if (
+      action === "reject" &&
+      (!reason || reason.length < 2 || reason.length > 500)
+    )
+      return;
     if (!window.confirm(labels[action])) return;
     operationBusy.current = true;
     const isCurrent = requests.begin();
@@ -934,9 +973,9 @@ function AdminTechnicianProfilePanel({
             ? "审核已通过，仍需单独发布才会对客户公开。"
             : action === "reject"
               ? "申请已退回，原因已同步技师端，未授予接单资格。"
-            : action === "publish"
-              ? "资料已公开，客户端将读取同一份资料。"
-              : "资料已停止公开，历史订单和评价未删除。",
+              : action === "publish"
+                ? "资料已公开，客户端将读取同一份资料。"
+                : "资料已停止公开，历史订单和评价未删除。",
       );
       if (application) await onReloadApplication();
     } catch (caught) {
@@ -1086,6 +1125,19 @@ function AdminTechnicianProfilePanel({
                   }
                 </span>
               </header>
+              <ApplicationEditor
+                key={`${application.technicianId}:${application.version}`}
+                application={application}
+                services={catalogServices}
+                disabled={
+                  loading ||
+                  saving ||
+                  dirty ||
+                  applicationSnapshotStale ||
+                  Boolean(reviewSavingId)
+                }
+                onSave={saveApplication}
+              />
               <dl className="onboarding-review-grid">
                 <div>
                   <dt>真实姓名</dt>
@@ -1559,9 +1611,7 @@ function AdminTechnicianProfilePanel({
                   </button>
                 </header>
                 <img src={identityPreview.url} alt="入驻实名证件私密预览" />
-                <p>
-                  只用于核验本人入驻资料，禁止下载、转发或用于其他用途。
-                </p>
+                <p>只用于核验本人入驻资料，禁止下载、转发或用于其他用途。</p>
               </section>
             </div>
           )}

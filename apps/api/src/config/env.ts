@@ -37,6 +37,16 @@ const EnvSchema = z.object({
     .default(""),
   WECHAT_MINIAPP_APP_ID: z.string().default("wxab76ea213eb6d01a"),
   WECHAT_MINIAPP_SECRET: z.string().default(""),
+  TECHNICIAN_WECHAT_NOTIFICATIONS_ENABLED: z
+    .enum(["false", "true"])
+    .default("false"),
+  TECHNICIAN_WECHAT_TEMPLATE_ID: z.string().max(128).default(""),
+  TECHNICIAN_WECHAT_SERVICE_FIELD: z.string().default(""),
+  TECHNICIAN_WECHAT_TIME_FIELD: z.string().default(""),
+  TECHNICIAN_WECHAT_NOTICE_FIELD: z.string().default(""),
+  TECHNICIAN_WECHAT_MINIPROGRAM_STATE: z
+    .enum(["formal", "trial", "developer"])
+    .default("formal"),
   WECHAT_OFFICIAL_ACCOUNT_ID: z.string().default("gh_a4b5f9d63539"),
   TECHNICIAN_H5_ONBOARDING_ENABLED: z.enum(["false", "true"]).default("false"),
   TECHNICIAN_PHONE_LOGIN_ENABLED: z.enum(["false", "true"]).default("false"),

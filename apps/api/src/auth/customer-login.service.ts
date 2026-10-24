@@ -386,7 +386,9 @@ export class CustomerLoginService {
     if (
       userId &&
       sourceId !== userId &&
-      (await this.phones.hasStaffAuthority(tx, userId))
+      (await this.phones.hasStaffAuthority(tx, userId)) &&
+      !(this.config.get("TECHNICIAN_PHONE_LOGIN_ENABLED", { infer: true }) === "true" &&
+        !sourceId && await this.phones.canAttachFirstWechatToPhoneTechnician(tx, userId))
     )
       throw accountLinkConflict();
     if (!userId)

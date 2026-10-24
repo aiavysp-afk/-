@@ -89,6 +89,7 @@ const rules = [
   ],
   [new RegExp(`^${organization}/technician-invitations$`), ["GET", "POST"]],
   [new RegExp(`^${organization}/technician-applications$`), ["GET"]],
+  [new RegExp(`^${organization}/technician-applications/${segment}$`), ["PATCH"]],
   [
     new RegExp(
       `^${organization}/technician-applications/${segment}/documents/(?:ID_FRONT|ID_BACK)$`,

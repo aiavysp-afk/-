@@ -230,6 +230,20 @@ export function StaffFirstPasswordSetup({
   return (
     <section aria-label="首次设置账号密码">
       <h3>首次设置账号密码</h3>
+      <div className="environment-banner" role="note">
+        <strong>以前设置过密码？请直接登录</strong>
+        <p>
+          首次设置只适用于尚未设置密码的工作人员。已有密码的账号不会在这里收到验证码；此入口不能找回或重置密码。
+        </p>
+        <button
+          type="button"
+          className="ghost-action"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          已有密码，返回登录
+        </button>
+      </div>
       <p>
         仅限手机号已绑定的现有授权工作人员。此流程只首次设置密码，不注册新账号、不重置已有密码、不增加权限；全程由本人手动操作。
       </p>

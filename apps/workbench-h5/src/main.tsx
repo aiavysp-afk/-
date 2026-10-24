@@ -821,6 +821,9 @@ function App({
 
         {workbench && (
           <>
+            <div className="success-banner">
+              微信订单提醒：在中原到家小程序用同一手机号的微信一键登录，进入技师工作台，点击“接收微信订单提醒”。网页可继续查看和处理本人订单。
+            </div>
             {error && <div className="error-banner">{error}</div>}
             {message && <div className="success-banner">{message}</div>}
             {view === "today" && (

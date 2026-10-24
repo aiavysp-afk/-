@@ -51,6 +51,9 @@ Page({
     workbench: null as TechnicianWorkbench | null,
     orders: [] as object[],
     shifts: [] as object[],
+    notifications: null as { enabled: boolean; templateId: string | null; message: string } | null,
+    subscribing: false,
+    subscriptionNotice: "",
   },
   async onShow() {
     if (!requireVerifiedCustomerAccess("/pages/technician-workbench/index"))
@@ -73,8 +76,11 @@ Page({
         return;
       }
       const workbench = await api<TechnicianWorkbench>("/technician/workbench");
+      const notifications = await api<{ enabled: boolean; templateId: string | null; message: string }>("/technician/workbench/notifications")
+        .catch(() => ({ enabled: false, templateId: null, message: "微信提醒配置暂时不可读取，请在工作台查看订单。" }));
       this.setData({
         workbench,
+        notifications,
         orders: workbench.orders.map((row) => ({
           ...row,
           next: actions[row.status],
@@ -136,5 +142,27 @@ Page({
   },
   editProfile() {
     wx.navigateTo({ url: "/pages/technician-photos/index" });
+  },
+  subscribeOrders() {
+    const config = this.data.notifications;
+    if (this.data.subscribing || !config?.enabled || !config.templateId) return;
+    // Invoke directly from the tap event; no automatic permission prompts.
+    this.setData({ subscribing: true, subscriptionNotice: "" });
+    const requestId = `subscription-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    wx.requestSubscribeMessage({
+      tmplIds: [config.templateId],
+      success: result => {
+        if (result[config.templateId!] !== "accept") {
+          this.setData({ subscribing: false, subscriptionNotice: "您未同意订阅，可以继续在工作台查看订单。" });
+          return;
+        }
+        api("/technician/workbench/notifications/subscribe", "POST", {
+          requestId, templateId: config.templateId, accepted: true,
+        }).then(() => this.setData({ subscriptionNotice: "已登记本次订阅，下一笔符合条件的新订单将尝试通过微信提醒。" }))
+          .catch(() => this.setData({ subscriptionNotice: "订阅登记未确认，请继续在工作台查看订单，稍后再试。" }))
+          .finally(() => this.setData({ subscribing: false }));
+      },
+      fail: () => this.setData({ subscribing: false, subscriptionNotice: "微信订阅未完成，请稍后手动重试。" }),
+    });
   },
 });

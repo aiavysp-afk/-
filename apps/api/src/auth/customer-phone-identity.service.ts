@@ -150,6 +150,27 @@ export class CustomerPhoneIdentityService {
     );
   }
 
+  // A fresh WeChat code plus official phone authorization may attach the first
+  // WeChat identity to a phone-only technician. Never rebind another identity,
+  // merge two users, or attach to any management/MFA/password-bearing account.
+  async canAttachFirstWechatToPhoneTechnician(tx: Tx, userId: string) {
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+    const user = await tx.user.findUnique({ where: { id: userId }, select: {
+      status: true, role: true, phoneVerifiedAt: true,
+      memberships: { select: { role: true, status: true, organizationId: true } },
+      technicianProfile: { select: { registrationChannel: true, organizationId: true } },
+      identities: { select: { id: true }, take: 1 },
+      wechatUnionIdentity: { select: { userId: true } },
+      mfaCredential: { select: { userId: true } }, staffPasswordCredential: { select: { userId: true } },
+    } });
+    return Boolean(user && user.status === "ACTIVE" && user.phoneVerifiedAt &&
+      [UserRole.CUSTOMER, UserRole.THERAPIST].includes(user.role as "CUSTOMER" | "THERAPIST") &&
+      user.technicianProfile?.registrationChannel === "TECHNICIAN_PHONE" &&
+      !user.identities.length && !user.wechatUnionIdentity && !user.mfaCredential && !user.staffPasswordCredential &&
+      user.memberships.every(m => m.role === UserRole.CUSTOMER ||
+        (m.role === UserRole.THERAPIST && m.status === "ACTIVE" && m.organizationId === user.technicianProfile!.organizationId)));
+  }
+
   private decryptPhone(encrypted: string) {
     try {
       return this.crypto.decrypt(encrypted);

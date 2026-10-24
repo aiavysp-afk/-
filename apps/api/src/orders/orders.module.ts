@@ -11,16 +11,20 @@ import { OperationsDashboardController } from "./operations-dashboard.controller
 import { OperationsDashboardService } from "./operations-dashboard.service.js";
 import { TechnicianWorkbenchController } from "./technician-workbench.controller.js";
 import { TechnicianWorkbenchService } from "./technician-workbench.service.js";
+import { TechnicianNotificationsService } from "./technician-notifications.service.js";
+import { TechnicianNotificationsController } from "./technician-notifications.controller.js";
 
 @Module({
   imports: [AuthModule, LocationsModule, IntegrationsModule],
   controllers: [
+    TechnicianNotificationsController,
     OrdersController,
     OperationsDashboardController,
     TechnicianWorkbenchController,
     OrderDispatchController,
   ],
   providers: [
+    TechnicianNotificationsService,
     OrdersService,
     OrderStateMachine,
     OperationsDashboardService,

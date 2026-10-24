@@ -1,12 +1,16 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "@prisma/client";
 import { AuthCryptoService } from "../src/auth/auth-crypto.service.js";
 import { AuthService } from "../src/auth/auth.service.js";
 import { AccessControlService } from "../src/auth/access-control.service.js";
 import { CustomerPhoneIdentityService } from "../src/auth/customer-phone-identity.service.js";
+import { CustomerLoginService } from "../src/auth/customer-login.service.js";
+import { TechnicianPhotoService } from "../src/technicians/technician-photo.service.js";
+import { TechnicianNotificationsService } from "../src/orders/technician-notifications.service.js";
 import { TechnicianPhoneAuthService } from "../src/auth/technician-phone-auth.service.js";
 import { technicianPhoneRouteAllowed } from "../src/auth/session-auth.guard.js";
 import { TechniciansService } from "../src/technicians/technicians.service.js";
@@ -39,6 +43,15 @@ const config = new ConfigService({
   TECHNICIAN_PHONE_LOGIN_ENABLED: "true",
   TECHNICIAN_PHONE_WORKBENCH_ENABLED: "true",
   SERVICE_CITY: "郑州市",
+  TECHNICIAN_PHOTO_PUBLIC_BASE_URL: "https://fixture.invalid/v1",
+  AUTH_PROVIDER: "wechat",
+  WECHAT_MINIAPP_APP_ID: "wx-fixture",
+  WECHAT_MINIAPP_SECRET: "isolated-not-real",
+  TECHNICIAN_WECHAT_NOTIFICATIONS_ENABLED: "true",
+  TECHNICIAN_WECHAT_TEMPLATE_ID: "isolated_template_not_a_real_template",
+  TECHNICIAN_WECHAT_SERVICE_FIELD: "thing1",
+  TECHNICIAN_WECHAT_TIME_FIELD: "time2",
+  TECHNICIAN_WECHAT_NOTICE_FIELD: "thing3",
   SMS_PROVIDER: "aliyun",
   SMS_SEND_ENABLED: "true",
   PHONE_VERIFICATION_SMS_ENABLED: "true",
@@ -94,7 +107,7 @@ try {
       const technicians = new TechniciansService(
         host,
         access,
-        {} as never,
+        new TechnicianPhotoService(config as never),
         crypto,
         config as never,
       );
@@ -215,24 +228,33 @@ try {
       const profile = await tx.technicianProfile.findUniqueOrThrow({
         where: { technicianId: userId },
       });
-      await tx.technicianProfile.update({
-        where: { id: profile.id },
-        data: { avatarUrl: "https://fixture.invalid/photo.jpg" },
+      const image = (
+        await sharp({
+          create: { width: 16, height: 16, channels: 3, background: "#176b53" },
+        })
+          .png()
+          .toBuffer()
+      ).toString("base64");
+      await technicians.uploadPhoneApplicationPhoto(principal, {
+        kind: "AVATAR",
+        contentBase64: image,
+        consentConfirmed: true,
       });
       for (const kind of ["ID_FRONT", "ID_BACK"] as const)
-        await tx.technicianIdentityDocument.create({
-          data: {
-            profileId: profile.id,
-            kind,
-            contentEncrypted: crypto.encryptScoped(
-              `technician-identity-document:${profile.id}:${kind}`,
-              "SYNTHETIC-NOT-AN-ID",
-            ),
-            digest: prefix,
-            width: 16,
-            height: 16,
-          },
+        await technicians.uploadPhoneIdentityDocument(principal, {
+          kind,
+          contentBase64: image,
         });
+      const documents = await tx.technicianIdentityDocument.findMany({
+        where: { profileId: profile.id },
+      });
+      assert.equal(documents.length, 2);
+      assert.ok(
+        documents.every((d) => d.contentEncrypted !== image && d.width === 16),
+      );
+      checks.push(
+        "real image normalization and photo/document upload persist in the isolated DB; identity bytes stay encrypted",
+      );
       assert.equal(
         (await technicians.submitPhoneApplication(principal)).stage,
         "PENDING_REVIEW",
@@ -258,9 +280,56 @@ try {
         memberships: [{ organizationId: organization.id, role: "OPERATOR" }],
         mfaVerifiedUntil: new Date(Date.now() + 60000),
       };
-      const pending = await tx.technicianProfile.findUniqueOrThrow({
+      let pending = await tx.technicianProfile.findUniqueOrThrow({
         where: { id: profile.id },
       });
+      const beforeVersion = pending.version;
+      await assert.rejects(() =>
+        technicians.updateAdminApplication(
+          { ...admin, memberships: [] },
+          organization.id,
+          userId,
+          {
+            expectedVersion: beforeVersion,
+            profile: { bio: "不允许的跨权限编辑" },
+          },
+        ),
+      );
+      await technicians.updateAdminApplication(admin, organization.id, userId, {
+        expectedVersion: beforeVersion,
+        profile: {
+          realName: "补录验收姓名",
+          bio: "后台补充的完整项目服务说明",
+        },
+      });
+      await assert.rejects(() =>
+        technicians.updateAdminApplication(admin, organization.id, userId, {
+          expectedVersion: beforeVersion,
+          profile: { bio: "过期版本" },
+        }),
+      );
+      assert.equal(
+        (
+          await tx.technicianProfile.findUniqueOrThrow({
+            where: { id: profile.id },
+          })
+        ).status,
+        "DRAFT",
+      );
+      const audit = await tx.auditLog.findFirstOrThrow({
+        where: {
+          resourceId: profile.id,
+          action: "TECHNICIAN_APPLICATION_ADMIN_UPDATED",
+        },
+      });
+      assert.ok(!JSON.stringify(audit.metadata).includes("补录验收姓名"));
+      await technicians.submitAdminProfile(admin, organization.id, userId);
+      pending = await tx.technicianProfile.findUniqueOrThrow({
+        where: { id: profile.id },
+      });
+      checks.push(
+        "operator can supplement private application, stale writes and wrong roles are rejected, audit excludes private values, re-review required",
+      );
       await assert.rejects(() =>
         technicians.approve(
           { ...admin, mfaVerifiedUntil: null },
@@ -309,6 +378,97 @@ try {
       );
       checks.push(
         "fresh management MFA is still required; approval grants THERAPIST only; own workbench works",
+      );
+      const wxLogin = new CustomerLoginService(
+        host,
+        crypto,
+        {
+          exchangeCode: async () => ({ openId: `${prefix}-openid` }),
+          exchangePhoneCode: async () => ({ phoneNumber: phone }),
+        } as never,
+        config as never,
+        phones,
+        sms as never,
+      );
+      const wxSession = await wxLogin.wechatPhone({
+        code: "isolated-code",
+        phoneCode: "isolated-phone-code",
+        agreementsAccepted: true,
+      });
+      assert.equal(wxSession.user.id, userId);
+      const wxPrincipal = await auth.authenticate(wxSession.accessToken);
+      assert.equal(wxPrincipal.authChannel, "WECHAT_MINIAPP");
+      let messages = 0;
+      const notifications = new TechnicianNotificationsService(
+        host,
+        config as never,
+        crypto,
+        {
+          sendSubscription: async (payload: { openId: string }) => {
+            assert.equal(payload.openId, `${prefix}-openid`);
+            messages++;
+            return "ACCEPTED";
+          },
+        } as never,
+      );
+      const templateId = "isolated_template_not_a_real_template";
+      await notifications.subscribe(
+        wxPrincipal,
+        "isolated_grant_001",
+        templateId,
+      );
+      const grant = await tx.outboxEvent.findFirstOrThrow({
+        where: { type: "TECHNICIAN_WECHAT_SUBSCRIPTION", aggregateId: userId },
+      });
+      const now = new Date();
+      const order = await tx.order.create({
+        data: {
+          orderNo: prefix,
+          organizationId: organization.id,
+          customerId: operator.id,
+          therapistId: userId,
+          status: "PAID",
+          appointmentStart: new Date(now.getTime() + 3600000),
+          appointmentEnd: new Date(now.getTime() + 7200000),
+          serviceAmountFen: 21800n,
+          travelFeeFen: 0n,
+          payableFen: 21800n,
+          addressEncrypted: crypto.encrypt("隔离地址"),
+          policyVersion: "test",
+          idempotencyKey: prefix,
+          requestFingerprint: prefix,
+          items: {
+            create: {
+              serviceId: service.id,
+              serviceName: service.name,
+              durationMinutes: 60,
+              unitPriceFen: 21800n,
+            },
+          },
+          payment: {
+            create: {
+              provider: "WECHAT",
+              status: "SUCCEEDED",
+              merchantPaymentNo: prefix,
+              amountFen: 21800n,
+            },
+          },
+          events: {
+            create: { type: "PAYMENT_SUCCEEDED", payload: {}, createdAt: now },
+          },
+        },
+      });
+      await notifications.deliverNext(grant.id, userId, now);
+      assert.equal(messages, 1);
+      await notifications.deliverNext(grant.id, userId, now);
+      assert.equal(messages, 1);
+      const notice = await tx.outboxEvent.findFirstOrThrow({
+        where: { type: "TECHNICIAN_WECHAT_ORDER", aggregateId: order.id },
+      });
+      assert.equal(notice.lastErrorCode, "PROVIDER_ACCEPTED");
+      assert.equal(notice.deliveryStatus, null);
+      checks.push(
+        "phone-only technician first WeChat attaches to same user; real SQL selects paid own order, consumes grant once, no fake delivery status",
       );
       await tx.staffMembership.updateMany({
         where: { userId },

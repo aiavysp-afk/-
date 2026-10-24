@@ -51,18 +51,14 @@ const fixture = (overrides = {}) => {
     },
     externalIdentity: {
       findUnique: vi.fn().mockResolvedValue(null),
-      create: vi
-        .fn()
-        .mockImplementation(async (input) => ({
-          id: "current-wechat-id",
-          ...input.data,
-        })),
-      update: vi
-        .fn()
-        .mockImplementation(async (input) => ({
-          id: input.where.id,
-          ...input.data,
-        })),
+      create: vi.fn().mockImplementation(async (input) => ({
+        id: "current-wechat-id",
+        ...input.data,
+      })),
+      update: vi.fn().mockImplementation(async (input) => ({
+        id: input.where.id,
+        ...input.data,
+      })),
       updateMany: vi.fn(),
     },
     wechatUnionIdentity: {
@@ -123,19 +119,18 @@ const fixture = (overrides = {}) => {
     findOwner: vi.fn().mockResolvedValue(user.id),
     register: vi.fn(),
     hasStaffAuthority: vi.fn().mockResolvedValue(false),
+    canAttachFirstWechatToPhoneTechnician: vi.fn().mockResolvedValue(false),
   };
   const wechat = {
     exchangeCode: vi.fn().mockResolvedValue({ openId: "current-openid" }),
     exchangePhoneCode: vi.fn().mockResolvedValue({ phoneNumber: phone }),
   };
   const sms = {
-    submitPhoneVerification: vi
-      .fn()
-      .mockResolvedValue({
-        status: "ACCEPTED",
-        requestId: "provider-request",
-        bizId: "provider-biz",
-      }),
+    submitPhoneVerification: vi.fn().mockResolvedValue({
+      status: "ACCEPTED",
+      requestId: "provider-request",
+      bizId: "provider-biz",
+    }),
   };
   const service = new CustomerLoginService(
     prisma as never,
@@ -165,6 +160,19 @@ const wechatInput = {
 const smsInput = { phone, agreementsAccepted: true as const };
 
 describe("CustomerLoginService", () => {
+  it("binds a phone-onboarded technician's first verified WeChat to the same account only", async () => {
+    const f = fixture({ TECHNICIAN_PHONE_LOGIN_ENABLED: "true" });
+    f.phones.hasStaffAuthority.mockResolvedValue(true);
+    f.phones.canAttachFirstWechatToPhoneTechnician.mockResolvedValue(true);
+    const result = await f.service.wechatPhone(wechatInput);
+    expect(result.user.id).toBe(f.user.id);
+    expect(f.tx.user.create).not.toHaveBeenCalled();
+    expect(f.tx.externalIdentity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: f.user.id }),
+      }),
+    );
+  });
   it("reports unavailable SMS without exposing missing secret names or values", () => {
     const f = fixture({ CUSTOMER_SMS_LOGIN_ENABLED: "false" });
     expect(f.service.capabilities()).toEqual({

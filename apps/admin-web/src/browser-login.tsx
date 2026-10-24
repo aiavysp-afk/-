@@ -587,10 +587,9 @@ export function BrowserLogin({
       >
         {visibleMethod === "password" && !challenge && (
           <aside className="environment-banner" role="note">
-            <strong>尚未设置过登录密码？</strong>
+            <strong>已有密码：直接在下方登录</strong>
             <p>
-              本人已绑定的手机号就是登录账号，首次使用只需验证手机号并设置密码，无需另起用户名。
-              不注册新账号、不重置已有密码、不增加权限。
+              本人已绑定的手机号就是登录账号。只有从未设置过密码的工作人员才使用首次设置；已有密码的账号在首次设置页不会收到验证码。
             </p>
             <button
               type="button"
