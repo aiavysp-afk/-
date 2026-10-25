@@ -1,5 +1,13 @@
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
-import { canUploadOwnTechnicianPhotos, refreshOwnTechnicianPhotoAccess } from "../../utils/technician-photos";
+import {
+  loadShowcasePortraits,
+  previewShowcasePortrait,
+  type ShowcasePortraitView,
+} from "../../utils/technician-showcase";
+import {
+  canUploadOwnTechnicianPhotos,
+  refreshOwnTechnicianPhotoAccess,
+} from "../../utils/technician-photos";
 import {
   loadPublicTherapists,
   type PublicTherapistView,
@@ -8,6 +16,8 @@ import {
 
 Page({
   data: {
+    showcasePhotos: [] as ShowcasePortraitView[],
+    showcaseError: "",
     activeFilter: "ALL" as "ALL" | "BOOKABLE" | "TODAY" | "TOMORROW",
     activeSort: "EARLIEST" as "EARLIEST" | "RATING" | "ORDERS",
     bookingOpen: false,
@@ -35,8 +45,30 @@ Page({
   async onShow() {
     if (!requireVerifiedCustomerAccess()) return;
     this.setData({ canUploadOwnPhotos: canUploadOwnTechnicianPhotos() });
-    void refreshOwnTechnicianPhotoAccess().then((allowed) => this.setData({ canUploadOwnPhotos: allowed })).catch(() => this.setData({ canUploadOwnPhotos: false }));
-    await this.load();
+    void refreshOwnTechnicianPhotoAccess()
+      .then((allowed) => this.setData({ canUploadOwnPhotos: allowed }))
+      .catch(() => this.setData({ canUploadOwnPhotos: false }));
+    await Promise.all([this.load(), this.loadShowcase()]);
+  },
+  async loadShowcase() {
+    try {
+      this.setData({
+        showcasePhotos: await loadShowcasePortraits(),
+        showcaseError: "",
+      });
+    } catch {
+      this.setData({
+        showcasePhotos: [],
+        showcaseError: "技师照片暂未加载，点击重试",
+      });
+    }
+  },
+  previewShowcase(event: { currentTarget: { dataset: { id?: string } } }) {
+    if (requireVerifiedCustomerAccess())
+      previewShowcasePortrait(
+        this.data.showcasePhotos,
+        event.currentTarget.dataset.id,
+      );
   },
   async load() {
     if (this.data.loading) return;
@@ -56,7 +88,8 @@ Page({
     }
   },
   openOwnPhotos() {
-    if (!requireVerifiedCustomerAccess() || !this.data.canUploadOwnPhotos) return;
+    if (!requireVerifiedCustomerAccess() || !this.data.canUploadOwnPhotos)
+      return;
     wx.navigateTo({ url: "/pages/technician-photos/index" });
   },
   selectFilter(event: {

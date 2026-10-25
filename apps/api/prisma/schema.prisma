@@ -885,6 +885,7 @@ model TechnicianProfile {
   availableTimeSlots  Json                         @default("[]")
   serviceIds          Json                         @default("[]")
   avatarUrl           String?
+  showcasePhotoId     String?
   galleryUrls         Json                         @default("[]")
   introduction        String                       @default("")
   specialties         Json                         @default("[]")

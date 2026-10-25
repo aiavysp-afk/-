@@ -4,6 +4,7 @@ const home_campaign_1 = require("../../utils/home-campaign");
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
 const tab_bar_1 = require("../../utils/tab-bar");
+const technician_showcase_1 = require("../../utils/technician-showcase");
 const amap_1 = require("../../utils/amap");
 const customer_center_1 = require("../../utils/customer-center");
 const service_discovery_1 = require("../../utils/service-discovery");
@@ -27,8 +28,9 @@ const categoryLabels = {
 Page({
     discoveryRequest: null,
     campaignRequest: 0,
-    seenCampaign: "",
     data: {
+        showcasePhotos: [],
+        showcaseError: "",
         campaign: null,
         campaignVisible: false,
         campaignImage: "",
@@ -70,6 +72,7 @@ Page({
             this.prepareLocation(),
             this.loadNewcomer(),
             this.loadCampaign(),
+            this.loadShowcase(),
         ]);
     },
     onHide() {
@@ -79,41 +82,75 @@ Page({
     onUnload() {
         this.campaignRequest++;
     },
-    async loadCampaign() {
+    async loadCampaign(manual = false) {
         const ticket = ++this.campaignRequest;
         try {
             const campaign = await (0, api_1.api)("/campaigns/home");
             if (ticket !== this.campaignRequest)
                 return;
             const saved = wx.getStorageSync(home_campaign_1.campaignStorageKey);
-            const seenKey = campaign
-                ? `${(0, home_campaign_1.campaignIdentity)(campaign)}:${campaign.frequency === "DAILY" ? (0, home_campaign_1.chinaDay)(Date.now()) : "once"}`
-                : "";
-            if (!campaign ||
-                this.seenCampaign === seenKey ||
-                !(0, home_campaign_1.shouldShowCampaign)(campaign, saved)) {
-                this.setData({ campaignVisible: false });
+            if (!campaign) {
+                this.setData({
+                    campaign: null,
+                    campaignVisible: false,
+                    campaignImage: "",
+                });
                 return;
             }
             const base = getApp().globalData
                 .apiBaseUrl;
-            this.seenCampaign = seenKey;
             this.setData({
                 campaign,
-                campaignVisible: true,
+                campaignVisible: manual || (0, home_campaign_1.shouldShowCampaign)(campaign, saved),
                 campaignImage: campaign.imagePath ? `${base}${campaign.imagePath}` : "",
-            });
-            wx.setStorageSync(home_campaign_1.campaignStorageKey, {
-                identity: (0, home_campaign_1.campaignIdentity)(campaign),
-                day: (0, home_campaign_1.chinaDay)(Date.now()),
             });
         }
         catch {
             /* Optional campaigns must not block browsing or booking. */
+            if (manual)
+                wx.showToast({ title: "活动读取失败，请稍后重试", icon: "none" });
         }
     },
+    showCampaign() {
+        void this.loadCampaign(true);
+    },
     closeCampaign() {
+        // Backgrounding for location/login must not consume the impression.
+        const campaign = this.data.campaign;
+        if (this.data.campaignVisible && campaign) {
+            try {
+                wx.setStorageSync(home_campaign_1.campaignStorageKey, {
+                    identity: (0, home_campaign_1.campaignIdentity)(campaign),
+                    day: (0, home_campaign_1.chinaDay)(Date.now()),
+                });
+            }
+            catch {
+                /* Dismissal still succeeds if local storage is full. */
+            }
+        }
         this.setData({ campaignVisible: false });
+    },
+    async loadShowcase() {
+        if (!(0, auth_1.hasVerifiedCustomerSession)()) {
+            this.setData({ showcasePhotos: [], showcaseError: "" });
+            return;
+        }
+        try {
+            this.setData({
+                showcasePhotos: await (0, technician_showcase_1.loadShowcasePortraits)(),
+                showcaseError: "",
+            });
+        }
+        catch {
+            this.setData({
+                showcasePhotos: [],
+                showcaseError: "技师照片暂未加载，点击重试",
+            });
+        }
+    },
+    previewShowcase(event) {
+        if ((0, auth_1.requireVerifiedCustomerAccess)())
+            (0, technician_showcase_1.previewShowcasePortrait)(this.data.showcasePhotos, event.currentTarget.dataset.id);
     },
     stopCampaignTap() { },
     campaignImageFailed() {

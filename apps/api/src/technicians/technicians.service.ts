@@ -62,6 +62,7 @@ type ProfileRecord = {
   availableTimeSlots?: Prisma.JsonValue;
   serviceIds?: Prisma.JsonValue;
   avatarUrl: string | null;
+  showcasePhotoId?: string | null;
   galleryUrls: Prisma.JsonValue;
   introduction: string;
   specialties: Prisma.JsonValue;
@@ -2162,6 +2163,7 @@ export class TechniciansService {
       freeTravelFee: true,
       travelFeeFen: 0,
       version: publicView ? undefined : (profile.version ?? 0),
+      showcasePublished: publicView ? undefined : Boolean(profile.showcasePhotoId),
       updatedAt: profile.updatedAt.toISOString(),
     };
   }

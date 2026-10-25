@@ -1,3 +1,4 @@
+@import "../../styles/technician-showcase.wxss";
 .page {
   padding: calc(env(safe-area-inset-top) + 18rpx) 24rpx 30rpx;
   background: linear-gradient(

@@ -1,3 +1,4 @@
+@import "../../styles/technician-showcase.wxss";
 .own-photo-entry { margin: 18rpx 0 24rpx; border-radius: 42rpx; background: #e5fcf0; color: #007b59; font-size: 30rpx; font-weight: 600; }
 .own-photo-entry::after { border: 1rpx solid #b8ebd6; border-radius: 42rpx; }
 .page {

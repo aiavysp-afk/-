@@ -1,10 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../utils/auth");
+const technician_showcase_1 = require("../../utils/technician-showcase");
 const technician_photos_1 = require("../../utils/technician-photos");
 const therapists_1 = require("../../utils/therapists");
 Page({
     data: {
+        showcasePhotos: [],
+        showcaseError: "",
         activeFilter: "ALL",
         activeSort: "EARLIEST",
         bookingOpen: false,
@@ -33,8 +36,28 @@ Page({
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
         this.setData({ canUploadOwnPhotos: (0, technician_photos_1.canUploadOwnTechnicianPhotos)() });
-        void (0, technician_photos_1.refreshOwnTechnicianPhotoAccess)().then((allowed) => this.setData({ canUploadOwnPhotos: allowed })).catch(() => this.setData({ canUploadOwnPhotos: false }));
-        await this.load();
+        void (0, technician_photos_1.refreshOwnTechnicianPhotoAccess)()
+            .then((allowed) => this.setData({ canUploadOwnPhotos: allowed }))
+            .catch(() => this.setData({ canUploadOwnPhotos: false }));
+        await Promise.all([this.load(), this.loadShowcase()]);
+    },
+    async loadShowcase() {
+        try {
+            this.setData({
+                showcasePhotos: await (0, technician_showcase_1.loadShowcasePortraits)(),
+                showcaseError: "",
+            });
+        }
+        catch {
+            this.setData({
+                showcasePhotos: [],
+                showcaseError: "技师照片暂未加载，点击重试",
+            });
+        }
+    },
+    previewShowcase(event) {
+        if ((0, auth_1.requireVerifiedCustomerAccess)())
+            (0, technician_showcase_1.previewShowcasePortrait)(this.data.showcasePhotos, event.currentTarget.dataset.id);
     },
     async load() {
         if (this.data.loading)

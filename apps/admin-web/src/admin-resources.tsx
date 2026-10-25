@@ -1,6 +1,7 @@
 import { authenticatedFetch } from "./authenticated-fetch";
 import { ApplicationEditor } from "./application-editor";
 import { PhotoDraftBinding } from "./photo-draft-binding";
+import { PhotoShowcaseControl } from "./photo-showcase-control";
 import {
   useCallback,
   useEffect,
@@ -1137,6 +1138,12 @@ function AdminTechnicianProfilePanel({
                 <p role="status">
                   已保存照片，其他资料可暂留空；请在下方关联对应技师的本人入驻申请。
                 </p>
+              )}
+              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && profile && (
+                <PhotoShowcaseControl token={token} organizationId={organizationId} technicianId={technicianId}
+                  version={profile.version ?? 0} published={profile.showcasePublished ?? false}
+                  disabled={loading || saving || dirty || applicationSnapshotStale || Boolean(reviewSavingId)}
+                  onSaved={async()=>{await load();await onReloadApplication()}}/>
               )}
               {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && profile && (
                 <PhotoDraftBinding token={token} organizationId={organizationId} technicianId={technicianId}

@@ -590,6 +590,7 @@ export const TechnicianReviewSummarySchema = z.object({
 
 export const TechnicianProfileSchema = z.object({
   version: z.number().int().nonnegative().optional(),
+  showcasePublished: z.boolean().optional(),
   technicianId: z.string(),
   displayName: z.string(),
   publicName: z.string(),
@@ -2090,3 +2091,10 @@ export type HomeCampaign = HomeCampaignContent & {
   imagePath: string | null;
 };
 export type AdminHomeCampaign = HomeCampaign & { imageDataUrl: string | null };
+
+export const TechnicianShowcaseSaveSchema = z.object({
+  expectedVersion: z.number().int().nonnegative(),
+  enabled: z.boolean(),
+}).strict();
+export type TechnicianShowcaseSave = z.infer<typeof TechnicianShowcaseSaveSchema>;
+export type TechnicianShowcasePortrait = { id: string; imagePath: string };

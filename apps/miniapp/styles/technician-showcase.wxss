@@ -1,0 +1,11 @@
+.portrait-showcase{margin:30rpx 0;padding:24rpx;border-radius:28rpx;background:#fff;border:1rpx solid #e3eae4}
+.showcase-heading{font-size:32rpx;font-weight:700;color:#1d4d3d}
+.showcase-row{display:flex;gap:20rpx;padding:16rpx 0}
+.showcase-card{flex-shrink:0;width:230rpx;overflow:hidden;border-radius:20rpx;background:#edf5ef}
+.showcase-card image{display:block;width:230rpx;height:300rpx}
+.showcase-card>text{display:block;padding:14rpx;font-size:25rpx;font-weight:600;text-align:center;color:#235443}
+.showcase-note{display:block;font-size:24rpx;line-height:1.7;color:#5a7065;padding:8rpx 0}
+.campaign-entry{display:flex;justify-content:space-between;align-items:center;gap:20rpx;padding:22rpx 26rpx;margin:20rpx 0;border-radius:22rpx;background:#e4f5e8;color:#1e5a43}
+.campaign-entry view text{display:block;font-size:23rpx}
+.campaign-entry view text:first-child{font-size:29rpx;font-weight:700}
+.campaign-entry>text{font-size:25rpx;font-weight:600;flex-shrink:0}

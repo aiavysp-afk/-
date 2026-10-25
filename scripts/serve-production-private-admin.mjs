@@ -83,6 +83,7 @@ const rules = [
   [new RegExp(`^${organization}/technicians/${segment}/reviews$`), ["GET"]],
   [new RegExp(`^${organization}/technicians/${segment}/profile/binding-targets$`), ["GET"]],
   [new RegExp(`^${organization}/technicians/${segment}/profile/bind-application$`), ["POST"]],
+  [new RegExp(`^${organization}/technicians/${segment}/profile/showcase$`), ["PATCH"]],
   [
     new RegExp(
       `^${organization}/technicians/${segment}/reviews/${segment}/(?:publish|hide)$`,

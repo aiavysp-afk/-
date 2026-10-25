@@ -11,6 +11,11 @@ import {
   requireVerifiedCustomerAccess,
 } from "../../utils/auth";
 import { syncCustomTabBar } from "../../utils/tab-bar";
+import {
+  loadShowcasePortraits,
+  previewShowcasePortrait,
+  type ShowcasePortraitView,
+} from "../../utils/technician-showcase";
 import { getGcj02Location, reverseGeocode } from "../../utils/amap";
 import { customerCenterPath } from "../../utils/customer-center";
 import { type PublicTherapistView } from "../../utils/therapists";
@@ -61,8 +66,9 @@ const categoryLabels: Record<ServiceItem["category"], string> = {
 Page({
   discoveryRequest: null as Promise<void> | null,
   campaignRequest: 0,
-  seenCampaign: "",
   data: {
+    showcasePhotos: [] as ShowcasePortraitView[],
+    showcaseError: "",
     campaign: null as HomeCampaign | null,
     campaignVisible: false,
     campaignImage: "",
@@ -104,6 +110,7 @@ Page({
       this.prepareLocation(),
       this.loadNewcomer(),
       this.loadCampaign(),
+      this.loadShowcase(),
     ]);
   },
   onHide() {
@@ -113,41 +120,74 @@ Page({
   onUnload() {
     this.campaignRequest++;
   },
-  async loadCampaign() {
+  async loadCampaign(manual = false) {
     const ticket = ++this.campaignRequest;
     try {
       const campaign = await api<HomeCampaign | null>("/campaigns/home");
       if (ticket !== this.campaignRequest) return;
       const saved: unknown = wx.getStorageSync(campaignStorageKey);
-      const seenKey = campaign
-        ? `${campaignIdentity(campaign)}:${campaign.frequency === "DAILY" ? chinaDay(Date.now()) : "once"}`
-        : "";
-      if (
-        !campaign ||
-        this.seenCampaign === seenKey ||
-        !shouldShowCampaign(campaign, saved)
-      ) {
-        this.setData({ campaignVisible: false });
+      if (!campaign) {
+        this.setData({
+          campaign: null,
+          campaignVisible: false,
+          campaignImage: "",
+        });
         return;
       }
       const base = getApp<{ globalData: { apiBaseUrl: string } }>().globalData
         .apiBaseUrl;
-      this.seenCampaign = seenKey;
       this.setData({
         campaign,
-        campaignVisible: true,
+        campaignVisible: manual || shouldShowCampaign(campaign, saved),
         campaignImage: campaign.imagePath ? `${base}${campaign.imagePath}` : "",
-      });
-      wx.setStorageSync(campaignStorageKey, {
-        identity: campaignIdentity(campaign),
-        day: chinaDay(Date.now()),
       });
     } catch {
       /* Optional campaigns must not block browsing or booking. */
+      if (manual)
+        wx.showToast({ title: "活动读取失败，请稍后重试", icon: "none" });
     }
   },
+  showCampaign() {
+    void this.loadCampaign(true);
+  },
   closeCampaign() {
+    // Backgrounding for location/login must not consume the impression.
+    const campaign = this.data.campaign;
+    if (this.data.campaignVisible && campaign) {
+      try {
+        wx.setStorageSync(campaignStorageKey, {
+          identity: campaignIdentity(campaign),
+          day: chinaDay(Date.now()),
+        });
+      } catch {
+        /* Dismissal still succeeds if local storage is full. */
+      }
+    }
     this.setData({ campaignVisible: false });
+  },
+  async loadShowcase() {
+    if (!hasVerifiedCustomerSession()) {
+      this.setData({ showcasePhotos: [], showcaseError: "" });
+      return;
+    }
+    try {
+      this.setData({
+        showcasePhotos: await loadShowcasePortraits(),
+        showcaseError: "",
+      });
+    } catch {
+      this.setData({
+        showcasePhotos: [],
+        showcaseError: "技师照片暂未加载，点击重试",
+      });
+    }
+  },
+  previewShowcase(event: { currentTarget: { dataset: { id?: string } } }) {
+    if (requireVerifiedCustomerAccess())
+      previewShowcasePortrait(
+        this.data.showcasePhotos,
+        event.currentTarget.dataset.id,
+      );
   },
   stopCampaignTap() {},
   campaignImageFailed() {

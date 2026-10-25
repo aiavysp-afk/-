@@ -1,0 +1,42 @@
+import "reflect-metadata";
+import assert from "node:assert/strict";
+import {randomUUID} from "node:crypto";
+import {PrismaClient} from "@prisma/client";
+import {TechnicianShowcaseService} from "../src/technicians/technician-showcase.service.js";
+import {AccessControlService} from "../src/auth/access-control.service.js";
+const raw=process.env.PHOTO_BINDING_TEST_DATABASE_URL;
+if (!raw) throw new Error("Explicit isolated DB required");
+const url=new URL(raw);
+if (!['localhost','127.0.0.1'].includes(url.hostname)||url.username!=='zydj_acceptance'||!/^\/zydj_technician_phone_acceptance_20261022_[a-f0-9]{8,32}$/.test(url.pathname)) throw new Error("Non-disposable DB refused");
+const prisma=new PrismaClient({datasourceUrl:raw});
+try {
+  const org=await prisma.organization.create({data:{name:'portrait-isolated'}});
+  const foreign=await prisma.organization.create({data:{name:'foreign-isolated'}});
+  const actor=await prisma.user.create({data:{role:'OPERATOR',displayName:'Fixture operator',organizationId:org.id}});
+  const principal={userId:actor.id,sessionId:'fixture',displayName:'Fixture',memberships:[{organizationId:org.id,role:'OPERATOR' as const}]};
+  await prisma.service.create({data:{organizationId:org.id,slug:randomUUID(),name:'Fixture service',subtitle:'Fixture',description:'Fixture',category:'MASSAGE',durationMinutes:60,priceFen:10000,published:true,steps:[],boundaries:[]}});
+  const user=await prisma.user.create({data:{role:'CUSTOMER',displayName:'Fixture draft',organizationId:org.id}});
+  const photoId=randomUUID(), privateId=randomUUID();
+  const profile=await prisma.technicianProfile.create({data:{organizationId:org.id,technicianId:user.id,registrationChannel:'ADMIN_PHOTO_DRAFT',avatarUrl:`https://fixture.test/v1/technicians/${user.id}/photos/${photoId}`,photos:{create:[{id:photoId,digest:'public',content:Buffer.from([1,2]),width:1,height:1},{id:privateId,digest:'private',content:Buffer.from([3,4]),width:1,height:1}]}}});
+  const service=new TechnicianShowcaseService(prisma as never,new AccessControlService());
+  assert.deepEqual(await service.list(),[]);
+  await assert.rejects(()=>service.image(photoId));
+  await assert.rejects(()=>service.save(principal,foreign.id,user.id,{expectedVersion:0,enabled:true}));
+  const writes=await Promise.allSettled([service.save(principal,org.id,user.id,{expectedVersion:0,enabled:true}),service.save(principal,org.id,user.id,{expectedVersion:0,enabled:true})]);
+  assert.equal(writes.filter(row=>row.status==='fulfilled').length,1);
+  assert.equal((await service.list()).length,1);
+  assert.deepEqual(await service.image(photoId),Buffer.from([1,2]));
+  await assert.rejects(()=>service.image(privateId));
+  const saved=await prisma.technicianProfile.findUniqueOrThrow({where:{id:profile.id}});
+  assert.equal(saved.status,'DRAFT'); assert.equal(saved.publicName,''); assert.equal(saved.realNameEncrypted,null);
+  assert.equal(await prisma.staffMembership.count({where:{userId:user.id}}),0);
+  assert.equal(await prisma.therapistShift.count({where:{therapistId:user.id}}),0);
+  // Public photo access is revoked as soon as a real application owns this draft.
+  const targetUser=await prisma.user.create({data:{role:'CUSTOMER',displayName:'Fixture applicant',organizationId:org.id}});
+  const target=await prisma.technicianProfile.create({data:{organizationId:org.id,technicianId:targetUser.id,selfRegistered:true}});
+  await prisma.technicianPhotoDraftBinding.create({data:{sourceProfileId:profile.id,targetProfileId:target.id,createdById:actor.id,copiedPhotos:[]}});
+  assert.deepEqual(await service.list(),[]); await assert.rejects(()=>service.image(photoId));
+  await service.save(principal,org.id,user.id,{expectedVersion:1,enabled:false});
+  assert.equal((await prisma.technicianProfile.findUniqueOrThrow({where:{id:profile.id}})).showcasePhotoId,null);
+  console.log(JSON.stringify({passed:true,unpublishedPrivate:true,concurrentPublicationCAS:true,onlySelectedOwnedPhoto:true,crossTenantRejected:true,noProfileApproval:true,noMembershipOrShift:true,bindingRevokesPublicAccess:true,withdrawalVerified:true}));
+} finally {await prisma.$disconnect();}

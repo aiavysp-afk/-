@@ -27,6 +27,11 @@
     </view>
   </view>
   <view class="disclosure"><text>资料说明</text><text>姓名、头像、介绍、评价与履约数据均来自同一后台公开档案；未经本人及平台审核的字段不会展示。所有技师均免出行费。</text></view>
+  <view wx:if="{{activeFilter === 'ALL' && showcasePhotos.length}}" class="portrait-showcase">
+    <view class="showcase-heading">技师风采</view><text class="showcase-note">形象照展示，资料审核及排班完成后开放预约</text>
+    <scroll-view scroll-x show-scrollbar="{{false}}"><view class="showcase-row"><view wx:for="{{showcasePhotos}}" wx:key="id" class="showcase-card" data-id="{{item.id}}" bindtap="previewShowcase"><image src="{{item.imageUrl}}" mode="aspectFill"/><text>查看形象照</text></view></view></scroll-view>
+  </view>
+  <view wx:if="{{showcaseError}}" class="showcase-note" bindtap="loadShowcase">{{showcaseError}}</view>
   <view class="safe-bottom" />
 
   <view wx:if="{{bookingOpen}}" class="sheet-mask" bindtap="closeBooking">

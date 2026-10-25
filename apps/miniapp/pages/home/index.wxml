@@ -3,6 +3,7 @@
     <view class="brand"><image class="premium-logo" src="/assets/brand/zhongyuan-premium-logo.png" mode="aspectFit" aria-label="中原到家"/><text class="brand-caption">安心上门 · 悦享松弛</text></view>
   </view>
   <view class="city-line" bindtap="chooseAddress"><view><text class="city-pin">⌖</text><text>{{locationLabel}}</text></view><text>{{locationBusy?'定位中':'选择地址 ›'}}</text></view>
+  <view wx:if="{{campaign}}" class="campaign-entry" bindtap="showCampaign"><view><text>新人专享好礼</text><text>{{campaign.title}}</text></view><text>查看活动 ›</text></view>
 
   <view class="newcomer-panel">
     <view class="newcomer-heading"><view><text class="newcomer-eyebrow">NEW MEMBER BENEFITS</text><text class="newcomer-title">新人专享 · 先领券再预约</text></view><text class="newcomer-more" bindtap="openNewcomer">我的券 ›</text></view>
@@ -30,6 +31,13 @@
   </scroll-view>
   <view wx:else class="empty-state"><view class="empty-calendar"><view/><view/><text>◇</text></view><text>{{scheduleError?'排班暂未读取完整':profileCount?'预约时段待开放':'技师上线准备中'}}</text><text>{{scheduleError?'点击重新读取，确认最新可约时间':profileCount?'公开技师完成排班后即可预约':'个人照片、资料审核和真实排班完成后展示'}}</text><button wx:if="{{scheduleError}}" bindtap="retryServices">重新读取排班</button></view>
   <view wx:if="{{scheduleError && therapists.length}}" class="schedule-notice"><text>{{scheduleError}}</text><text bindtap="retryServices">重试 ›</text></view>
+
+  <view wx:if="{{accessReady && showcasePhotos.length}}" class="portrait-showcase">
+    <view class="section-head"><view><text class="section-title">技师风采</text><text class="section-desc">形象照展示 · 预约待开放</text></view></view>
+    <scroll-view scroll-x show-scrollbar="{{false}}"><view class="showcase-row"><view wx:for="{{showcasePhotos}}" wx:key="id" class="showcase-card" data-id="{{item.id}}" bindtap="previewShowcase"><image src="{{item.imageUrl}}" mode="aspectFill"/><text>查看形象照</text></view></view></scroll-view>
+    <text class="showcase-note">个人资料补充、审核及排班完成后开放预约</text>
+  </view>
+  <view wx:if="{{accessReady && showcaseError}}" class="showcase-note" bindtap="loadShowcase">{{showcaseError}}</view>
 
   <view class="section-head"><view><text class="section-title">推荐项目</text><text class="section-desc">选好项目，查看可服务技师</text></view><text class="section-more" bindtap="openServices">全部项目 ›</text></view>
   <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
