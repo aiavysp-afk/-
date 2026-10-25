@@ -850,6 +850,7 @@ export const TechnicianApplicationSchema = TechnicianProfileSchema.extend({
     "WECHAT_MINIAPP",
     "WECHAT_H5",
     "TECHNICIAN_PHONE",
+    "ADMIN_PHOTO_DRAFT",
   ]),
   identityDocuments: z.object({
     idFrontUploaded: z.boolean(),

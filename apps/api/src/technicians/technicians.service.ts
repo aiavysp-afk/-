@@ -735,7 +735,10 @@ export class TechniciansService {
     const rows = await this.prisma.technicianProfile.findMany({
       where: {
         organizationId,
-        selfRegistered: true,
+        OR: [
+          { selfRegistered: true },
+          { registrationChannel: "ADMIN_PHOTO_DRAFT" },
+        ],
         technician: { status: "ACTIVE" },
       },
       include: { technician: { select: { displayName: true } } },
@@ -1723,7 +1726,10 @@ export class TechniciansService {
         where: {
           organizationId,
           technicianId,
-          selfRegistered: true,
+          OR: [
+            { selfRegistered: true },
+            { registrationChannel: "ADMIN_PHOTO_DRAFT" },
+          ],
           technician: { status: "ACTIVE" },
         },
         include: { technician: { select: { displayName: true } } },
@@ -1942,6 +1948,11 @@ export class TechniciansService {
   private async assertSelfRegisteredApplicationComplete(
     profile: ProfileRecord,
   ) {
+    if (profile.registrationChannel === "ADMIN_PHOTO_DRAFT") {
+      throw new ForbiddenException(
+        "照片预建档可先补录资料；关联技师本人入驻账号后再提交审核和发布",
+      );
+    }
     if (
       profile.registrationChannel === "WECHAT_H5" ||
       (profile.selfRegistered &&

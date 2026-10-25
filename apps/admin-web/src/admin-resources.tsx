@@ -410,7 +410,7 @@ export function TechniciansWorkspace({
       )}
       <section className="technician-invite-card">
         <div className="technician-invite-copy">
-          <h3>微信自主入驻审核</h3>
+          <h3>技师资料与入驻审核</h3>
           <p>
             本人微信和手机号验证后直接提交资料，无需邀请码。列表只显示脱敏姓名；审核详情内才可核验实名和私密证件。
           </p>
@@ -420,6 +420,9 @@ export function TechniciansWorkspace({
             const applicantName =
               application.publicName ||
               maskRealName(application.realName) ||
+              (application.registrationChannel === "ADMIN_PHOTO_DRAFT"
+                ? application.displayName
+                : "") ||
               "姓名待补录的入驻申请";
             return (
               <div key={application.technicianId}>
@@ -1120,11 +1123,17 @@ function AdminTechnicianProfilePanel({
                       WECHAT_H5: "微信 H5 入驻",
                       WECHAT_MINIAPP: "微信小程序入驻",
                       TECHNICIAN_PHONE: "技师手机号入驻",
+                      ADMIN_PHOTO_DRAFT: "后台照片预建档",
                       LEGACY: "历史资料",
                     }[application.registrationChannel]
                   }
                 </span>
               </header>
+              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && (
+                <p role="status">
+                  已保存照片，其他资料可暂留空。该档案尚未关联技师本人登录账号。
+                </p>
+              )}
               <ApplicationEditor
                 key={`${application.technicianId}:${application.version}`}
                 application={application}

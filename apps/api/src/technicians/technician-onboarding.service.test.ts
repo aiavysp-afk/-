@@ -108,6 +108,54 @@ function fixture() {
   };
 }
 describe("微信自主入驻审核", () => {
+  it("shows owner photo drafts without requiring an existing staff membership", async () => {
+    const f = fixture();
+    f.prisma.technicianProfile.findMany.mockResolvedValue([
+      profile({
+        registrationChannel: "ADMIN_PHOTO_DRAFT",
+        selfRegistered: false,
+        status: "DRAFT",
+      }),
+    ] as never);
+    const crypto = { decryptScoped: vi.fn().mockReturnValue("fixture") };
+    const service = new TechniciansService(
+      f.prisma as never,
+      f.access as never,
+      undefined,
+      crypto as never,
+    );
+    const result = await service.listApplications(administrator, "org");
+    expect(result[0]?.registrationChannel).toBe("ADMIN_PHOTO_DRAFT");
+    expect(f.prisma.technicianProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: "org",
+          OR: [
+            { selfRegistered: true },
+            { registrationChannel: "ADMIN_PHOTO_DRAFT" },
+          ],
+        }),
+      }),
+    );
+  });
+  it.each(["approve", "publish"] as const)(
+    "photo-only drafts cannot %s as verified staff",
+    async (action) => {
+      const f = fixture();
+      Object.assign(f.current, {
+        registrationChannel: "ADMIN_PHOTO_DRAFT",
+        selfRegistered: false,
+        status: action === "approve" ? "PENDING_REVIEW" : "APPROVED",
+      });
+      await expect(
+        action === "approve"
+          ? f.service.approve(administrator, "org", "applicant", 4)
+          : f.service.publish(administrator, "org", "applicant"),
+      ).rejects.toThrow("关联技师本人入驻账号");
+      expect(f.tx.staffMembership.create).not.toHaveBeenCalled();
+      expect(f.tx.technicianProfile.updateMany).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     { authChannel: "MOCK", authProvider: "mock" },
     { authChannel: "WECHAT_MINIAPP", authProvider: "mock" },
