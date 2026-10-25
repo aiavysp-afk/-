@@ -19,6 +19,9 @@ Page({
         coupons: [],
         loading: false,
         error: "",
+        newcomer: null,
+        newcomerBusy: false,
+        newcomerError: "",
     },
     back() {
         wx.navigateBack({ delta: 1 });
@@ -26,7 +29,53 @@ Page({
     async onShow() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)())
             return;
-        await this.load();
+        await Promise.all([this.load(), this.loadNewcomer()]);
+    },
+    async loadNewcomer() {
+        try {
+            const newcomer = await (0, api_1.api)((0, customer_center_1.customerCenterPath)("/customer-center/newcomer-coupons"));
+            this.setData({ newcomer, newcomerError: "" });
+        }
+        catch (error) {
+            this.setData({
+                newcomerError: error instanceof Error ? error.message : "新人优惠读取失败",
+            });
+        }
+    },
+    async claimNewcomer() {
+        var _a;
+        if (!(0, auth_1.requireVerifiedCustomerAccess)() || this.data.newcomerBusy)
+            return;
+        if ((_a = this.data.newcomer) === null || _a === void 0 ? void 0 : _a.claimed) {
+            this.goUse();
+            return;
+        }
+        if (!this.data.newcomer || this.data.newcomerError) {
+            await this.loadNewcomer();
+            return;
+        }
+        if (!this.data.newcomer.eligible)
+            return;
+        this.setData({ newcomerBusy: true, newcomerError: "" });
+        try {
+            const newcomer = await (0, api_1.api)((0, customer_center_1.customerCenterPath)("/customer-center/newcomer-coupons"), "POST", {});
+            this.setData({
+                newcomer,
+                activeStatus: "AVAILABLE",
+            });
+            if (newcomer.claimed) {
+                wx.showToast({ title: "新人优惠券已领取", icon: "success" });
+                await this.load();
+            }
+        }
+        catch (error) {
+            this.setData({
+                newcomerError: error instanceof Error ? error.message : "领取失败，请重试",
+            });
+        }
+        finally {
+            this.setData({ newcomerBusy: false });
+        }
     },
     async load() {
         this.setData({ loading: true, error: "" });

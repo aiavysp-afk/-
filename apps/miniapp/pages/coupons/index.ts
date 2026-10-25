@@ -1,4 +1,8 @@
-import type { CustomerCoupon, CustomerCouponStatus } from "@zydj/contracts";
+import type {
+  CustomerCoupon,
+  CustomerCouponStatus,
+  NewcomerCouponOffer,
+} from "@zydj/contracts";
 import { api, money } from "../../utils/api";
 import { customerCenterPath } from "../../utils/customer-center";
 import { requireVerifiedCustomerAccess } from "../../utils/auth";
@@ -27,13 +31,64 @@ Page({
     coupons: [] as CouponRow[],
     loading: false,
     error: "",
+    newcomer: null as NewcomerCouponOffer | null,
+    newcomerBusy: false,
+    newcomerError: "",
   },
   back() {
     wx.navigateBack({ delta: 1 });
   },
   async onShow() {
     if (!requireVerifiedCustomerAccess()) return;
-    await this.load();
+    await Promise.all([this.load(), this.loadNewcomer()]);
+  },
+  async loadNewcomer() {
+    try {
+      const newcomer = await api<NewcomerCouponOffer>(
+        customerCenterPath("/customer-center/newcomer-coupons"),
+      );
+      this.setData({ newcomer, newcomerError: "" });
+    } catch (error) {
+      this.setData({
+        newcomerError:
+          error instanceof Error ? error.message : "新人优惠读取失败",
+      });
+    }
+  },
+  async claimNewcomer() {
+    if (!requireVerifiedCustomerAccess() || this.data.newcomerBusy) return;
+    if (this.data.newcomer?.claimed) {
+      this.goUse();
+      return;
+    }
+    if (!this.data.newcomer || this.data.newcomerError) {
+      await this.loadNewcomer();
+      return;
+    }
+    if (!this.data.newcomer.eligible) return;
+    this.setData({ newcomerBusy: true, newcomerError: "" });
+    try {
+      const newcomer = await api<NewcomerCouponOffer>(
+        customerCenterPath("/customer-center/newcomer-coupons"),
+        "POST",
+        {},
+      );
+      this.setData({
+        newcomer,
+        activeStatus: "AVAILABLE" as CustomerCouponStatus,
+      });
+      if (newcomer.claimed) {
+        wx.showToast({ title: "新人优惠券已领取", icon: "success" });
+        await this.load();
+      }
+    } catch (error) {
+      this.setData({
+        newcomerError:
+          error instanceof Error ? error.message : "领取失败，请重试",
+      });
+    } finally {
+      this.setData({ newcomerBusy: false });
+    }
   },
   async load() {
     this.setData({ loading: true, error: "" });
