@@ -28,13 +28,16 @@ export class TechnicianShowcaseController {
     @Param("photoId") photoId: string,
     @Res() response: FastifyReply,
   ) {
+    // Resolve authorization/availability before setting a binary content type,
+    // so missing/withdrawn images retain the normal JSON 404 response.
+    const bytes = await this.showcase.image(photoId);
     return response
       .type("image/jpeg")
       .header("Cache-Control", "no-store")
       .header("X-Content-Type-Options", "nosniff")
       .header("Cross-Origin-Resource-Policy", "cross-origin")
       .header("Content-Security-Policy", "default-src 'none'")
-      .send(await this.showcase.image(photoId));
+      .send(bytes);
   }
 }
 @Controller(

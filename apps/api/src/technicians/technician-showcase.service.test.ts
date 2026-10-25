@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { AccessControlService } from "../auth/access-control.service.js";
 import { TechnicianShowcaseService } from "./technician-showcase.service.js";
+import { TechnicianShowcaseController } from "./technician-showcase.controller.js";
 import { TechnicianShowcaseSaveSchema } from "@zydj/contracts";
 const operator = {
   userId: "ops",
@@ -47,6 +48,13 @@ function fixture() {
   };
 }
 describe("explicit portrait publication", () => {
+  it("does not mark an error response as image/jpeg when a photo is unavailable", async () => {
+    const {db,service}=fixture();
+    db.technicianPhoto.findFirst.mockResolvedValue(null as never);
+    const reply={type:vi.fn(),header:vi.fn(),send:vi.fn()};
+    await expect(new TechnicianShowcaseController(service).image("unknown",reply as never)).rejects.toThrow();
+    expect(reply.type).not.toHaveBeenCalled();
+  });
   it("returns only selected image IDs and paths from the customer service organization", async () => {
     const { db, service } = fixture();
     expect(await service.list()).toEqual([
