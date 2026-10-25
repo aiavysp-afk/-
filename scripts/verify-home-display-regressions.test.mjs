@@ -4,6 +4,18 @@ import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
+test("campaign modal stays outside the animated page's transformed containing block", () => {
+  const source = readFileSync(new URL("../apps/miniapp/pages/home/index.wxml", import.meta.url), "utf8");
+  const overlay = source.indexOf('class="campaign-overlay"');
+  assert.ok(overlay > 0);
+  const opening = source.lastIndexOf('<view', overlay);
+  let depth = 0;
+  for (const match of source.slice(0,opening).matchAll(/<(\/?)(view)\b[^>]*>/g)) {
+    if (match[1]) depth--;
+    else if (!match[0].endsWith('/>')) depth++;
+  }
+  assert.equal(depth,0,"fixed overlay must be a root sibling, not a child of animated .page");
+});
 import { allowedAdminMethods } from "./serve-production-private-admin.mjs";
 test("showcase management is restricted to the exact private PATCH resource", () => {
   assert.deepEqual(allowedAdminMethods("/v1/admin/organizations/org/technicians/tech/profile/showcase"), ["PATCH"]);

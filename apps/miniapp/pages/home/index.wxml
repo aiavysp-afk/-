@@ -60,6 +60,7 @@
   <view class="assurance"><view><text class="assurance-icon">✓</text><text>平台核验</text></view><view><text class="assurance-icon">¥</text><text>价格透明</text></view><view><text class="assurance-icon">盾</text><text>服务留痕</text></view><view><text class="assurance-icon">洁</text><text>规范洁净</text></view></view>
   <view class="boundary"><view class="boundary-badge">正</view><view><text>正规服务边界</text><text>仅提供公示的非医疗养生放松服务，不提供疾病诊断、治疗或违法违规服务。</text></view></view>
   <view class="safe-bottom"/>
+</view>
   <view wx:if="{{campaignVisible && campaign}}" class="campaign-overlay" catchtouchmove="stopCampaignTap" bindtap="closeCampaign">
     <view class="campaign-card" catchtap="stopCampaignTap">
       <button class="campaign-close" aria-label="关闭活动" bindtap="closeCampaign">×</button>
@@ -68,4 +69,3 @@
       <view class="campaign-copy"><text class="campaign-title">{{campaign.title}}</text><text class="campaign-body">{{campaign.body}}</text><button class="campaign-cta" bindtap="openCampaign">{{campaign.buttonText}}</button><text class="campaign-dismiss" bindtap="closeCampaign">暂不参加，继续浏览</text></view>
     </view>
   </view>
-</view>
