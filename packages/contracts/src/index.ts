@@ -863,6 +863,22 @@ export const TechnicianProfileRejectSchema = z
     expectedVersion: z.number().int().nonnegative(),
   })
   .strict();
+export const TechnicianPhotoDraftBindSchema = z.object({
+  targetTechnicianId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  expectedSourceVersion: z.number().int().nonnegative(),
+  expectedTargetVersion: z.number().int().nonnegative(),
+}).strict();
+export type TechnicianPhotoDraftBind = z.infer<typeof TechnicianPhotoDraftBindSchema>;
+export type TechnicianPhotoDraftTarget = {
+  technicianId: string;
+  version: number;
+  label: string;
+  phoneMasked: string;
+};
+export type TechnicianPhotoDraftTargets = {
+  boundTechnicianId: string | null;
+  targets: TechnicianPhotoDraftTarget[];
+};
 export const TechnicianProfileApproveSchema = z
   .object({ expectedVersion: z.number().int().nonnegative().optional() })
   .strict();

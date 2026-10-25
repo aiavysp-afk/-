@@ -16,11 +16,14 @@ import { TechnicianInvitationsService } from "./technician-invitations.service.j
 import { TechniciansService } from "./technicians.service.js";
 import { TechnicianPhotoService } from "./technician-photo.service.js";
 import { TechnicianPhoneOnboardingController } from "./technician-phone-onboarding.controller.js";
+import { TechnicianPhotoDraftsController } from "./technician-photo-drafts.controller.js";
+import { TechnicianPhotoDraftsService } from "./technician-photo-drafts.service.js";
 
 @Module({
   imports: [AuthModule],
   controllers: [
     TechnicianOnboardingController,
+    TechnicianPhotoDraftsController,
     TechnicianH5OnboardingController,
     TechnicianPhoneOnboardingController,
     AdminTechnicianApplicationsController,
@@ -32,7 +35,7 @@ import { TechnicianPhoneOnboardingController } from "./technician-phone-onboardi
     AdminTechnicianReviewsController,
     TechnicianReviewsController,
   ],
-  providers: [TechniciansService, TechnicianInvitationsService, TechnicianPhotoService],
+  providers: [TechniciansService, TechnicianInvitationsService, TechnicianPhotoService, TechnicianPhotoDraftsService],
   exports: [TechniciansService],
 })
 export class TechniciansModule {}

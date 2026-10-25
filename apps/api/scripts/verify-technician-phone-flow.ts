@@ -51,7 +51,9 @@ const config = new ConfigService({
   TECHNICIAN_WECHAT_TEMPLATE_ID: "isolated_template_not_a_real_template",
   TECHNICIAN_WECHAT_SERVICE_FIELD: "thing1",
   TECHNICIAN_WECHAT_TIME_FIELD: "time2",
-  TECHNICIAN_WECHAT_NOTICE_FIELD: "thing3",
+  TECHNICIAN_WECHAT_NOTICE_FIELD: "",
+  TECHNICIAN_WECHAT_ORDER_NUMBER_FIELD: "character_string10",
+  TECHNICIAN_WECHAT_STATUS_FIELD: "phrase17",
   SMS_PROVIDER: "aliyun",
   SMS_SEND_ENABLED: "true",
   PHONE_VERIFICATION_SMS_ENABLED: "true",
@@ -404,8 +406,13 @@ try {
         config as never,
         crypto,
         {
-          sendSubscription: async (payload: { openId: string }) => {
+          sendSubscription: async (payload: {
+            openId: string;
+            data: Record<string, { value: string }>;
+          }) => {
             assert.equal(payload.openId, `${prefix}-openid`);
+            assert.equal(payload.data.character_string10?.value, order.orderNo);
+            assert.equal(payload.data.phrase17?.value, "已派单");
             messages++;
             return "ACCEPTED";
           },
@@ -423,7 +430,7 @@ try {
       const now = new Date();
       const order = await tx.order.create({
         data: {
-          orderNo: prefix,
+          orderNo: `ZY${randomUUID().replace(/-/g, "").slice(0, 24)}`,
           organizationId: organization.id,
           customerId: operator.id,
           therapistId: userId,

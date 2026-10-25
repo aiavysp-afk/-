@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   TechnicianNotificationsService,
   notificationSettings,
+  technicianNotificationData,
 } from "./technician-notifications.service.js";
 const templateId = "fixture_template_not_a_real_template";
 const config = (values = {}) =>
@@ -78,6 +79,54 @@ function fixture() {
   return { now, grant, db, sender, prisma, service };
 }
 describe("technician order WeChat subscriptions", () => {
+  it("renders the owned appointment template using the real order number and dispatch status", () => {
+    const settings = notificationSettings(
+      config({
+        TECHNICIAN_WECHAT_NOTICE_FIELD: "",
+        TECHNICIAN_WECHAT_ORDER_NUMBER_FIELD: "character_string10",
+        TECHNICIAN_WECHAT_STATUS_FIELD: "phrase17",
+      }),
+    );
+    expect(settings.ready).toBe(true);
+    expect(
+      technicianNotificationData(settings, {
+        serviceName: "中式推拿",
+        appointmentStart: new Date("2026-10-25T12:30:00Z"),
+        orderNumber: "ZY202610250001",
+      }),
+    ).toEqual({
+      thing1: { value: "中式推拿" },
+      time2: { value: "2026-10-25 20:30" },
+      character_string10: { value: "ZY202610250001" },
+      phrase17: { value: "已派单" },
+    });
+    expect(() =>
+      technicianNotificationData(settings, {
+        serviceName: "中式推拿",
+        appointmentStart: new Date(),
+        orderNumber: "",
+      }),
+    ).toThrow("Order number");
+  });
+  it("keeps incomplete or incorrectly typed owned-template mappings disabled", () => {
+    expect(
+      notificationSettings(
+        config({
+          TECHNICIAN_WECHAT_NOTICE_FIELD: "",
+          TECHNICIAN_WECHAT_ORDER_NUMBER_FIELD: "character_string10",
+        }),
+      ).ready,
+    ).toBe(false);
+    expect(
+      notificationSettings(
+        config({
+          TECHNICIAN_WECHAT_NOTICE_FIELD: "",
+          TECHNICIAN_WECHAT_ORDER_NUMBER_FIELD: "character_string10",
+          TECHNICIAN_WECHAT_STATUS_FIELD: "thing17",
+        }),
+      ).ready,
+    ).toBe(false);
+  });
   it("stays disabled without an exact template and separate switch", () => {
     expect(
       notificationSettings(

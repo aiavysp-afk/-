@@ -899,8 +899,21 @@ model TechnicianProfile {
   updatedAt           DateTime                     @updatedAt
   photos              TechnicianPhoto[]
   identityDocuments   TechnicianIdentityDocument[]
+  photoDraftBinding   TechnicianPhotoDraftBinding? @relation("PhotoDraftSource")
+  receivedPhotoDraft  TechnicianPhotoDraftBinding? @relation("PhotoDraftTarget")
 
   @@index([organizationId, status, updatedAt])
+}
+
+// Links a pre-created photo file to one verified applicant without merging users.
+model TechnicianPhotoDraftBinding {
+  sourceProfileId String @id
+  sourceProfile TechnicianProfile @relation("PhotoDraftSource", fields: [sourceProfileId], references: [id], onDelete: Restrict)
+  targetProfileId String @unique
+  targetProfile TechnicianProfile @relation("PhotoDraftTarget", fields: [targetProfileId], references: [id], onDelete: Restrict)
+  createdById String
+  copiedPhotos Json
+  createdAt DateTime @default(now())
 }
 
 // Identity documents are private application material. They are encrypted at

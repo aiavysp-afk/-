@@ -28,6 +28,13 @@ export function notificationSettings(config: ConfigService<AppEnv, true>) {
     config.get("TECHNICIAN_WECHAT_TIME_FIELD", { infer: true }) || "";
   const notice =
     config.get("TECHNICIAN_WECHAT_NOTICE_FIELD", { infer: true }) || "";
+  const orderNumber =
+    config.get("TECHNICIAN_WECHAT_ORDER_NUMBER_FIELD", { infer: true }) || "";
+  const status =
+    config.get("TECHNICIAN_WECHAT_STATUS_FIELD", { infer: true }) || "";
+  const noticeReady = /^thing\d+$/.test(notice) && notice !== service;
+  const structuredReady =
+    /^character_string\d+$/.test(orderNumber) && /^phrase\d+$/.test(status);
   const ready =
     config.get("TECHNICIAN_WECHAT_NOTIFICATIONS_ENABLED", { infer: true }) ===
       "true" &&
@@ -36,9 +43,37 @@ export function notificationSettings(config: ConfigService<AppEnv, true>) {
     /^[A-Za-z0-9_-]{20,128}$/.test(templateId) &&
     /^thing\d+$/.test(service) &&
     /^time\d+$/.test(time) &&
-    /^thing\d+$/.test(notice) &&
-    service !== notice;
-  return { ready, templateId, service, time, notice };
+    (noticeReady || structuredReady) &&
+    (!notice || noticeReady) &&
+    (!(orderNumber || status) || structuredReady);
+  return { ready, templateId, service, time, notice, orderNumber, status };
+}
+
+export function technicianNotificationData(
+  settings: ReturnType<typeof notificationSettings>,
+  input: {
+    serviceName: string;
+    appointmentStart: Date;
+    orderNumber?: string;
+  },
+) {
+  const date = new Date(input.appointmentStart.getTime() + 8 * 3600000)
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ");
+  const data: Record<string, { value: string }> = {
+    [settings.service]: { value: [...input.serviceName].slice(0, 20).join("") },
+    [settings.time]: { value: date },
+  };
+  if (settings.notice)
+    data[settings.notice] = { value: "您有新订单，请进入工作台查看" };
+  if (settings.orderNumber) {
+    if (!input.orderNumber || !/^[A-Za-z0-9_-]{1,32}$/.test(input.orderNumber))
+      throw new Error("Order number cannot be rendered in the owned template");
+    data[settings.orderNumber] = { value: input.orderNumber };
+    data[settings.status] = { value: "已派单" };
+  }
+  return data;
 }
 
 /** Separate typed events in the durable outbox. A grant is consumed only once.
@@ -106,7 +141,7 @@ export class TechnicianNotificationsService
       enabled: settings.ready,
       templateId: settings.ready ? settings.templateId : null,
       message: settings.ready
-        ? "每次同意订阅可接收一次新订单提醒，请定期补充订阅。"
+        ? `${this.config.get("TECHNICIAN_WECHAT_MINIPROGRAM_STATE", { infer: true }) === "trial" ? "当前为体验版提醒。" : ""}每次同意订阅可接收一次新订单提醒，请定期补充订阅。`
         : "微信订单提醒正在配置，当前请在工作台查看订单。",
     };
   }
@@ -278,15 +313,12 @@ export class TechnicianNotificationsService
         subjectEncrypted: identity.subjectEncrypted,
         serviceName: order.items[0].serviceName,
         appointmentStart: order.appointmentStart,
+        orderNumber: order.orderNo,
       };
     });
     if (!reserved) return;
     let outcome: "ACCEPTED" | "REJECTED" | "UNKNOWN" = "UNKNOWN";
     try {
-      const date = new Date(reserved.appointmentStart.getTime() + 8 * 3600000)
-        .toISOString()
-        .slice(0, 16)
-        .replace("T", " ");
       outcome = await this.wechat.sendSubscription({
         openId: this.crypto.decrypt(reserved.subjectEncrypted),
         templateId: settings.templateId,
@@ -294,13 +326,7 @@ export class TechnicianNotificationsService
           this.config.get("TECHNICIAN_WECHAT_MINIPROGRAM_STATE", {
             infer: true,
           }) || "formal",
-        data: {
-          [settings.service]: {
-            value: [...reserved.serviceName].slice(0, 20).join(""),
-          },
-          [settings.time]: { value: date },
-          [settings.notice]: { value: "您有新订单，请进入工作台查看" },
-        },
+        data: technicianNotificationData(settings, reserved),
       });
     } catch {
       /* A crash or transport failure never grants permission to resend. */

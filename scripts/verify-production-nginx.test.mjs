@@ -619,6 +619,8 @@ test("production nginx exposes technician invitations without broadening technic
 });
 
 test("production nginx exposes exact authenticated admin profile and review moderation routes", () => {
+  assertAllowedMethods("~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/technicians/[A-Za-z0-9_-]+/profile/binding-targets$", ["GET"]);
+  assertAllowedMethods("~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/technicians/[A-Za-z0-9_-]+/profile/bind-application$", ["POST"]);
   assertAllowedMethods(
     "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile$",
     ["GET", "PATCH", "OPTIONS"],

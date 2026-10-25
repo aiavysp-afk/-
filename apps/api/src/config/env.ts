@@ -44,6 +44,8 @@ const EnvSchema = z.object({
   TECHNICIAN_WECHAT_SERVICE_FIELD: z.string().default(""),
   TECHNICIAN_WECHAT_TIME_FIELD: z.string().default(""),
   TECHNICIAN_WECHAT_NOTICE_FIELD: z.string().default(""),
+  TECHNICIAN_WECHAT_ORDER_NUMBER_FIELD: z.string().default(""),
+  TECHNICIAN_WECHAT_STATUS_FIELD: z.string().default(""),
   TECHNICIAN_WECHAT_MINIPROGRAM_STATE: z
     .enum(["formal", "trial", "developer"])
     .default("formal"),

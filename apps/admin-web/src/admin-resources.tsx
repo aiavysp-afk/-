@@ -1,5 +1,6 @@
 import { authenticatedFetch } from "./authenticated-fetch";
 import { ApplicationEditor } from "./application-editor";
+import { PhotoDraftBinding } from "./photo-draft-binding";
 import {
   useCallback,
   useEffect,
@@ -610,6 +611,7 @@ export function TechniciansWorkspace({
             (item) => item.technicianId === selectedTechnicianId,
           )}
           onReloadApplication={load}
+          onOpenApplication={setSelectedTechnicianId}
           onClose={() => setSelectedTechnicianId("")}
         />
       )}
@@ -623,6 +625,7 @@ function AdminTechnicianProfilePanel({
   technicianId,
   application,
   onReloadApplication,
+  onOpenApplication,
   onClose,
 }: {
   token: string;
@@ -630,6 +633,7 @@ function AdminTechnicianProfilePanel({
   technicianId: string;
   application?: TechnicianOnboardingReviewProfile;
   onReloadApplication: () => Promise<boolean>;
+  onOpenApplication: (id: string) => void;
   onClose: () => void;
 }) {
   const [profile, setProfile] = useState<TechnicianProfile | null>(null);
@@ -1131,8 +1135,13 @@ function AdminTechnicianProfilePanel({
               </header>
               {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && (
                 <p role="status">
-                  已保存照片，其他资料可暂留空。该档案尚未关联技师本人登录账号。
+                  已保存照片，其他资料可暂留空；请在下方关联对应技师的本人入驻申请。
                 </p>
+              )}
+              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && profile && (
+                <PhotoDraftBinding token={token} organizationId={organizationId} technicianId={technicianId}
+                  sourceVersion={profile.version ?? 0} disabled={loading || saving || dirty || applicationSnapshotStale || Boolean(reviewSavingId)}
+                  onLinked={async()=>{await load();await onReloadApplication()}} onOpenApplication={onOpenApplication}/>
               )}
               <ApplicationEditor
                 key={`${application.technicianId}:${application.version}`}
