@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const home_campaign_1 = require("../../utils/home-campaign");
 const api_1 = require("../../utils/api");
 const auth_1 = require("../../utils/auth");
 const tab_bar_1 = require("../../utils/tab-bar");
@@ -25,7 +26,12 @@ const categoryLabels = {
 };
 Page({
     discoveryRequest: null,
+    campaignRequest: 0,
+    seenCampaign: "",
     data: {
+        campaign: null,
+        campaignVisible: false,
+        campaignImage: "",
         allServices: [],
         services: [],
         allTherapists: [],
@@ -63,7 +69,73 @@ Page({
             this.loadServices(),
             this.prepareLocation(),
             this.loadNewcomer(),
+            this.loadCampaign(),
         ]);
+    },
+    onHide() {
+        this.campaignRequest++;
+        this.setData({ campaignVisible: false });
+    },
+    onUnload() {
+        this.campaignRequest++;
+    },
+    async loadCampaign() {
+        const ticket = ++this.campaignRequest;
+        try {
+            const campaign = await (0, api_1.api)("/campaigns/home");
+            if (ticket !== this.campaignRequest)
+                return;
+            const saved = wx.getStorageSync(home_campaign_1.campaignStorageKey);
+            const seenKey = campaign
+                ? `${(0, home_campaign_1.campaignIdentity)(campaign)}:${campaign.frequency === "DAILY" ? (0, home_campaign_1.chinaDay)(Date.now()) : "once"}`
+                : "";
+            if (!campaign ||
+                this.seenCampaign === seenKey ||
+                !(0, home_campaign_1.shouldShowCampaign)(campaign, saved)) {
+                this.setData({ campaignVisible: false });
+                return;
+            }
+            const base = getApp().globalData
+                .apiBaseUrl;
+            this.seenCampaign = seenKey;
+            this.setData({
+                campaign,
+                campaignVisible: true,
+                campaignImage: campaign.imagePath ? `${base}${campaign.imagePath}` : "",
+            });
+            wx.setStorageSync(home_campaign_1.campaignStorageKey, {
+                identity: (0, home_campaign_1.campaignIdentity)(campaign),
+                day: (0, home_campaign_1.chinaDay)(Date.now()),
+            });
+        }
+        catch {
+            /* Optional campaigns must not block browsing or booking. */
+        }
+    },
+    closeCampaign() {
+        this.setData({ campaignVisible: false });
+    },
+    stopCampaignTap() { },
+    campaignImageFailed() {
+        this.setData({ campaignImage: "" });
+    },
+    openCampaign() {
+        var _a;
+        const target = (_a = this.data.campaign) === null || _a === void 0 ? void 0 : _a.target;
+        this.closeCampaign();
+        if (!target || target === "NONE")
+            return;
+        const path = target === "COUPONS"
+            ? "/pages/coupons/index"
+            : target === "WALLET"
+                ? "/pages/stored-value/index"
+                : "/pages/services/index";
+        if (!(0, auth_1.requireVerifiedCustomerAccess)(path))
+            return;
+        if (target === "SERVICES")
+            wx.switchTab({ url: path });
+        else
+            wx.navigateTo({ url: path });
     },
     async loadServices() {
         if (this.discoveryRequest)
@@ -394,6 +466,8 @@ Page({
         const service = this.data.allServices.find((item) => item.slug === e.currentTarget.dataset.slug);
         if (!service)
             return;
-        wx.navigateTo({ url: `/pages/service-detail/index?slug=${encodeURIComponent(service.slug)}` });
+        wx.navigateTo({
+            url: `/pages/service-detail/index?slug=${encodeURIComponent(service.slug)}`,
+        });
     },
 });

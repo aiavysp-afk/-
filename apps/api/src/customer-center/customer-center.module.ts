@@ -9,6 +9,9 @@ import { CustomerCouponsService } from "./customer-coupons.service.js";
 import { AdminStoredValueLedgerService } from "./admin-stored-value-ledger.service.js";
 import { AdminCustomerDirectoryController } from "./admin-customer-directory.controller.js";
 import { AdminCustomerDirectoryService } from "./admin-customer-directory.service.js";
+import { HomeCampaignService } from "./home-campaign.service.js";
+import { HomeCampaignController, AdminHomeCampaignController } from "./home-campaign.controller.js";
+import { TechnicianPhotoService } from "../technicians/technician-photo.service.js";
 
 @Module({
   imports: [AuthModule],
@@ -16,12 +19,16 @@ import { AdminCustomerDirectoryService } from "./admin-customer-directory.servic
     CustomerCenterController,
     AdminCustomerCenterController,
     AdminCustomerDirectoryController,
+    HomeCampaignController,
+    AdminHomeCampaignController,
   ],
   providers: [
     CustomerCenterService,
     CustomerCouponsService,
     AdminStoredValueLedgerService,
     AdminCustomerDirectoryService,
+    HomeCampaignService,
+    TechnicianPhotoService,
   ],
   exports: [CustomerCenterService],
 })

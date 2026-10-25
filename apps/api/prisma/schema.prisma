@@ -196,6 +196,7 @@ model Organization {
   technicianReviews       TechnicianReview[]
   technicianInvitations   TechnicianInvitation[]
   customerCenterConfig    CustomerCenterConfig?
+  homeCampaign            HomeCampaign?
   customerCoupons         CustomerCoupon[]
   storedValueAccounts     StoredValueAccount[]
   storedValueRecharges    StoredValueRecharge[]
@@ -272,6 +273,15 @@ model CustomerCenterConfig {
   safeguardItems       Json         @default("[]")
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+}
+
+model HomeCampaign {
+  organizationId String @id
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version Int @default(0)
+  content Json
+  imageBytes Bytes?
+  updatedAt DateTime @updatedAt
 }
 
 model CustomerCoupon {

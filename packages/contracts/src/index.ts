@@ -2048,3 +2048,28 @@ export type AdminCustomerPhoneReveal = z.infer<
 
 export const formatMoney = (fen: number): string =>
   `¥${(fen / 100).toFixed(fen % 100 === 0 ? 0 : 2)}`;
+
+export const HomeCampaignContentSchema = z.object({
+  enabled: z.boolean(),
+  title: z.string().trim().min(1).max(30),
+  body: z.string().trim().max(160),
+  buttonText: z.string().trim().min(1).max(12),
+  target: z.enum(["COUPONS", "SERVICES", "WALLET", "NONE"]),
+  frequency: z.enum(["DAILY", "ONCE"]),
+  startsAt: z.string().datetime().nullable(),
+  endsAt: z.string().datetime().nullable(),
+}).strict();
+export const HomeCampaignSaveSchema = HomeCampaignContentSchema.extend({
+  expectedVersion: z.number().int().min(0),
+  imageBase64: z.string().max(699052).nullable().optional(),
+}).refine(v => !v.startsAt || !v.endsAt || Date.parse(v.endsAt) > Date.parse(v.startsAt), {
+  message: "结束时间须晚于开始时间", path: ["endsAt"],
+});
+export type HomeCampaignContent = z.infer<typeof HomeCampaignContentSchema>;
+export type HomeCampaignSave = z.infer<typeof HomeCampaignSaveSchema>;
+export type HomeCampaign = HomeCampaignContent & {
+  organizationId: string;
+  version: number;
+  imagePath: string | null;
+};
+export type AdminHomeCampaign = HomeCampaign & { imageDataUrl: string | null };

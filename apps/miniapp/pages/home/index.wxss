@@ -20,6 +20,131 @@
   align-items: center;
   gap: 14rpx;
 }
+.brand .premium-logo {
+  width: 270rpx;
+  height: 90rpx;
+}
+.brand .brand-caption {
+  font-size: 22rpx;
+  font-weight: 500;
+  letter-spacing: 1rpx;
+}
+.campaign-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #102e25ad;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  box-sizing: border-box;
+}
+.campaign-card {
+  position: relative;
+  width: 620rpx;
+  max-height: 82vh;
+  overflow-y: auto;
+  border-radius: 36rpx;
+  background: #fffcf5;
+  box-shadow: 0 30rpx 90rpx #001d2560;
+  animation: campaign-enter 0.32s ease-out;
+}
+.campaign-close {
+  position: absolute;
+  right: 18rpx;
+  top: 18rpx;
+  z-index: 2;
+  margin: 0;
+  width: 72rpx;
+  height: 72rpx;
+  padding: 0;
+  line-height: 68rpx;
+  border-radius: 50%;
+  font-size: 44rpx;
+  background: #fffffff2;
+  color: #194d3c;
+}
+.campaign-image {
+  display: block;
+  width: 100%;
+}
+.campaign-art {
+  overflow: hidden;
+  position: relative;
+  padding: 56rpx 35rpx 46rpx;
+  background: radial-gradient(circle at 20% 0, #4b8467, #163f32);
+  color: #f2dba8;
+  text-align: center;
+}
+.campaign-art text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-size: 24rpx;
+  letter-spacing: 5rpx;
+}
+.campaign-art .campaign-art-title {
+  font-size: 64rpx;
+  font-weight: 700;
+  padding: 18rpx 0;
+}
+.campaign-orbit {
+  position: absolute;
+  width: 370rpx;
+  height: 370rpx;
+  border: 1rpx solid #efd39640;
+  border-radius: 50%;
+  right: -160rpx;
+  top: 30rpx;
+}
+.campaign-copy {
+  padding: 32rpx;
+  text-align: center;
+}
+.campaign-title {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #194d3c;
+}
+.campaign-body {
+  display: block;
+  margin: 20rpx 0 30rpx;
+  font-size: 27rpx;
+  font-weight: 500;
+  color: #52685c;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.campaign-cta {
+  background: #1c644e;
+  color: #fff;
+  border-radius: 50rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.campaign-dismiss {
+  display: block;
+  padding: 24rpx 0 0;
+  color: #687970;
+  font-size: 25rpx;
+}
+@keyframes campaign-enter {
+  from {
+    opacity: 0;
+    transform: translateY(28rpx) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .campaign-card {
+    animation: none;
+  }
+}
 .brand-mark {
   width: 58rpx;
   height: 58rpx;
@@ -987,4 +1112,14 @@
     transform: translateY(0);
   }
 }
-.project-detail-link{font-size:23rpx;font-weight:600;line-height:62rpx;margin:18rpx 0 0;padding:0 14rpx;border-radius:14rpx;background:#effaf4;color:#168360;text-align:left}
+.project-detail-link {
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 62rpx;
+  margin: 18rpx 0 0;
+  padding: 0 14rpx;
+  border-radius: 14rpx;
+  background: #effaf4;
+  color: #168360;
+  text-align: left;
+}

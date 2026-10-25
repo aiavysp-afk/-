@@ -1,6 +1,6 @@
 <view class="page">
   <view class="topbar">
-    <view class="brand"><view class="brand-mark">中</view><view><text>中原到家</text><text>正规上门养护服务</text></view></view>
+    <view class="brand"><image class="premium-logo" src="/assets/brand/zhongyuan-premium-logo.png" mode="aspectFit" aria-label="中原到家"/><text class="brand-caption">安心上门 · 悦享松弛</text></view>
   </view>
   <view class="city-line" bindtap="chooseAddress"><view><text class="city-pin">⌖</text><text>{{locationLabel}}</text></view><text>{{locationBusy?'定位中':'选择地址 ›'}}</text></view>
 
@@ -52,4 +52,12 @@
   <view class="assurance"><view><text class="assurance-icon">✓</text><text>平台核验</text></view><view><text class="assurance-icon">¥</text><text>价格透明</text></view><view><text class="assurance-icon">盾</text><text>服务留痕</text></view><view><text class="assurance-icon">洁</text><text>规范洁净</text></view></view>
   <view class="boundary"><view class="boundary-badge">正</view><view><text>正规服务边界</text><text>仅提供公示的非医疗养生放松服务，不提供疾病诊断、治疗或违法违规服务。</text></view></view>
   <view class="safe-bottom"/>
+  <view wx:if="{{campaignVisible && campaign}}" class="campaign-overlay" catchtouchmove="stopCampaignTap" bindtap="closeCampaign">
+    <view class="campaign-card" catchtap="stopCampaignTap">
+      <button class="campaign-close" aria-label="关闭活动" bindtap="closeCampaign">×</button>
+      <image wx:if="{{campaignImage}}" class="campaign-image" src="{{campaignImage}}" mode="widthFix" binderror="campaignImageFailed"/>
+      <view wx:else class="campaign-art"><text>中原到家</text><text class="campaign-art-title">专享好礼</text><text>把放松带回家</text><view class="campaign-orbit"/></view>
+      <view class="campaign-copy"><text class="campaign-title">{{campaign.title}}</text><text class="campaign-body">{{campaign.body}}</text><button class="campaign-cta" bindtap="openCampaign">{{campaign.buttonText}}</button><text class="campaign-dismiss" bindtap="closeCampaign">暂不参加，继续浏览</text></view>
+    </view>
+  </view>
 </view>

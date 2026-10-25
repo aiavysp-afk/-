@@ -25,6 +25,7 @@ import type { AuthUser } from "@zydj/contracts";
 import { canViewOrganizationWallet } from "./stored-value-ledger";
 import { createLatestRequest, useBackgroundRefresh } from "./synchronization";
 import { CustomerDirectory } from "./customer-directory";
+import { HomeCampaignEditor } from "./home-campaign-editor";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -293,6 +294,7 @@ export function CustomerCenterWorkspace({
         <div className="catalog-empty">正在读取客户中心配置…</div>
       )}
 
+      <HomeCampaignEditor token={token} organizationId={organizationId} />
       <CustomerDirectory
         key={directoryVersion}
         token={token}

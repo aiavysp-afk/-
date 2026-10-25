@@ -1,4 +1,10 @@
-import type { PublicConfig, ServiceItem } from "@zydj/contracts";
+import type { PublicConfig, ServiceItem, HomeCampaign } from "@zydj/contracts";
+import {
+  campaignStorageKey,
+  campaignIdentity,
+  chinaDay,
+  shouldShowCampaign,
+} from "../../utils/home-campaign";
 import { api, money } from "../../utils/api";
 import {
   hasVerifiedCustomerSession,
@@ -54,7 +60,12 @@ const categoryLabels: Record<ServiceItem["category"], string> = {
 
 Page({
   discoveryRequest: null as Promise<void> | null,
+  campaignRequest: 0,
+  seenCampaign: "",
   data: {
+    campaign: null as HomeCampaign | null,
+    campaignVisible: false,
+    campaignImage: "",
     allServices: [] as HomeService[],
     services: [] as HomeService[],
     allTherapists: [] as HomeTherapist[],
@@ -92,7 +103,69 @@ Page({
       this.loadServices(),
       this.prepareLocation(),
       this.loadNewcomer(),
+      this.loadCampaign(),
     ]);
+  },
+  onHide() {
+    this.campaignRequest++;
+    this.setData({ campaignVisible: false });
+  },
+  onUnload() {
+    this.campaignRequest++;
+  },
+  async loadCampaign() {
+    const ticket = ++this.campaignRequest;
+    try {
+      const campaign = await api<HomeCampaign | null>("/campaigns/home");
+      if (ticket !== this.campaignRequest) return;
+      const saved: unknown = wx.getStorageSync(campaignStorageKey);
+      const seenKey = campaign
+        ? `${campaignIdentity(campaign)}:${campaign.frequency === "DAILY" ? chinaDay(Date.now()) : "once"}`
+        : "";
+      if (
+        !campaign ||
+        this.seenCampaign === seenKey ||
+        !shouldShowCampaign(campaign, saved)
+      ) {
+        this.setData({ campaignVisible: false });
+        return;
+      }
+      const base = getApp<{ globalData: { apiBaseUrl: string } }>().globalData
+        .apiBaseUrl;
+      this.seenCampaign = seenKey;
+      this.setData({
+        campaign,
+        campaignVisible: true,
+        campaignImage: campaign.imagePath ? `${base}${campaign.imagePath}` : "",
+      });
+      wx.setStorageSync(campaignStorageKey, {
+        identity: campaignIdentity(campaign),
+        day: chinaDay(Date.now()),
+      });
+    } catch {
+      /* Optional campaigns must not block browsing or booking. */
+    }
+  },
+  closeCampaign() {
+    this.setData({ campaignVisible: false });
+  },
+  stopCampaignTap() {},
+  campaignImageFailed() {
+    this.setData({ campaignImage: "" });
+  },
+  openCampaign() {
+    const target = this.data.campaign?.target;
+    this.closeCampaign();
+    if (!target || target === "NONE") return;
+    const path =
+      target === "COUPONS"
+        ? "/pages/coupons/index"
+        : target === "WALLET"
+          ? "/pages/stored-value/index"
+          : "/pages/services/index";
+    if (!requireVerifiedCustomerAccess(path)) return;
+    if (target === "SERVICES") wx.switchTab({ url: path });
+    else wx.navigateTo({ url: path });
   },
   async loadServices() {
     if (this.discoveryRequest) return this.discoveryRequest;
@@ -418,8 +491,12 @@ Page({
   },
   openServiceDetail(e: { currentTarget: { dataset: { slug?: string } } }) {
     if (!requireVerifiedCustomerAccess()) return;
-    const service = this.data.allServices.find((item) => item.slug === e.currentTarget.dataset.slug);
+    const service = this.data.allServices.find(
+      (item) => item.slug === e.currentTarget.dataset.slug,
+    );
     if (!service) return;
-    wx.navigateTo({ url: `/pages/service-detail/index?slug=${encodeURIComponent(service.slug)}` });
+    wx.navigateTo({
+      url: `/pages/service-detail/index?slug=${encodeURIComponent(service.slug)}`,
+    });
   },
 });
