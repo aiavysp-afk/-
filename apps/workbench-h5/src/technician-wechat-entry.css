@@ -59,6 +59,16 @@
   border: 1px dashed #91b7a0;
   border-radius: 18px;
 }
+.wechat-entry-download {
+  display: block;
+  padding: 14px 18px;
+  border-radius: 24px;
+  background: #216448;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+}
 .wechat-entry-image-error button {
   padding: 12px 18px;
   border: 0;

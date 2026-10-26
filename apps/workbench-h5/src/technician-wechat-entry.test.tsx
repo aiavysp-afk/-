@@ -11,9 +11,10 @@ describe("technician native WeChat entry", () => {
     expect(TECHNICIAN_WECHAT_ENTRY_PATH).toBe(
       "pages/technician-onboarding/index",
     );
-    expect(html).toContain("微信扫码登录");
+    expect(html).toContain("技师入驻直达码");
     expect(html).toContain("technician-wechat-entry-trial.jpg");
-    expect(html).toContain("直接填写本人入驻资料");
+    expect(html).toContain("随后填写本人入驻资料");
+    expect(html).toContain("只扫这一个码即可");
     expect(html).toContain("仅小程序管理员及已添加的体验成员可用");
     expect(html).not.toContain("浏览器自动登录");
     expect(html).not.toContain("配对码");

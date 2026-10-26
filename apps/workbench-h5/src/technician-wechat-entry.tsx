@@ -12,8 +12,8 @@ export function TechnicianWechatEntry() {
       aria-label="微信扫码技师入驻登录"
     >
       <span className="wechat-entry-brand">中原到家 · 技师服务中心</span>
-      <h2>微信扫码登录</h2>
-      <p>扫码进入技师专用登录页，点击微信授权，直接填写本人入驻资料。</p>
+      <h2>技师入驻直达码</h2>
+      <p>将下方入驻码直接发给技师。技师用本人微信扫一扫，直接进入授权登录页，随后填写本人入驻资料。</p>
       {failed ? (
         <div className="wechat-entry-image-error" role="alert">
           <p>二维码暂未加载，请检查网络后重试。</p>
@@ -39,8 +39,9 @@ export function TechnicianWechatEntry() {
         />
       )}
       <p className="wechat-entry-scan-tip">
-        用本人微信扫一扫；在微信里可长按二维码识别。
+        只扫这一个码即可；在微信里可长按识别。
       </p>
+      <a className="wechat-entry-download" href={entryCode} target="_blank" rel="noreferrer">打开入驻码大图，保存后发给技师</a>
       <ol>
         <li>微信授权登录</li>
         <li>填写资料与上传照片</li>
