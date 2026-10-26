@@ -153,7 +153,7 @@ export function StaffPasswordCredentialsFields({
   return (
     <>
       <label>
-        登录账号（绑定手机号）
+        登录账号
         <input
           type="text"
           inputMode="text"
@@ -164,7 +164,7 @@ export function StaffPasswordCredentialsFields({
           maxLength={32}
           aria-describedby="staff-password-format"
           value={account}
-          placeholder="请输入已绑定手机号"
+          placeholder="请输入账号或已绑定手机号"
           onChange={(event) => onAccountChange(event.target.value)}
         />
       </label>
@@ -252,7 +252,7 @@ export function BrowserLogin({
     : smsRetrySeconds > 0
       ? `请等待 ${smsRetrySeconds} 秒后再申请短信验证码。`
       : !account.trim()
-        ? "请先输入本人已绑定的11位手机号；已有用户名也可登录。"
+        ? "请先输入登录账号，或本人已绑定的11位手机号。"
         : !isValidStaffLoginAccount(account)
           ? "账号格式不正确，请填写11位绑定手机号；已有用户名请核对原设置内容。"
           : password.length < 12
@@ -530,7 +530,7 @@ export function BrowserLogin({
           <span className="eyebrow">SECURE SIGN IN</span>
           <h2>登录管理后台</h2>
           <p>
-            仅限已授权工作人员。使用已绑定手机号和密码登录，再填写手机收到的短信验证码。
+            仅限已授权工作人员。输入账号或已绑定手机号和密码，再填写手机收到的短信验证码。
           </p>
         </div>
       </div>
@@ -547,7 +547,7 @@ export function BrowserLogin({
             <strong>
               账号密码登录 <em>默认方式</em>
             </strong>
-            <span>绑定手机号和密码 + 本人手机短信</span>
+            <span>账号密码 + 本人手机短信</span>
           </button>
           <button
             role="tab"
@@ -589,7 +589,7 @@ export function BrowserLogin({
           <aside className="environment-banner" role="note">
             <strong>已有密码：直接在下方登录</strong>
             <p>
-              本人已绑定的手机号就是登录账号。只有从未设置过密码的工作人员才使用首次设置；已有密码的账号在首次设置页不会收到验证码。
+              使用原账号和密码登录，也可将已绑定手机号作为账号。已有密码无需再次首次设置；只有从未设置过密码的工作人员才使用首次设置。
             </p>
             <button
               type="button"
@@ -750,7 +750,7 @@ export function BrowserLogin({
               onPasswordChange={setPassword}
             />
             <p id="staff-password-format">
-              登录账号默认使用已绑定的11位手机号；已有用户名仍可继续使用，无需重新设置。
+              请输入已设置的登录账号或11位绑定手机号，无需重新设置。
               密码必须为12–128个字符，不是六位短信验证码或验证器动态码。
             </p>
             <p>
