@@ -45,6 +45,18 @@ function fixture(path, handler, verified = true) {
         };
       if (name === "../../utils/auth")
         return {
+          getStoredSession: () =>
+            verified
+              ? {
+                  accessToken: "fixture-wechat-token",
+                  loginMethod: "WECHAT",
+                  user: { phoneVerified: true },
+                }
+              : undefined,
+          getCustomerLoginCapabilities: async () => ({
+            wechatPhoneLoginEnabled: true,
+          }),
+          clearStoredSession() {},
           requireVerifiedCustomerAccess: (returnPath) => {
             guards.push(returnPath);
             return verified;
@@ -53,18 +65,29 @@ function fixture(path, handler, verified = true) {
       throw new Error(name);
     },
     wx: {
+      request(input) {
+        const endpoint = "/technician/onboarding";
+        calls.push({ endpoint, method: input.method, data: input.data });
+        Promise.resolve(handler(endpoint, input.method, input.data)).then(
+          (data) => input.success({ statusCode: 200, data: { data } }),
+        );
+      },
       redirectTo: (value) => routes.push(value.url),
       navigateTo: (value) => routes.push(value.url),
       showModal: (value) => value.success({ confirm: true }),
     },
+    getApp: () => ({
+      globalData: { apiBaseUrl: "https://fixture.invalid/v1" },
+    }),
   });
   return { page, calls, routes, guards };
 }
-test("unverified applicant returns through WeChat phone verification before creating a draft", async () => {
+test("unverified applicant stays at the technician WeChat authorization page without creating a draft", async () => {
   const f = fixture("pages/technician-onboarding/index.ts", () => null, false);
   await f.page.onShow();
   assert.equal(f.calls.length, 0);
-  assert.deepEqual(f.guards, ["/pages/technician-onboarding/index"]);
+  assert.deepEqual(f.guards, []);
+  assert.equal(f.page.data.authenticated, false);
 });
 test("first registration creates an empty owner draft without invitation or pairing payload", async () => {
   const f = fixture(
@@ -92,7 +115,7 @@ test("first registration creates an empty owner draft without invitation or pair
     "/pages/technician-application/index",
   ]);
 });
-test("pending/rejected applications stay on review status; approved login directly opens workbench", async () => {
+test("pending stays on review, rejected resumes form and approved login directly opens workbench", async () => {
   for (const status of ["PENDING_REVIEW", "REJECTED", "APPROVED"]) {
     const f = fixture("pages/technician-onboarding/index.ts", () => ({
       profile: { status },
@@ -103,7 +126,11 @@ test("pending/rejected applications stay on review status; approved login direct
     assert.equal(f.calls.length, 1);
     assert.deepEqual(
       f.routes,
-      status === "APPROVED" ? ["/pages/technician-workbench/index"] : [],
+      status === "APPROVED"
+        ? ["/pages/technician-workbench/index"]
+        : status === "REJECTED"
+          ? ["/pages/technician-application/index"]
+          : [],
     );
   }
 });

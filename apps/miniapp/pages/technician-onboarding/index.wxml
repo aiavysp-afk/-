@@ -1,19 +1,32 @@
 <view class="page">
-  <view class="hero"><text class="eyebrow">TECHNICIAN ONBOARDING</text><text class="title">技师入驻与登录</text><text class="subtitle">微信授权 · 手机号验证 · 填写资料 · 后台审核</text></view>
-  <view class="card success-card">
+  <view class="hero"><text class="eyebrow">ZHONGYUAN · TECHNICIAN</text><text class="title">技师入驻与登录</text><text class="subtitle">扫码进入 · 微信授权 · 填写资料 · 后台审核</text></view>
+  <view wx:if="{{!authenticated}}" class="card login-card">
+    <view class="wechat-mark">微</view>
+    <text class="card-title">使用本人微信登录</text>
+    <text class="note">点击授权确认微信身份与本人手机号，成功后直接填写入驻资料。已有申请自动继续原来的资料。</text>
+    <button class="wechat-login" open-type="{{accepted && capabilitiesReady && wechatPhoneLoginEnabled && !busy ? 'getPhoneNumber' : ''}}" bindgetphonenumber="authorizeWechat" bindtap="handleWechatChoice" loading="{{busy}}" disabled="{{busy || capabilitiesLoading}}">{{busy ? '正在微信授权登录…' : capabilitiesLoading ? '正在连接微信登录…' : '微信授权并填写资料'}}</button>
+    <view class="agreement-row">
+      <view class="agreement-check {{accepted ? 'checked' : ''}}" bindtap="toggleAccepted" aria-role="checkbox" aria-checked="{{accepted}}" aria-label="同意用户协议、隐私政策与上门服务公约"><text wx:if="{{accepted}}">✓</text></view>
+      <view class="agreement-copy">我已阅读并同意<text class="agreement-link" data-type="user" bindtap="openAgreement">《用户协议》</text><text class="agreement-link" data-type="privacy" bindtap="openAgreement">《隐私政策》</text>及<text class="agreement-link" data-type="service" bindtap="openAgreement">《上门服务公约》</text></view>
+    </view>
+    <text wx:if="{{error}}" class="error" role="alert">{{error}}</text>
+    <button wx:if="{{!capabilitiesLoading && (!capabilitiesReady || !wechatPhoneLoginEnabled)}}" class="secondary" bindtap="loadCapabilities">重新连接微信登录</button>
+    <text class="privacy-note">仅在你主动授权后处理微信身份和手机号，用于本人入驻及审核联系。</text>
+  </view>
+  <view wx:else class="card success-card">
     <text class="success-icon">{{application.profile.status === 'PENDING_REVIEW' ? '…' : '✓'}}</text>
-    <text class="card-title">{{statusLabel || '正在读取入驻状态'}}</text>
+    <text class="card-title">{{statusLabel || '正在读取本人入驻状态'}}</text>
     <text wx:if="{{busy}}" class="note">正在同步后台…</text>
-    <text wx:if="{{error}}" class="error">{{error}}</text>
+    <text wx:if="{{error}}" class="error" role="alert">{{error}}</text>
     <block wx:if="{{application.profile}}">
-      <text wx:if="{{application.profile.status === 'PENDING_REVIEW'}}" class="note">资料已同步管理后台。审核前不能接单；审核通过后，使用同一微信账号再次登录即可进入技师工作台。</text>
+      <text wx:if="{{application.profile.status === 'PENDING_REVIEW'}}" class="note">资料已同步管理后台，正在审核。审核通过后，同一微信再次扫码即可进入技师工作台。</text>
       <text wx:if="{{application.profile.rejectionReason}}" class="error">退回原因：{{application.profile.rejectionReason}}</text>
-      <text wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" class="note">填写真实姓名、接单区域和时段，选择擅长项目，上传形象照及身份证正反面后提交审核。公开称呼和年龄段可由后台补录。</text>
-      <button wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" bindtap="editProfile">填写入驻资料</button>
-      <text wx:if="{{(application.profile.status === 'APPROVED' || application.profile.status === 'PUBLISHED') && !application.canEnterWorkbench}}" class="error">技师身份当前不可用，请联系后台核验，不会自动恢复停用资格。</text>
+      <text wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" class="note">填写本人资料并上传形象照、证件后，提交给管理后台审核。</text>
+      <button wx:if="{{application.profile.status === 'DRAFT' || application.profile.status === 'REJECTED'}}" bindtap="editProfile">继续填写入驻资料</button>
+      <text wx:if="{{(application.profile.status === 'APPROVED' || application.profile.status === 'PUBLISHED') && !application.canEnterWorkbench}}" class="error">技师身份当前不可用，请联系后台核验。</text>
     </block>
     <button class="secondary" loading="{{busy}}" disabled="{{busy}}" bindtap="load">刷新审核结果</button>
-    <button class="secondary" open-type="share">分享技师入驻入口</button>
   </view>
-  <view class="rules"><text>入驻说明</text><text>· 无需邀请码、配对码或复制登录令牌</text><text>· 微信身份与验证手机号自动绑定本人申请</text><text>· 后台审核通过后开通本人工作台；公开展示仍需后台发布及安排排班</text><text>· 禁止使用他人照片、代注册或填报虚假资质</text></view>
+  <view class="rules"><text>入驻说明</text><text>· 使用技师本人微信授权，直接填写本人资料</text><text>· 资料和审核进度自动同步管理后台</text><text>· 审核通过后进入工作台，按后台安排的项目及时段接单</text><text>· 请使用真实资料和本人授权的照片</text></view>
+  <button class="share-entry" open-type="share">分享技师入驻入口</button>
 </view>

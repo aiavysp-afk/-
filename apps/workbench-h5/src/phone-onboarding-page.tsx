@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { AuthSession } from "@zydj/contracts";
 import { CheckCircle2, LoaderCircle, Smartphone } from "lucide-react";
+import { TechnicianWechatEntry } from "./technician-wechat-entry";
 import {
   ProfileForm,
   ReviewStatus,
@@ -552,7 +553,7 @@ export function TechnicianPhoneOnboarding({
           className="onboarding-secondary"
           onClick={() => setAlternative(null)}
         >
-          返回手机号入驻
+          返回技师登录
         </button>
         {alternative === "miniapp" ? (
           <TechnicianMiniappEntry />
@@ -572,13 +573,19 @@ export function TechnicianPhoneOnboarding({
         <span>{token ? "2 / 3" : "1 / 3"}</span>
       </header>
       {!token ? (
-        <TechnicianPhoneLogin
-          capabilities={capabilities}
-          loading={capLoading}
-          error={error}
-          onRetry={() => void loadCapabilities()}
-          onAuthenticated={authenticated}
-        />
+        <>
+          <TechnicianWechatEntry />
+          <details className="technician-sms-alternative">
+            <summary>其他登录方式：手机号验证码</summary>
+            <TechnicianPhoneLogin
+              capabilities={capabilities}
+              loading={capLoading}
+              error={error}
+              onRetry={() => void loadCapabilities()}
+              onAuthenticated={authenticated}
+            />
+          </details>
+        </>
       ) : (
         <>
           <div className="onboarding-session-bar">

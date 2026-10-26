@@ -35,6 +35,7 @@ import {
 } from "./h5-onboarding";
 import { prepareTechnicianPhoto } from "./technician-photo";
 import { technicianRequest } from "./phone-onboarding";
+import { TechnicianWechatEntry } from "./technician-wechat-entry";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3100/v1";
@@ -161,6 +162,7 @@ function WechatAuthorization({
 export function TechnicianMiniappEntry() {
   return (
     <main className="onboarding-main onboarding-welcome">
+      <TechnicianWechatEntry />
       <section className="onboarding-hero">
         <div className="onboarding-hero-icon">
           <ShieldCheck />
@@ -182,9 +184,9 @@ export function TechnicianMiniappEntry() {
         <li>
           <ShieldCheck />
           <div>
-            <b>我的 → 设置 → 技师入驻与登录</b>
+            <b>扫码直达技师专用登录页</b>
             <span>
-              完成本人微信授权和手机号验证，无需密码、邀请码或配对码。
+              点击微信授权登录后直接填写本人资料，无需短信、密码或配对码。
             </span>
           </div>
         </li>
