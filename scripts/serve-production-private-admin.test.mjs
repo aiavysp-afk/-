@@ -314,6 +314,11 @@ test("SPA supports private blob previews and safe static assets", async () => {
   );
   assert.match(result.headers["content-security-policy"], /connect-src 'self'/);
   assert.equal(result.headers["cache-control"], "no-store");
+  const login = await send("/login");
+  assert.equal(login.status, 200);
+  assert.equal(login.body.toString(), result.body.toString());
+  assert.equal(login.headers["cache-control"], "no-store");
+  assert.equal((await send("/login", { method: "HEAD" })).body.length, 0);
   assert.equal((await send("/assets/app.js")).status, 200);
   assert.equal((await send("/technicians", { method: "HEAD" })).body.length, 0);
 });

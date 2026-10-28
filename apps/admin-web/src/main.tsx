@@ -38,6 +38,7 @@ import "./styles.css";
 import { RefundWorkspace } from "./refunds";
 import { SecurityWorkspace } from "./security";
 import { BrowserLogin } from "./browser-login";
+import { AdminLoginPage } from "./admin-login-page";
 import { CatalogWorkspace } from "./catalog-workspace";
 import {
   authenticatedFetch,
@@ -610,6 +611,10 @@ export function App() {
   const [displayName, setDisplayName] = useState("未登录");
   const [organizationId, setOrganizationId] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
+  // A token restored from browser storage is not a verified staff identity.
+  const [verifiedToken, setVerifiedToken] = useState("");
+  const [sessionError, setSessionError] = useState("");
+  const [sessionCheckAttempt, setSessionCheckAttempt] = useState(0);
   const currentToken = useRef(token);
   currentToken.current = token;
 
@@ -621,6 +626,9 @@ export function App() {
     setDisplayName("未登录");
     setOrganizationId("");
     setUser(null);
+    setVerifiedToken("");
+    setSessionError("");
+    setSection("dashboard");
     setQuery("");
   }, []);
 
@@ -641,26 +649,51 @@ export function App() {
       setUser(null);
       return;
     }
-    setUser(null);
+    setSessionError("");
     let current = true;
-    void apiRequest<{ data: AuthUser }>("/auth/me", {}, token)
+    void apiRequest<{ data: AuthUser }>(
+      "/auth/me",
+      { cache: "no-store", signal: AbortSignal.timeout(10_000) },
+      token,
+    )
       .then((r) => {
         if (current && currentToken.current === token) {
           setUser(r.data);
           setDisplayName(r.data.displayName);
           setOrganizationId(managementOrganizationId(r.data));
+          setVerifiedToken(token);
         }
       })
       .catch((error: { status?: number }) => {
         if (!current || currentToken.current !== token) return;
         if (error.status === 401) {
           clearSession(token);
-        } else setDisplayName("会话待重新验证");
+        } else {
+          setSessionError("登录状态暂时无法验证，请检查网络后重试。");
+        }
       });
     return () => {
       current = false;
     };
-  }, [token, clearSession]);
+  }, [token, clearSession, sessionCheckAttempt]);
+
+  const authenticated = Boolean(
+    token && verifiedToken === token && user && organizationId,
+  );
+  useLayoutEffect(() => {
+    // Use fixed local destinations, never a query-supplied redirect URL.
+    const destination = !token ? "/login" : authenticated ? "/" : null;
+    if (
+      destination &&
+      `${window.location.pathname}${window.location.search}${window.location.hash}` !==
+        destination
+    ) {
+      window.history.replaceState(null, "", destination);
+    }
+    document.title = authenticated
+      ? "中原到家 · 运营中心"
+      : "中原到家 · 管理后台登录";
+  }, [token, authenticated]);
 
   async function logout() {
     const logoutToken = token;
@@ -691,6 +724,8 @@ export function App() {
     setDisplayName(response.data.user.displayName);
     setOrganizationId(managementOrganizationId(response.data.user));
     setUser(response.data.user);
+    setVerifiedToken(response.data.accessToken);
+    setSessionError("");
   }
 
   function acceptBrowserSession(session: AuthSession) {
@@ -708,13 +743,69 @@ export function App() {
     setDisplayName(session.user.displayName);
     setOrganizationId(managementOrganizationId(session.user));
     setUser(session.user);
-    setSection("security");
+    setVerifiedToken(session.accessToken);
+    setSessionError("");
+    setSection("dashboard");
     setQuery("");
+  }
+
+  async function requestLogout() {
+    const requestedToken = token;
+    try {
+      await logout();
+    } catch {
+      if (currentToken.current === requestedToken) {
+        setSessionError("退出暂未完成，请检查网络后重试。");
+      }
+    }
   }
 
   const canSearch = (
     ["dashboard", "dispatch", "technicians", "catalog", "audit"] as Section[]
   ).includes(section);
+
+  if (!token) {
+    return (
+      <AdminLoginPage>
+        <BrowserLogin onSession={acceptBrowserSession} />
+      </AdminLoginPage>
+    );
+  }
+
+  if (!authenticated) {
+    const staffDenied = verifiedToken === token && user && !organizationId;
+    return (
+      <AdminLoginPage>
+        <section className="admin-session-check" aria-label="登录状态验证">
+          {staffDenied ? (
+            <p role="alert">当前账号没有后台管理权限，请联系管理员。</p>
+          ) : sessionError ? (
+            <>
+              <p role="alert">{sessionError}</p>
+              <button
+                className="primary-action"
+                onClick={() => {
+                  setSessionError("");
+                  setSessionCheckAttempt((attempt) => attempt + 1);
+                }}
+              >
+                重新验证登录状态
+              </button>
+            </>
+          ) : (
+            <p role="status">正在验证登录状态，请稍候…</p>
+          )}
+          <button
+            className="ghost-action"
+            aria-label="退出当前后台账号"
+            onClick={() => void requestLogout()}
+          >
+            退出并返回登录页
+          </button>
+        </section>
+      </AdminLoginPage>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -854,7 +945,7 @@ export function App() {
               <button
                 className="logout-button"
                 aria-label="退出当前后台账号"
-                onClick={() => void logout()}
+                onClick={() => void requestLogout()}
               >
                 <LogOut size={17} />
                 退出
@@ -862,8 +953,10 @@ export function App() {
             )}
           </div>
         </header>
-        {!token && section !== "security" && (
-          <BrowserLogin onSession={acceptBrowserSession} />
+        {sessionError && (
+          <p className="catalog-error" role="alert">
+            {sessionError}
+          </p>
         )}
         {section === "dashboard" ? (
           <Dashboard
