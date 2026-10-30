@@ -1,0 +1,158 @@
+.simple-admin-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f4f7f5;
+  font-size: 16px;
+}
+.simple-admin-nav {
+  display: flex;
+  flex-direction: column;
+  background: #174436;
+  color: #fff;
+  padding: 34px 22px;
+  gap: 40px;
+}
+.simple-admin-brand {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.simple-admin-brand small {
+  display: block;
+  color: #b5cec2;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  margin-top: 8px;
+}
+.simple-admin-nav nav {
+  display: grid;
+  gap: 12px;
+}
+.simple-admin-nav nav a {
+  display: block;
+  color: #cee0d6;
+  text-decoration: none;
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 17px;
+}
+.simple-admin-nav nav a[aria-current="page"] {
+  background: #fff;
+  color: #174436;
+  font-weight: 700;
+}
+.simple-admin-account {
+  margin-top: auto;
+  display: grid;
+  gap: 12px;
+  font-size: 14px;
+}
+.simple-admin-account a {
+  color: #c8ddcf;
+  width: fit-content;
+}
+.simple-admin-main {
+  margin: 0;
+  padding: 40px;
+  max-width: none;
+  width: 100%;
+  min-width: 0;
+}
+.simple-admin-heading {
+  margin-bottom: 28px;
+  gap: 12px;
+}
+.simple-admin-heading h1 {
+  font-family: inherit;
+  font-size: 28px;
+}
+.simple-admin-heading > span {
+  font-size: 14px;
+  color: #4d7661;
+}
+.simple-verification-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: #142e24b8;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.simple-verification-dialog {
+  background: white;
+  color: #203a2d;
+  border-radius: 18px;
+  padding: 30px;
+  width: min(100%, 460px);
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 20px 70px #0003;
+}
+.simple-verification-dialog h2 {
+  margin: 0 0 18px;
+  font-size: 22px;
+}
+.simple-verification-dialog p {
+  line-height: 1.8;
+  font-size: 15px;
+}
+.simple-verification-dialog label {
+  display: grid;
+  gap: 10px;
+  font-size: 15px;
+}
+.simple-verification-dialog input {
+  width: 100%;
+  font: inherit;
+  padding: 12px;
+  border: 1px solid #bfd2c4;
+  border-radius: 8px;
+}
+.simple-verification-dialog .catalog-actions {
+  margin-top: 20px;
+}
+.simple-verification-dialog code {
+  display: block;
+  background: #f0f5f1;
+  padding: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+@media (max-width: 760px) {
+  .simple-admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .simple-admin-nav {
+    padding: 20px;
+    gap: 20px;
+  }
+  .simple-admin-nav nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .simple-admin-nav nav a {
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 15px;
+  }
+  .simple-admin-brand {
+    font-size: 20px;
+  }
+  .simple-admin-brand small {
+    display: inline;
+    margin-left: 12px;
+  }
+  .simple-admin-account {
+    display: flex;
+    justify-content: space-between;
+  }
+  .simple-admin-main {
+    padding: 24px 16px;
+  }
+  .simple-admin-heading h1 {
+    font-size: 24px;
+  }
+}

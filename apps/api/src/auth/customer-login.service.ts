@@ -286,6 +286,7 @@ export class CustomerLoginService {
         const user = await tx.user.create({
           data: {
             role: UserRole.CUSTOMER,
+            organizationId: await this.newCustomerOrganization(tx),
             displayName: "手机用户",
             phoneEncrypted: this.crypto.encrypt(input.phone),
             phoneVerifiedAt: now,
@@ -400,7 +401,11 @@ export class CustomerLoginService {
         sourceId ??
         (
           await tx.user.create({
-            data: { role: UserRole.CUSTOMER, displayName: "微信用户" },
+            data: {
+              role: UserRole.CUSTOMER,
+              displayName: "微信用户",
+              organizationId: await this.newCustomerOrganization(tx),
+            },
             select: { id: true },
           })
         ).id;
@@ -524,6 +529,18 @@ export class CustomerLoginService {
           })),
       },
     };
+  }
+
+  private async newCustomerOrganization(tx: Tx): Promise<string | undefined> {
+    // Only a newly created customer is registered to this site's unique active
+    // service organization. Never reassign an existing customer/staff identity,
+    // infer historical ownership in bulk, or accept a tenant from the browser.
+    const organizations = await tx.organization.findMany({
+      where: { services: { some: { published: true } } },
+      select: { id: true },
+      take: 2,
+    });
+    return organizations.length === 1 ? organizations[0]!.id : undefined;
   }
 
   private async rateLimit(

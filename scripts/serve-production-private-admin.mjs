@@ -34,6 +34,11 @@ const rules = [
   ],
   [/^\/v1\/admin\/scheduling\/shifts$/, ["GET", "POST"]],
   [
+    new RegExp(`^${organization}/simple/(?:technicians|orders|users)$`),
+    ["GET"],
+  ],
+  [new RegExp(`^${organization}/simple/orders/${segment}$`), ["GET"]],
+  [
     new RegExp(
       `^${organization}/(?:dashboard|dispatch|technicians|service-area|readiness|payments|safety-duty-rosters/current|safety-duty-staff|safety-notifications|safety-notifications-summary|safety-incidents|mfa-recovery-requests)$`,
     ),

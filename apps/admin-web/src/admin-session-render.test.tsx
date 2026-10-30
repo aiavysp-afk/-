@@ -5,6 +5,12 @@ import { createHookRenderer } from "./test-hook-renderer";
 import { App } from "./main";
 import { BrowserLogin } from "./browser-login";
 import {
+  SimpleTechniciansPage,
+  SimpleOrdersPage,
+  SimpleUsersPage,
+} from "./simple-admin-pages";
+import { SimpleVerificationDialog } from "./simple-verification-dialog";
+import {
   authenticatedFetch,
   registerAdminSession,
 } from "./authenticated-fetch";
@@ -62,6 +68,8 @@ beforeEach(() => {
       return browserUrl;
     },
     history: { replaceState },
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
   });
 });
 afterEach(() => {
@@ -102,7 +110,7 @@ describe("root admin session recovery", () => {
     render();
     hooks.current!.flushEffects();
     await flush();
-    expect(JSON.stringify(render())).toContain("已登录 · 账户安全");
+    expect(JSON.stringify(render())).toContain("simple-admin-shell");
     await authenticatedFetch(
       "staff-a",
       "http://127.0.0.1:3100/v1/admin/catalog/services",
@@ -111,13 +119,15 @@ describe("root admin session recovery", () => {
     const tree = render();
     hooks.current!.flushEffects();
     expect(values.has(tokenKey)).toBe(false);
-    expect(JSON.stringify(tree)).not.toContain("已登录 · 账户安全");
+    expect(JSON.stringify(tree)).not.toContain("simple-admin-shell");
     expect(JSON.stringify(tree)).not.toContain("测试运营");
     expect(elements(tree).some((node) => node.type === BrowserLogin)).toBe(
       true,
     );
     expect(browserUrl.pathname).toBe("/login");
-    expect(JSON.stringify(tree)).not.toContain('"className":"app-shell"');
+    expect(JSON.stringify(tree)).not.toContain(
+      '"className":"simple-admin-shell"',
+    );
     expect(
       fetcher.mock.calls.some(([url]) => String(url).includes("/auth/logout")),
     ).toBe(false);
@@ -142,7 +152,7 @@ describe("root admin session recovery", () => {
     );
     const tree = render();
     expect(values.get(tokenKey)).toBe("staff-a");
-    expect(JSON.stringify(tree)).toContain("已登录 · 账户安全");
+    expect(JSON.stringify(tree)).toContain("simple-admin-shell");
     expect(elements(tree).some((node) => node.type === BrowserLogin)).toBe(
       false,
     );
@@ -162,7 +172,9 @@ describe("root admin session recovery", () => {
     const logout = elements(tree).find(
       (node) => node.props["aria-label"] === "退出当前后台账号",
     )!;
-    (logout.props.onClick as () => void)();
+    (logout.props.onClick as (event: { preventDefault: () => void }) => void)({
+      preventDefault: () => {},
+    });
     await flush();
     // No rerender/effect cleanup has run yet; the live identity reference must fence this success.
     oldIdentity.resolve(response(200, user));
@@ -189,7 +201,9 @@ describe("root admin session recovery", () => {
     const logout = elements(first).find(
       (node) => node.props["aria-label"] === "退出当前后台账号",
     )!;
-    (logout.props.onClick as () => void)();
+    (logout.props.onClick as (event: { preventDefault: () => void }) => void)({
+      preventDefault: () => {},
+    });
     await flush();
     const login = elements(render()).find(
       (node) => node.type === BrowserLogin,
@@ -216,6 +230,42 @@ describe("root admin session recovery", () => {
 });
 
 describe("standalone admin login home", () => {
+  it("exposes only three navigation links and keeps identity verification on the same business page", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(200, user)));
+    render();
+    hooks.current!.flushEffects();
+    await flush();
+    let tree = render();
+    const nav = elements(tree).find((node) => node.type === "nav")!;
+    const links = elements(nav).filter((node) => node.type === "a");
+    expect(links.map((node) => node.props.children)).toEqual([
+      "技师审核",
+      "订单列表",
+      "用户列表",
+    ]);
+    expect(JSON.stringify(tree)).not.toContain("服务项目");
+    expect(JSON.stringify(tree)).not.toContain("经营概览");
+    expect(JSON.stringify(tree)).not.toContain("账户安全");
+    (
+      links[1]!.props.onClick as (event: { preventDefault: () => void }) => void
+    )({ preventDefault: () => {} });
+    tree = render();
+    let orders = elements(tree).find((node) => node.type === SimpleOrdersPage)!;
+    (orders.props.onRequireVerification as () => void)();
+    tree = render();
+    orders = elements(tree).find((node) => node.type === SimpleOrdersPage)!;
+    expect(orders.props.hideActions).toBe(true);
+    const dialog = elements(tree).find(
+      (node) => node.type === SimpleVerificationDialog,
+    )!;
+    expect(dialog).toBeDefined();
+    (dialog.props.onClose as () => void)();
+    orders = elements(render()).find((node) => node.type === SimpleOrdersPage)!;
+    expect(orders.props.hideActions).toBe(false);
+    expect(
+      elements(render()).some((node) => node.type === SimpleUsersPage),
+    ).toBe(false);
+  });
   it("redirects anonymous visits to a fixed login path without mounting a workbench", () => {
     values.clear();
     browserUrl = new URL(
@@ -228,7 +278,9 @@ describe("standalone admin login home", () => {
     expect(elements(tree).some((node) => node.type === BrowserLogin)).toBe(
       true,
     );
-    expect(JSON.stringify(tree)).not.toContain('"className":"app-shell"');
+    expect(JSON.stringify(tree)).not.toContain(
+      '"className":"simple-admin-shell"',
+    );
     expect(JSON.stringify(tree)).not.toContain("经营概览");
     expect(browserUrl.href).toBe("https://admin.example.test/login");
     expect(document.title).toContain("管理后台登录");
@@ -243,7 +295,9 @@ describe("standalone admin login home", () => {
     const pending = render();
     hooks.current!.flushEffects();
     expect(JSON.stringify(pending)).toContain("正在验证登录状态");
-    expect(JSON.stringify(pending)).not.toContain('"className":"app-shell"');
+    expect(JSON.stringify(pending)).not.toContain(
+      '"className":"simple-admin-shell"',
+    );
     expect(browserUrl.pathname).toBe("/login");
     expect(fetcher.mock.calls[0]![1]).toMatchObject({ cache: "no-store" });
     expect(fetcher.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
@@ -251,12 +305,12 @@ describe("standalone admin login home", () => {
     await flush();
     const tree = render();
     hooks.current!.flushEffects();
-    expect(JSON.stringify(tree)).toContain('"className":"app-shell"');
+    expect(JSON.stringify(tree)).toContain('"className":"simple-admin-shell"');
     expect(browserUrl.pathname).toBe("/");
-    expect(document.title).toContain("运营中心");
+    expect(document.title).toContain("技师审核");
   });
 
-  it("opens the dashboard after password authentication instead of the security workspace", () => {
+  it("opens technician review after password authentication with only three business destinations", () => {
     values.clear();
     browserUrl = new URL("https://admin.example.test/login");
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
@@ -272,10 +326,9 @@ describe("standalone admin login home", () => {
     const tree = render();
     hooks.current!.flushEffects();
     expect(browserUrl.pathname).toBe("/");
-    expect(JSON.stringify(tree)).toContain("运营中心");
+    expect(JSON.stringify(tree)).toContain("技师审核");
     const dashboard = elements(tree).find(
-      (node) =>
-        typeof node.type === "function" && node.type.name === "Dashboard",
+      (node) => node.type === SimpleTechniciansPage,
     );
     expect(dashboard?.props.organizationId).toBe("org-test");
     expect(elements(tree).some((node) => node.type === BrowserLogin)).toBe(
@@ -294,7 +347,9 @@ describe("standalone admin login home", () => {
     await flush();
     const failed = render();
     expect(values.get(tokenKey)).toBe("staff-a");
-    expect(JSON.stringify(failed)).not.toContain('"className":"app-shell"');
+    expect(JSON.stringify(failed)).not.toContain(
+      '"className":"simple-admin-shell"',
+    );
     expect(JSON.stringify(failed)).toContain("登录状态暂时无法验证");
     const retry = elements(failed).find(
       (node) =>
@@ -304,7 +359,9 @@ describe("standalone admin login home", () => {
     render();
     hooks.current!.flushEffects();
     await flush();
-    expect(JSON.stringify(render())).toContain('"className":"app-shell"');
+    expect(JSON.stringify(render())).toContain(
+      '"className":"simple-admin-shell"',
+    );
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls.every(([, options]) => !options?.method)).toBe(
       true,
@@ -326,7 +383,9 @@ describe("standalone admin login home", () => {
     await flush();
     const tree = render();
     expect(JSON.stringify(tree)).toContain("当前账号没有后台管理权限");
-    expect(JSON.stringify(tree)).not.toContain('"className":"app-shell"');
+    expect(JSON.stringify(tree)).not.toContain(
+      '"className":"simple-admin-shell"',
+    );
     expect(JSON.stringify(tree)).not.toContain("技师管理");
   });
 
@@ -346,7 +405,9 @@ describe("standalone admin login home", () => {
     const logout = elements(tree).find(
       (node) => node.props["aria-label"] === "退出当前后台账号",
     )!;
-    (logout.props.onClick as () => void)();
+    (logout.props.onClick as (event: { preventDefault: () => void }) => void)({
+      preventDefault: () => {},
+    });
     await flush();
     const next = render();
     hooks.current!.flushEffects();

@@ -1795,8 +1795,8 @@ export const AdminCustomerCenterSummarySchema = z.object({
   }),
 });
 
-// Directory membership comes from organization-scoped customer business records,
-// never a global user list or caller-supplied registration ownership.
+// Directory membership comes from trusted registration ownership or scoped
+// customer business records, never a global user list or caller-supplied ownership.
 export const AdminCustomerDirectoryQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -2125,3 +2125,57 @@ export const TechnicianShowcaseSaveSchema = z.object({
 }).strict();
 export type TechnicianShowcaseSave = z.infer<typeof TechnicianShowcaseSaveSchema>;
 export type TechnicianShowcasePortrait = { id: string; imagePath: string };
+
+export const SimpleAdminPageQuerySchema = AdminCustomerDirectoryQuerySchema;
+export const SimpleAdminTechniciansQuerySchema = SimpleAdminPageQuerySchema.extend({
+  status: z.enum(["ALL", "DRAFT", "PENDING_REVIEW", "APPROVED", "PUBLISHED", "REJECTED"]).default("PENDING_REVIEW"),
+}).strict();
+export const SimpleAdminOrdersQuerySchema = SimpleAdminPageQuerySchema.extend({
+  status: z.union([OrderStatusSchema, z.literal("ALL")]).default("ALL"),
+}).strict();
+export const SimpleAdminTechnicianSchema = z.object({
+  technicianId: z.string(),
+  name: z.string(),
+  maskedPhone: z.string().regex(/^1\d{2}\*{4}\d{4}$/).nullable(),
+  status: TechnicianProfileStatusSchema,
+  version: z.number().int().nonnegative(),
+  // No dedicated certificate-image record exists yet. Identity documents must
+  // never be substituted for professional qualification certificates.
+  certificatePhotos: z.array(z.object({ id: z.string(), url: PublicHttpsUrlSchema }).strict()),
+  certificatePhotoStatus: z.literal("NOT_UPLOADED"),
+}).strict();
+export const SimpleAdminTechniciansSchema = z.object({
+  items: z.array(SimpleAdminTechnicianSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+export const SimpleAdminOrderSchema = z.object({
+  id: z.string(),
+  orderNo: z.string(),
+  customerNickname: z.string(),
+  appointmentStart: IsoDateTimeSchema,
+  status: OrderStatusSchema,
+}).strict();
+export const SimpleAdminOrdersSchema = z.object({
+  items: z.array(SimpleAdminOrderSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+export const SimpleAdminOrderDetailSchema = SimpleAdminOrderSchema.extend({
+  appointmentEnd: IsoDateTimeSchema,
+  serviceAmountFen: MoneyFenSchema,
+  travelFeeFen: MoneyFenSchema,
+  discountFen: MoneyFenSchema,
+  payableFen: MoneyFenSchema,
+  createdAt: IsoDateTimeSchema,
+  technicianName: z.string().nullable(),
+  items: z.array(z.object({
+    serviceName: z.string(),
+    durationMinutes: z.number().int().positive(),
+    unitPriceFen: MoneyFenSchema,
+    quantity: z.number().int().positive(),
+  }).strict()),
+}).strict();
+export type SimpleAdminTechniciansQuery = z.infer<typeof SimpleAdminTechniciansQuerySchema>;
+export type SimpleAdminOrdersQuery = z.infer<typeof SimpleAdminOrdersQuerySchema>;
+export type SimpleAdminTechnicians = z.infer<typeof SimpleAdminTechniciansSchema>;
+export type SimpleAdminOrders = z.infer<typeof SimpleAdminOrdersSchema>;
+export type SimpleAdminOrderDetail = z.infer<typeof SimpleAdminOrderDetailSchema>;

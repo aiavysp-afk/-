@@ -67,6 +67,12 @@ function expectedScope() {
   return {
     status: "ACTIVE",
     OR: [
+      {
+        organizationId: "org-1",
+        role: "CUSTOMER",
+        phoneVerifiedAt: { not: null },
+        customerPhoneIdentity: { isNot: null },
+      },
       { customerOrders: { some: { organizationId: "org-1" } } },
       { customerReservations: { some: { organizationId: "org-1" } } },
       { storedValueAccounts: { some: { organizationId: "org-1" } } },
@@ -120,7 +126,7 @@ describe("organization customer phone directory", () => {
     expect(f.prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("requires neither new registration ownership nor a global User role fallback", async () => {
+  it("includes only explicit registration ownership or existing business relationships, never a global customer fallback", async () => {
     const f = setup();
     f.prisma.user.findMany.mockResolvedValue([]);
     await expect(

@@ -151,6 +151,36 @@ test("production ports are fixed and separate from acceptance", () => {
   assert.equal(API_ORIGIN, "http://127.0.0.1:3220");
 });
 
+test("simple admin forwards exact read routes and refuses writes or namespace expansion", async () => {
+  const base = "/v1/admin/organizations/org-1/simple";
+  for (const suffix of ["technicians", "orders", "orders/order-1", "users"]) {
+    const path = `${base}/${suffix}`;
+    const before = calls.length;
+    const response = await send(`${path}?limit=20`, {
+      headers: { Authorization: "Bearer synthetic-simple-reader" },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, before + 1);
+    assert.equal(calls.at(-1).url, `${API_ORIGIN}${path}?limit=20`);
+    assert.equal(
+      calls.at(-1).options.headers.Authorization,
+      "Bearer synthetic-simple-reader",
+    );
+    const denied = await send(path, { method: "POST" });
+    assert.equal(denied.status, 405);
+    assert.equal(calls.length, before + 1);
+  }
+  for (const path of [
+    `${base}/users/export`,
+    `${base}/orders/order-1/refund`,
+    `${base}/technicians/delete`,
+  ]) {
+    const before = calls.length;
+    assert.equal((await send(path)).status, 404);
+    assert.equal(calls.length, before);
+  }
+});
+
 test("new login and device routes are exact and method restricted", () => {
   assert.deepEqual(allowedAdminMethods("/v1/auth/staff-password"), [
     "GET",
@@ -370,6 +400,10 @@ test("all required exact management routes have narrowly allowed methods", () =>
     ["/v1/auth/mfa/verify", ["POST"]],
     ["/v1/admin/audit-logs", ["GET"]],
     ["/v1/admin/scheduling/shifts", ["GET", "POST"]],
+    ["/v1/admin/organizations/org-1/simple/technicians", ["GET"]],
+    ["/v1/admin/organizations/org-1/simple/orders", ["GET"]],
+    ["/v1/admin/organizations/org-1/simple/users", ["GET"]],
+    ["/v1/admin/organizations/org-1/simple/orders/order-1", ["GET"]],
     ["/v1/admin/catalog/services", ["GET", "POST"]],
     ["/v1/admin/catalog/services/service-1", ["PATCH", "DELETE"]],
     ["/v1/admin/catalog/services/service-1/publish", ["POST"]],

@@ -44,6 +44,7 @@ const fixture = (overrides = {}) => {
   const tx = {
     $executeRaw: vi.fn().mockResolvedValue(1),
     $queryRaw: vi.fn().mockResolvedValue([]),
+    organization: { findMany: vi.fn().mockResolvedValue([{ id: "site-org" }]) },
     user: {
       findUnique: vi.fn().mockResolvedValue(user),
       create: vi.fn().mockResolvedValue({ id: user.id }),
@@ -160,6 +161,99 @@ const wechatInput = {
 const smsInput = { phone, agreementsAccepted: true as const };
 
 describe("CustomerLoginService", () => {
+  it("registers a newly verified WeChat customer to the server's unique service organization without changing identities", async () => {
+    const f = fixture();
+    f.phones.findOwner.mockResolvedValue(null as never);
+    await f.service.wechatPhone(wechatInput);
+    expect(f.tx.organization.findMany).toHaveBeenCalledWith({
+      where: { services: { some: { published: true } } },
+      select: { id: true },
+      take: 2,
+    });
+    expect(f.tx.user.create).toHaveBeenCalledWith({
+      data: {
+        role: "CUSTOMER",
+        displayName: "微信用户",
+        organizationId: "site-org",
+      },
+      select: { id: true },
+    });
+    expect(f.tx.externalIdentity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: f.user.id }),
+      }),
+    );
+    expect(
+      f.tx.user.update.mock.calls.every(
+        (call) => !("organizationId" in call[0].data),
+      ),
+    ).toBe(true);
+  });
+  it("registers a newly verified SMS customer before any order while keeping CUSTOMER_SMS authority", async () => {
+    const f = fixture();
+    f.phones.findOwner.mockResolvedValue(null as never);
+    const challenge = await f.service.requestSms(smsInput, "127.0.0.1");
+    const code = f.sms.submitPhoneVerification.mock.calls[0]![0].code;
+    await f.service.confirmSms(
+      { ...smsInput, challengeId: challenge.challengeId, code },
+      "127.0.0.1",
+    );
+    expect(f.tx.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: "site-org",
+          role: "CUSTOMER",
+        }),
+      }),
+    );
+    expect(f.tx.session.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          authChannel: "CUSTOMER_SMS",
+          wechatIdentityId: null,
+        }),
+      }),
+    );
+  });
+  it.each([
+    { organizations: [] },
+    { organizations: [{ id: "org-a" }, { id: "org-b" }] },
+  ])(
+    "does not guess registration ownership when the service organization is ambiguous",
+    async ({ organizations }) => {
+      const f = fixture();
+      f.phones.findOwner.mockResolvedValue(null as never);
+      f.tx.organization.findMany.mockResolvedValue(organizations);
+      await f.service.wechatPhone(wechatInput);
+      expect(f.tx.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId: undefined,
+            role: "CUSTOMER",
+          }),
+        }),
+      );
+    },
+  );
+  it("does not assign or move any existing canonical customer or staff account during login", async () => {
+    const f = fixture();
+    await f.service.wechatPhone(wechatInput);
+    expect(f.tx.organization.findMany).not.toHaveBeenCalled();
+    expect(f.tx.user.create).not.toHaveBeenCalled();
+    expect(
+      f.tx.user.update.mock.calls.every(
+        (call) => !("organizationId" in call[0].data),
+      ),
+    ).toBe(true);
+    const challenge = await f.service.requestSms(smsInput, "127.0.0.1");
+    const code = f.sms.submitPhoneVerification.mock.calls[0]![0].code;
+    await f.service.confirmSms(
+      { ...smsInput, challengeId: challenge.challengeId, code },
+      "127.0.0.1",
+    );
+    expect(f.tx.organization.findMany).not.toHaveBeenCalled();
+    expect(f.tx.user.create).not.toHaveBeenCalled();
+  });
   it("binds a phone-onboarded technician's first verified WeChat to the same account only", async () => {
     const f = fixture({ TECHNICIAN_PHONE_LOGIN_ENABLED: "true" });
     f.phones.hasStaffAuthority.mockResolvedValue(true);

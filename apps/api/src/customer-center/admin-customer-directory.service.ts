@@ -157,6 +157,14 @@ export class AdminCustomerDirectoryService {
     return {
       status: "ACTIVE",
       OR: [
+        // New customer registrations record their trusted server-selected site
+        // organization; no order or coupon is required to appear in that site's list.
+        {
+          organizationId,
+          role: "CUSTOMER",
+          phoneVerifiedAt: { not: null },
+          customerPhoneIdentity: { isNot: null },
+        },
         { customerOrders: { some: { organizationId } } },
         { customerReservations: { some: { organizationId } } },
         { storedValueAccounts: { some: { organizationId } } },
