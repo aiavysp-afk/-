@@ -1038,6 +1038,11 @@ export function App() {
           <CatalogWorkspace
             key={token}
             token={token}
+            organizationId={organizationId}
+            onOpenSecurity={() => {
+              setSection("security");
+              setQuery("");
+            }}
             onDevelopmentLogin={() => developmentLogin()}
             query={query}
           />

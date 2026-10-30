@@ -370,7 +370,8 @@ test("all required exact management routes have narrowly allowed methods", () =>
     ["/v1/auth/mfa/verify", ["POST"]],
     ["/v1/admin/audit-logs", ["GET"]],
     ["/v1/admin/scheduling/shifts", ["GET", "POST"]],
-    ["/v1/admin/catalog/services", ["GET"]],
+    ["/v1/admin/catalog/services", ["GET", "POST"]],
+    ["/v1/admin/catalog/services/service-1", ["PATCH", "DELETE"]],
     ["/v1/admin/catalog/services/service-1/publish", ["POST"]],
     ["/v1/admin/organizations/org-1/dashboard", ["GET"]],
     ["/v1/admin/organizations/org-1/technicians", ["GET"]],
@@ -409,6 +410,62 @@ test("all required exact management routes have narrowly allowed methods", () =>
   ];
   for (const [path, methods] of cases)
     assert.deepEqual(allowedAdminMethods(path), methods, path);
+});
+
+test("catalog create, edit and delete forward only exact routes with explicit JSON and existing authorization", async () => {
+  const payload = JSON.stringify({
+    expectedUpdatedAt: "2026-10-30T00:00:00.000Z",
+  });
+  for (const [path, method] of [
+    ["/v1/admin/catalog/services", "POST"],
+    ["/v1/admin/catalog/services/service-1", "PATCH"],
+    ["/v1/admin/catalog/services/service-1", "DELETE"],
+  ]) {
+    const result = await send(path, {
+      method,
+      body: payload,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+        Origin: "https://admin.mtsc.top",
+        Authorization: "Bearer isolated-test-session",
+        Cookie: "never-forward",
+        "X-Forwarded-For": "203.0.113.1",
+      },
+    });
+    assert.equal(result.status, 200);
+    const forwarded = calls.at(-1);
+    assert.equal(forwarded.url, API_ORIGIN + path);
+    assert.equal(forwarded.options.method, method);
+    assert.equal(forwarded.options.body.toString(), payload);
+    assert.deepEqual(forwarded.options.headers, {
+      "Content-Type": "application/json",
+      Origin: "https://admin.mtsc.top",
+      Authorization: "Bearer isolated-test-session",
+    });
+  }
+  const before = calls.length;
+  for (const path of [
+    "/v1/admin/catalog/services/service-1/extra",
+    "/v1/admin/catalog/services/service-1/delete",
+    "/v1/admin/catalog/services/service%2F1",
+  ])
+    assert.equal((await send(path, { method: "DELETE" })).status, 404, path);
+  assert.equal(
+    (await send("/v1/admin/catalog/services/service-1", { method: "PUT" }))
+      .status,
+    405,
+  );
+  assert.equal(
+    (
+      await send("/v1/admin/catalog/services/service-1", {
+        method: "DELETE",
+        headers: { Origin: "https://evil.invalid" },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(calls.length, before);
 });
 test("customer, dev, pairing approval and unknown API endpoints never fall back to SPA", async () => {
   const count = calls.length;

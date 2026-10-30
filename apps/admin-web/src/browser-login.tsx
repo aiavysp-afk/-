@@ -586,28 +586,31 @@ export function BrowserLogin({
         }
       >
         {visibleMethod === "password" && !challenge && (
-          <aside className="environment-banner" role="note">
-            <strong>已有密码：直接在下方登录</strong>
-            <p>
-              使用原账号和密码登录，也可将已绑定手机号作为账号。已有密码无需再次首次设置；只有从未设置过密码的工作人员才使用首次设置。
-            </p>
-            <button
-              type="button"
-              className="ghost-action"
-              disabled={busy || !setupEnabled}
-              onClick={() => {
-                if (!operationBusy.current && setupEnabled)
-                  resetAttempt("setup");
-              }}
-            >
-              首次设置账号密码
-            </button>
-            {passwordConfig && !setupEnabled && (
+          <details className="login-help">
+            <summary>首次使用 / 登录帮助</summary>
+            <aside className="environment-banner" role="note">
+              <strong>已有密码：直接在下方登录</strong>
               <p>
-                首次设置账号密码尚未启用，请联系管理员；已有账号可继续正常登录。
+                使用原账号和密码登录，也可将已绑定手机号作为账号。已有密码无需再次首次设置；只有从未设置过密码的工作人员才使用首次设置。
               </p>
-            )}
-          </aside>
+              <button
+                type="button"
+                className="ghost-action"
+                disabled={busy || !setupEnabled}
+                onClick={() => {
+                  if (!operationBusy.current && setupEnabled)
+                    resetAttempt("setup");
+                }}
+              >
+                首次设置账号密码
+              </button>
+              {passwordConfig && !setupEnabled && (
+                <p>
+                  首次设置账号密码尚未启用，请联系管理员；已有账号可继续正常登录。
+                </p>
+              )}
+            </aside>
+          </details>
         )}
         {visibleMethod === "setup" ? (
           <StaffFirstPasswordSetup
@@ -753,10 +756,13 @@ export function BrowserLogin({
               请输入已设置的登录账号或11位绑定手机号，无需重新设置。
               密码必须为12–128个字符，不是六位短信验证码或验证器动态码。
             </p>
-            <p>
-              密码验证后向本人绑定手机发送短信二次验证。
-              尚未设置密码的已授权工作人员可使用上方首次设置入口；修改已有密码仍须在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
-            </p>
+            <p>密码验证后向本人绑定手机发送短信二次验证。</p>
+            <details className="login-help">
+              <summary>账号设置说明</summary>
+              <p>
+                尚未设置密码的已授权工作人员可使用上方首次设置入口；修改已有密码仍须在「账户安全」完成新的动态码验证。不会创建新用户或增加管理权限。
+              </p>
+            </details>
             <button
               type="submit"
               className="primary-action"
@@ -788,11 +794,14 @@ export function BrowserLogin({
           </form>
         )}
       </div>
-      <p className="login-security-note">
-        请仅在自己打开的电脑上登录，不向客服提供密码、短信验证码、令牌或动态码。已登记的常用设备可在
-        7
-        天内免登录动态码，但不免账号密码与短信验证；审核、发布、资金及账号安全操作仍须新的动态码。
-      </p>
+      <details className="login-help">
+        <summary>账户安全与常用设备说明</summary>
+        <p className="login-security-note">
+          请仅在自己打开的电脑上登录，不向客服提供密码、短信验证码、令牌或动态码。已登记的常用设备可在
+          7
+          天内免登录动态码，但不免账号密码与短信验证；审核、发布、资金及账号安全操作仍须新的动态码。
+        </p>
+      </details>
     </section>
   );
 }

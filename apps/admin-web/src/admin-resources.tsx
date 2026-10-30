@@ -416,6 +416,11 @@ export function TechniciansWorkspace({
           <p>
             本人微信和手机号验证后直接提交资料，无需邀请码。列表只显示脱敏姓名；审核详情内才可核验实名和私密证件。
           </p>
+          <p>
+            开通接单顺序：补全资料、照片与擅长项目 → 提交审核 → 审核通过并发布 →
+            由调度账号设置排班。
+            仅展示照片的草稿还不能接受预约，客户会在条件齐全后看到可约技师。
+          </p>
         </div>
         <div className="technician-invite-list">
           {applications.map((application) => {
@@ -450,7 +455,7 @@ export function TechniciansWorkspace({
                     setSelectedTechnicianId(application.technicianId)
                   }
                 >
-                  查看资料 / 审核
+                  补充资料 / 审核发布
                 </button>
               </div>
             );
@@ -461,7 +466,8 @@ export function TechniciansWorkspace({
           )}
         </div>
       </section>
-      <section className="technician-invite-card">
+      <details className="technician-invite-card">
+        <summary>备用方式：一次性技师邀请</summary>
         <div className="technician-invite-copy">
           <span className="eyebrow">ONE-TIME ONBOARDING</span>
           <h3>真实技师入驻邀请</h3>
@@ -545,7 +551,7 @@ export function TechniciansWorkspace({
             <p>尚未生成真实技师邀请。</p>
           )}
         </div>
-      </section>
+      </details>
       <div className="resource-grid">
         {rows.map((technician) => (
           <article className="resource-card" key={technician.id}>
@@ -1139,17 +1145,48 @@ function AdminTechnicianProfilePanel({
                   已保存照片，其他资料可暂留空；请在下方关联对应技师的本人入驻申请。
                 </p>
               )}
-              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && profile && (
-                <PhotoShowcaseControl token={token} organizationId={organizationId} technicianId={technicianId}
-                  version={profile.version ?? 0} published={profile.showcasePublished ?? false}
-                  disabled={loading || saving || dirty || applicationSnapshotStale || Boolean(reviewSavingId)}
-                  onSaved={async()=>{await load();await onReloadApplication()}}/>
-              )}
-              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" && profile && (
-                <PhotoDraftBinding token={token} organizationId={organizationId} technicianId={technicianId}
-                  sourceVersion={profile.version ?? 0} disabled={loading || saving || dirty || applicationSnapshotStale || Boolean(reviewSavingId)}
-                  onLinked={async()=>{await load();await onReloadApplication()}} onOpenApplication={onOpenApplication}/>
-              )}
+              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" &&
+                profile && (
+                  <PhotoShowcaseControl
+                    token={token}
+                    organizationId={organizationId}
+                    technicianId={technicianId}
+                    version={profile.version ?? 0}
+                    published={profile.showcasePublished ?? false}
+                    disabled={
+                      loading ||
+                      saving ||
+                      dirty ||
+                      applicationSnapshotStale ||
+                      Boolean(reviewSavingId)
+                    }
+                    onSaved={async () => {
+                      await load();
+                      await onReloadApplication();
+                    }}
+                  />
+                )}
+              {application.registrationChannel === "ADMIN_PHOTO_DRAFT" &&
+                profile && (
+                  <PhotoDraftBinding
+                    token={token}
+                    organizationId={organizationId}
+                    technicianId={technicianId}
+                    sourceVersion={profile.version ?? 0}
+                    disabled={
+                      loading ||
+                      saving ||
+                      dirty ||
+                      applicationSnapshotStale ||
+                      Boolean(reviewSavingId)
+                    }
+                    onLinked={async () => {
+                      await load();
+                      await onReloadApplication();
+                    }}
+                    onOpenApplication={onOpenApplication}
+                  />
+                )}
               <ApplicationEditor
                 key={`${application.technicianId}:${application.version}`}
                 application={application}

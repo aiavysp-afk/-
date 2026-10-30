@@ -119,6 +119,24 @@
   margin: 0;
 }
 
+.admin-login-page .login-help {
+  color: #647a70;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.admin-login-page .login-help > summary {
+  cursor: pointer;
+  min-height: 32px;
+  padding-block: 4px;
+}
+
+.admin-login-page .login-help[open] > summary {
+  color: #214839;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
 .admin-login-page .admin-session-check {
   display: grid;
   gap: 16px;

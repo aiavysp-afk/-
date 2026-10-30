@@ -25,7 +25,9 @@ const rules = [
   [/^\/v1\/auth\/trusted-devices\/(?:accept|revoke)$/, ["POST"]],
   [/^\/v1\/auth\/mfa$/, ["GET"]],
   [/^\/v1\/auth\/mfa\/(?:enrollment|activate|verify)$/, ["POST"]],
-  [/^\/v1\/admin\/(?:audit-logs|catalog\/services)$/, ["GET"]],
+  [/^\/v1\/admin\/audit-logs$/, ["GET"]],
+  [/^\/v1\/admin\/catalog\/services$/, ["GET", "POST"]],
+  [new RegExp(`^/v1/admin/catalog/services/${segment}$`), ["PATCH", "DELETE"]],
   [
     new RegExp(`^/v1/admin/catalog/services/${segment}/(?:publish|unpublish)$`),
     ["POST"],
@@ -81,9 +83,22 @@ const rules = [
     ["GET"],
   ],
   [new RegExp(`^${organization}/technicians/${segment}/reviews$`), ["GET"]],
-  [new RegExp(`^${organization}/technicians/${segment}/profile/binding-targets$`), ["GET"]],
-  [new RegExp(`^${organization}/technicians/${segment}/profile/bind-application$`), ["POST"]],
-  [new RegExp(`^${organization}/technicians/${segment}/profile/showcase$`), ["PATCH"]],
+  [
+    new RegExp(
+      `^${organization}/technicians/${segment}/profile/binding-targets$`,
+    ),
+    ["GET"],
+  ],
+  [
+    new RegExp(
+      `^${organization}/technicians/${segment}/profile/bind-application$`,
+    ),
+    ["POST"],
+  ],
+  [
+    new RegExp(`^${organization}/technicians/${segment}/profile/showcase$`),
+    ["PATCH"],
+  ],
   [
     new RegExp(
       `^${organization}/technicians/${segment}/reviews/${segment}/(?:publish|hide)$`,
@@ -92,7 +107,10 @@ const rules = [
   ],
   [new RegExp(`^${organization}/technician-invitations$`), ["GET", "POST"]],
   [new RegExp(`^${organization}/technician-applications$`), ["GET"]],
-  [new RegExp(`^${organization}/technician-applications/${segment}$`), ["PATCH"]],
+  [
+    new RegExp(`^${organization}/technician-applications/${segment}$`),
+    ["PATCH"],
+  ],
   [
     new RegExp(
       `^${organization}/technician-applications/${segment}/documents/(?:ID_FRONT|ID_BACK)$`,
@@ -104,7 +122,10 @@ const rules = [
     ["POST"],
   ],
   [new RegExp(`^${organization}/customer-center/config$`), ["GET", "PATCH"]],
-  [new RegExp(`^${organization}/customer-center/home-campaign$`), ["GET", "PATCH"]],
+  [
+    new RegExp(`^${organization}/customer-center/home-campaign$`),
+    ["GET", "PATCH"],
+  ],
   [new RegExp(`^${organization}/customer-center/summary$`), ["GET"]],
   [new RegExp(`^${organization}/customer-center/wallet-ledger$`), ["GET"]],
   [new RegExp(`^${organization}/customer-center/customers$`), ["GET"]],

@@ -29,8 +29,30 @@ export const AdminServiceItemSchema = ServiceItemSchema.extend({
   updatedAt: z.string().datetime(),
 });
 
+export const ServiceAdminCreateSchema = z
+  .object({
+    clientRequestId: z.string().uuid().toLowerCase(),
+    organizationId: z.string().trim().min(1).max(128),
+    name: z.string().trim().min(2).max(80),
+    category: ServiceCategorySchema,
+    subtitle: z.string().trim().min(2).max(120),
+    badge: z.string().trim().max(30).nullable().optional(),
+    description: z.string().trim().min(10).max(2_000),
+    durationMinutes: z.number().int().min(30).max(480),
+    priceFen: MoneyFenSchema.max(100_000_000),
+    featured: z.boolean().default(false),
+    steps: z.array(z.string().trim().min(1).max(120)).min(1).max(20),
+    boundaries: z.array(z.string().trim().min(1).max(160)).min(1).max(20),
+  })
+  .strict();
+
+export const ServiceAdminDeleteSchema = z
+  .object({ expectedUpdatedAt: z.string().datetime() })
+  .strict();
+
 export const ServiceAdminUpdateSchema = z
   .object({
+    expectedUpdatedAt: z.string().datetime().optional(),
     name: z.string().trim().min(2).max(80).optional(),
     category: ServiceCategorySchema.optional(),
     subtitle: z.string().trim().min(2).max(120).optional(),
@@ -47,7 +69,10 @@ export const ServiceAdminUpdateSchema = z
       .optional(),
   })
   .strict()
-  .refine((value) => Object.keys(value).length > 0, "至少提供一个可更新字段");
+  .refine(
+    (value) => Object.keys(value).some((key) => key !== "expectedUpdatedAt"),
+    "至少提供一个可更新字段",
+  );
 
 const IsoDateTimeSchema = z.string().datetime({ offset: true });
 
@@ -1819,6 +1844,8 @@ export const AdminCustomerPhoneRevealSchema = z
 
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 export type AdminServiceItem = z.infer<typeof AdminServiceItemSchema>;
+export type ServiceAdminCreate = z.infer<typeof ServiceAdminCreateSchema>;
+export type ServiceAdminDelete = z.infer<typeof ServiceAdminDeleteSchema>;
 export type ServiceAdminUpdate = z.infer<typeof ServiceAdminUpdateSchema>;
 export type AvailabilityQuery = z.infer<typeof AvailabilityQuerySchema>;
 export type AvailabilitySlot = z.infer<typeof AvailabilitySlotSchema>;
