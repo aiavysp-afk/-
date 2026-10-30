@@ -193,6 +193,7 @@ model Organization {
   safetyDutyRosters       SafetyDutyRoster[]
   safetyIncidents         SafetyIncident[]
   technicianProfiles      TechnicianProfile[]
+  technicianIntakes       TechnicianIntakeApplication[]
   technicianReviews       TechnicianReview[]
   technicianInvitations   TechnicianInvitation[]
   customerCenterConfig    CustomerCenterConfig?
@@ -866,6 +867,32 @@ model Order {
   @@unique([customerId, idempotencyKey])
   @@index([organizationId, status, appointmentStart])
   @@index([customerId, customerHiddenAt, createdAt])
+}
+
+// A one-way recruitment submission, deliberately not an account or workbench.
+model TechnicianIntakeApplication {
+  id                   String                  @id
+  organizationId       String
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  nameEncrypted        String
+  phoneEncrypted       String
+  phoneHash            String
+  certificateEncrypted String
+  certificateDigest    String
+  submissionKeyHash    String                  @unique
+  requestHash          String
+  consentVersion       String
+  consentAcceptedAt    DateTime
+  status               TechnicianProfileStatus @default(PENDING_REVIEW)
+  version              Int                     @default(1)
+  reviewedAt           DateTime?
+  reviewedById         String?
+  rejectionReason      String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([organizationId, status, id])
+  @@index([phoneHash, createdAt])
 }
 
 model TechnicianProfile {

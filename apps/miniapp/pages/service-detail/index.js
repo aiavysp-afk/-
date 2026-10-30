@@ -21,7 +21,6 @@ Page({
             { key: "INTRO", label: "项目介绍" },
             { key: "STEPS", label: "服务流程" },
             { key: "REVIEWS", label: "用户评价" },
-            { key: "TECHNICIANS", label: "选择技师" },
         ],
         reviews: [],
         reviewsLoading: false,
@@ -189,7 +188,7 @@ Page({
             this.setData({
                 therapists,
                 availabilityLabel: therapists.length
-                    ? `${therapists.length}位技师可约`
+                    ? "预约时段已开放"
                     : "预约时段待开放",
             });
         }
@@ -214,8 +213,7 @@ Page({
     chooseTechnician() {
         if (!(0, auth_1.requireVerifiedCustomerAccess)() || !this.data.service)
             return;
-        this.setData({ activeTab: "TECHNICIANS" });
-        wx.pageScrollTo({ scrollTop: 0, duration: 200 });
+        wx.navigateTo({ url: "/pages/booking/index?slug=" + encodeURIComponent(this.data.service.slug) });
     },
     openTherapist(event) {
         if (!(0, auth_1.requireVerifiedCustomerAccess)() || this.data.availabilityLoading)

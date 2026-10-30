@@ -1,17 +1,1 @@
-<view class="page">
-  <view class="heading"><text>技师工作台</text><text>微信身份已登录 · 后台审核通过</text></view>
-  <text wx:if="{{error}}" class="error">{{error}}</text>
-  <view wx:if="{{workbench}}" class="card"><text>{{workbench.displayName}}</text><text>今日订单 {{workbench.metrics.todayOrders}} · 已完成 {{workbench.metrics.completedOrders}}</text><text>本周排班 {{workbench.metrics.weeklyShifts}} · 时间按北京时间显示</text></view>
-  <button loading="{{busy}}" disabled="{{busy || acting}}" bindtap="load">刷新后台数据</button>
-  <view wx:if="{{workbench && notifications}}" class="card">
-    <text class="title">微信新订单提醒</text>
-    <text>{{notifications.message}}</text>
-    <button wx:if="{{notifications.enabled}}" loading="{{subscribing}}" disabled="{{subscribing}}" bindtap="subscribeOrders">接收微信订单提醒</button>
-    <text wx:if="{{subscriptionNotice}}">{{subscriptionNotice}}</text>
-  </view>
-  <view wx:for="{{orders}}" wx:key="id" class="card"><text class="title">{{item.serviceName}}</text><text>{{item.durationMinutes}}分钟 · {{item.time}}</text><text>订单号 {{item.orderNo}}</text><text>进度 {{item.statusLabel}}</text><text wx:if="{{item.payment}}">{{item.payment.kind === 'FRIEND' ? '好友代付' : '本人支付'}} · {{item.paymentLabel}}</text><button wx:if="{{item.next}}" data-id="{{item.id}}" data-action="{{item.next.action}}" loading="{{acting}}" disabled="{{acting}}" bindtap="advance">{{item.next.label}}</button></view>
-  <view wx:if="{{workbench && !orders.length}}" class="empty"><text>◷</text><text>暂无本人服务订单</text><text>排班与指派由后台统一安排，更新后点击刷新</text></view>
-  <view wx:if="{{shifts.length}}" class="card"><text class="title">本周排班</text><text wx:for="{{shifts}}" wx:key="id">{{item.startsLabel}} — {{item.endsLabel}}</text></view>
-  <button class="secondary" bindtap="editProfile">我的照片与资料</button>
-  <text class="notice">只能操作指派给本人的订单。资料修改后须重新审核；平台提供正规保健服务，非医疗服务。</text>
-</view>
+<view>正在打开入驻申请表…</view>

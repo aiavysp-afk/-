@@ -39,35 +39,63 @@ export class SimpleAdminService {
     const parsed = SimpleAdminTechniciansQuerySchema.safeParse(input);
     if (!parsed.success) throw new BadRequestException("技师筛选参数无效");
     const { limit, cursor, status } = parsed.data;
-    const rows = await this.prisma.technicianProfile.findMany({
-      where: {
-        organizationId,
-        registrationChannel: { not: "ADMIN_PHOTO_DRAFT" },
-        technician: { status: "ACTIVE" },
-        ...(status === "ALL" ? {} : { status }),
-        ...(cursor ? { id: { gt: cursor } } : {}),
-      },
-      select: {
-        id: true,
-        technicianId: true,
-        publicName: true,
-        realNameEncrypted: true,
-        status: true,
-        version: true,
-        technician: {
-          select: {
-            displayName: true,
-            phoneEncrypted: true,
-            phoneVerifiedAt: true,
+    // Prefix cursors distinguish the two existing record families without
+    // manufacturing technician users for anonymous recruitment submissions.
+    const intakeCursor = cursor?.startsWith("I_") ? cursor.slice(2) : null;
+    const legacyCursor = cursor?.startsWith("L_")
+      ? cursor.slice(2)
+      : cursor && !intakeCursor
+        ? cursor
+        : null;
+    const [rows, intakes] = await Promise.all([
+      this.prisma.technicianProfile.findMany({
+        where: {
+          organizationId,
+          registrationChannel: { not: "ADMIN_PHOTO_DRAFT" },
+          technician: { status: "ACTIVE" },
+          ...(status === "ALL" ? {} : { status }),
+          ...(legacyCursor ? { id: { gt: legacyCursor } } : {}),
+        },
+        select: {
+          id: true,
+          technicianId: true,
+          publicName: true,
+          realNameEncrypted: true,
+          status: true,
+          version: true,
+          technician: {
+            select: {
+              displayName: true,
+              phoneEncrypted: true,
+              phoneVerifiedAt: true,
+            },
           },
         },
-      },
-      orderBy: { id: "asc" },
-      take: limit + 1,
-    });
-    const page = rows.slice(0, limit);
-    return {
-      items: page.map((row) => {
+        orderBy: { id: "asc" },
+        take: limit + 1,
+      }),
+      legacyCursor ||
+      !["ALL", "PENDING_REVIEW", "APPROVED", "REJECTED"].includes(status)
+        ? Promise.resolve([])
+        : this.prisma.technicianIntakeApplication.findMany({
+            where: {
+              organizationId,
+              ...(status === "ALL" ? {} : { status }),
+              ...(intakeCursor ? { id: { gt: intakeCursor } } : {}),
+            },
+            select: {
+              id: true,
+              nameEncrypted: true,
+              phoneEncrypted: true,
+              status: true,
+              version: true,
+            },
+            orderBy: { id: "asc" },
+            take: limit + 1,
+          }),
+    ]);
+    const combined = [
+      ...rows.map((row) => {
         let name = row.publicName || row.technician.displayName;
         if (row.realNameEncrypted) {
           try {
@@ -80,16 +108,63 @@ export class SimpleAdminService {
           }
         }
         return {
-          technicianId: row.technicianId,
-          name,
-          maskedPhone: this.maskedPhone(row.technician),
-          status: row.status,
-          version: row.version,
-          certificatePhotos: [],
-          certificatePhotoStatus: "NOT_UPLOADED" as const,
+          cursor: `L_${row.id}`,
+          item: {
+            technicianId: row.technicianId,
+            source: "LEGACY_PROFILE" as const,
+            name,
+            maskedPhone: this.maskedPhone(row.technician),
+            phoneVerified: Boolean(row.technician.phoneVerifiedAt),
+            status: row.status,
+            version: row.version,
+            certificatePhotos: [],
+            certificatePhotoStatus: "NOT_UPLOADED" as const,
+          },
         };
       }),
-      nextCursor: rows.length > limit ? page[page.length - 1]!.id : null,
+      ...intakes.map((row) => {
+        let name = "资料暂不可读",
+          maskedPhone: string | null = null;
+        try {
+          name = this.crypto.decryptScoped(
+            `technician-intake:${row.id}:name`,
+            row.nameEncrypted,
+          );
+        } catch {}
+        try {
+          const phone = this.crypto.decryptScoped(
+            `technician-intake:${row.id}:phone`,
+            row.phoneEncrypted,
+          );
+          if (/^1[3-9]\d{9}$/.test(phone))
+            maskedPhone = `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+        } catch {}
+        return {
+          cursor: `I_${row.id}`,
+          item: {
+            technicianId: row.id,
+            source: "SIMPLE_INTAKE" as const,
+            name,
+            maskedPhone,
+            phoneVerified: false,
+            status: row.status,
+            version: row.version,
+            certificatePhotos: [
+              {
+                id: row.id,
+                url: `/admin/organizations/${encodeURIComponent(organizationId)}/simple/intakes/${encodeURIComponent(row.id)}/certificate`,
+              },
+            ],
+            certificatePhotoStatus: "AVAILABLE" as const,
+          },
+        };
+      }),
+    ].sort((a, b) => (a.cursor < b.cursor ? -1 : a.cursor > b.cursor ? 1 : 0));
+    const page = combined.slice(0, limit);
+    return {
+      items: page.map((row) => row.item),
+      nextCursor:
+        combined.length > limit ? page[page.length - 1]!.cursor : null,
     };
   }
 

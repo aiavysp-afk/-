@@ -2,129 +2,76 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
+const require = createRequire(import.meta.url),
+  ts = require("typescript");
+const source = (path) =>
+  readFileSync(new URL("../apps/miniapp/" + path, import.meta.url), "utf8");
+const compile = (path) =>
+  ts.transpileModule(source(path), {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+    },
+  }).outputText;
 
-const require = createRequire(import.meta.url);
-const {
-  buildPublicTherapists,
-} = require("../apps/miniapp/utils/therapists.js");
-
-const profile = {
-  technicianId: "tech-1",
-  displayName: "公开昵称",
-  publicName: "公开昵称",
-  avatarUrl: "https://cdn.example.test/tech-1.jpg",
-  galleryUrls: ["https://cdn.example.test/tech-1-gallery.jpg"],
-  introduction: "技师本人填写并通过审核的公开介绍",
-  specialties: ["肩颈舒缓"],
-  serviceYears: 3,
-  certificates: ["已审核资质"],
-  reviewSummary: {
-    averageRating: 4.8,
-    reviewCount: 6,
-    completedOrders: 18,
-  },
-  recentReviews: [],
-  status: "PUBLISHED",
-  rejectionReason: null,
-  freeTravelFee: true,
-  travelFeeFen: 0,
-  updatedAt: "2026-10-08T12:00:00.000Z",
-};
-
-const service = {
-  id: "service-1",
-  slug: "shoulder-relax",
-  name: "肩颈舒缓",
-  subtitle: "正规放松服务",
-  category: "MASSAGE",
-  durationMinutes: 60,
-  priceFen: 19_800,
-  boundaries: ["非医疗服务"],
-};
-
-test("technician cards use only the shared published profile and real slots", () => {
-  const result = buildPublicTherapists(
-    [
-      {
-        service,
-        today: [
-          {
-            therapistId: "tech-1",
-            startsAt: "2026-10-08T12:00:00.000Z",
-            endsAt: "2026-10-08T13:00:00.000Z",
-          },
-        ],
-        tomorrow: [],
+test("old technician list and detail links with a service slug open the service information only", () => {
+  for (const route of ["therapists", "therapist-detail"]) {
+    let page;
+    const routes = [];
+    vm.runInNewContext(compile("pages/" + route + "/index.ts"), {
+      Page: (value) => {
+        page = value;
       },
-    ],
-    [profile],
-  );
-  assert.equal(result.length, 1);
-  assert.equal(result[0].alias, profile.publicName);
-  assert.equal(result[0].profile, profile.introduction);
-  assert.equal(result[0].avatarUrl, profile.avatarUrl);
-  assert.deepEqual(result[0].qualifications, profile.certificates);
-  assert.equal(result[0].ratingLabel, "4.8分 · 6条");
-  assert.equal(result[0].orderCountLabel, "18单已完成");
-  assert.equal(result[0].travelLabel, "免出行费");
-  assert.equal(result[0].bookable, true);
-});
-
-test("a published technician without a real shift stays visible but cannot be booked", () => {
-  const [result] = buildPublicTherapists([], [profile]);
-  assert.equal(result.alias, profile.publicName);
-  assert.equal(result.bookable, false);
-  assert.equal(result.statusLabel, "暂不可约");
-  assert.equal(result.earliestLabel, "暂无可约时间");
-});
-
-test("a scheduled technician without a published profile is never exposed", () => {
-  const result = buildPublicTherapists(
-    [
-      {
-        service,
-        today: [
-          {
-            therapistId: "internal-tech-without-public-profile",
-            startsAt: "2026-10-08T12:00:00.000Z",
-            endsAt: "2026-10-08T13:00:00.000Z",
-          },
-        ],
-        tomorrow: [],
+      require: (name) => {
+        throw Error(
+          "Compatibility route cannot load accounts or technician data: " +
+            name,
+        );
       },
-    ],
-    [],
-  );
-  assert.deepEqual(result, []);
+      wx: {
+        redirectTo: ({ url }) => routes.push(["redirect", url]),
+        switchTab: ({ url }) => routes.push(["tab", url]),
+      },
+    });
+    page.onLoad({ id: "old-tech-id", slug: "spa&therapistId=other" });
+    assert.deepEqual(routes, [
+      [
+        "redirect",
+        "/pages/service-detail/index?slug=spa%26therapistId%3Dother",
+      ],
+    ]);
+    assert.deepEqual(Object.keys(page), ["onLoad"]);
+  }
 });
 
-test("miniapp reads shared technician profiles and verified reviews", () => {
-  const source = readFileSync(
-    new URL("../apps/miniapp/utils/therapists.ts", import.meta.url),
-    "utf8",
-  );
-  const detail = readFileSync(
-    new URL(
-      "../apps/miniapp/pages/therapist-detail/index.wxml",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  assert.match(source, /api<TechnicianProfile\[]>\("\/technicians"\)/);
-  assert.match(
-    source,
-    /\/technicians\/\$\{encodeURIComponent\(technicianId\)\}\/reviews/,
-  );
-  assert.doesNotMatch(
-    source,
-    /profile\?\.(?:bio|serviceTags|storeName|yearsExperience|qualifications)/,
-  );
-  assert.match(detail, /therapist\.galleryUrls/);
-  assert.match(detail, /therapist\.qualifications/);
-  assert.match(detail, /item\.customerAlias/);
-  assert.match(detail, /免出行费/);
+test("old technician links without a valid service route to the customer service tab", () => {
+  for (const route of ["therapists", "therapist-detail"]) {
+    for (const options of [
+      {},
+      { id: "old-tech-id" },
+      { slug: "x".repeat(161) },
+    ]) {
+      let page;
+      const routes = [];
+      vm.runInNewContext(compile("pages/" + route + "/index.ts"), {
+        Page: (value) => {
+          page = value;
+        },
+        wx: {
+          redirectTo: ({ url }) => routes.push(["redirect", url]),
+          switchTab: ({ url }) => routes.push(["tab", url]),
+        },
+      });
+      page.onLoad(options);
+      assert.deepEqual(routes, [["tab", "/pages/services/index"]]);
+    }
+    assert.doesNotMatch(
+      source("pages/" + route + "/index.wxml"),
+      /wx:for|<image|bindtap|getPhoneNumber|资质|已入驻|接单/,
+    );
+  }
 });
-
 test("completed orders can be reviewed and cancelled orders are only soft-hidden", () => {
   const source = readFileSync(
     new URL("../apps/miniapp/pages/orders/index.ts", import.meta.url),

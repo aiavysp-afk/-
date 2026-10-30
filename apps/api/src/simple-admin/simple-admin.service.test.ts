@@ -69,6 +69,7 @@ function fixture() {
   };
   const prisma = {
     technicianProfile: { findMany: vi.fn().mockResolvedValue([technician]) },
+    technicianIntakeApplication: { findMany: vi.fn().mockResolvedValue([]) },
     order: {
       findMany: vi.fn().mockResolvedValue([order]),
       findFirst: vi.fn().mockResolvedValue(order),
@@ -108,8 +109,10 @@ describe("simple administrator read-only pages", () => {
     );
     expect(result.items[0]).toEqual({
       technicianId: "technician-1",
+      source: "LEGACY_PROFILE",
       name: "真实姓名",
       maskedPhone: "138****8000",
+      phoneVerified: true,
       version: 3,
       status: "PENDING_REVIEW",
       certificatePhotos: [],
@@ -150,13 +153,80 @@ describe("simple administrator read-only pages", () => {
       cursor: "profile-0",
       status: "ALL",
     });
-    expect(result.nextCursor).toBe("profile-1");
+    expect(result.nextCursor).toBe("L_profile-1");
     expect(result.items[0]).toMatchObject({
       name: "公开称呼",
       maskedPhone: null,
     });
     expect(f.prisma.technicianProfile.findMany.mock.calls[0]![0]).toMatchObject(
       { where: { id: { gt: "profile-0" } }, take: 2 },
+    );
+  });
+  it("merges private one-way intake and legacy records with a bounded source cursor, without querying images or creating accounts", async () => {
+    const f = fixture();
+    f.prisma.technicianIntakeApplication.findMany.mockResolvedValue([
+      {
+        id: "intake-1",
+        nameEncrypted: "name",
+        phoneEncrypted: "phone",
+        status: "PENDING_REVIEW",
+        version: 1,
+      },
+      {
+        id: "intake-2",
+        nameEncrypted: "name",
+        phoneEncrypted: "phone",
+        status: "PENDING_REVIEW",
+        version: 1,
+      },
+    ] as never);
+    f.crypto.decryptScoped.mockImplementation((purpose: string) =>
+      purpose.endsWith(":phone") ? "13900139000" : "申请姓名",
+    );
+    const result = SimpleAdminTechniciansSchema.parse(
+      await f.service.technicians(principal(), "org-a", {
+        limit: 1,
+        status: "PENDING_REVIEW",
+      }),
+    );
+    expect(result.items[0]).toMatchObject({
+      technicianId: "intake-1",
+      source: "SIMPLE_INTAKE",
+      phoneVerified: false,
+      maskedPhone: "139****9000",
+      certificatePhotoStatus: "AVAILABLE",
+      certificatePhotos: [
+        {
+          id: "intake-1",
+          url: "/admin/organizations/org-a/simple/intakes/intake-1/certificate",
+        },
+      ],
+    });
+    expect(result.nextCursor).toBe("I_intake-1");
+    expect(
+      f.prisma.technicianIntakeApplication.findMany.mock.calls[0]![0],
+    ).toMatchObject({
+      where: { organizationId: "org-a", status: "PENDING_REVIEW" },
+      take: 2,
+    });
+    expect(
+      f.prisma.technicianIntakeApplication.findMany.mock.calls[0]![0].select,
+    ).not.toHaveProperty("certificateEncrypted");
+    await f.service.technicians(principal(), "org-a", {
+      limit: 1,
+      status: "PENDING_REVIEW",
+      cursor: "I_intake-1",
+    });
+    expect(
+      f.prisma.technicianIntakeApplication.findMany.mock.calls[1]![0],
+    ).toMatchObject({ where: { id: { gt: "intake-1" } } });
+    await f.service.technicians(principal(), "org-a", {
+      limit: 1,
+      status: "PENDING_REVIEW",
+      cursor: "L_profile-1",
+    });
+    expect(f.prisma.technicianIntakeApplication.findMany).toHaveBeenCalledTimes(
+      2,
     );
   });
   it("allows the existing OPERATOR to read orders without dispatch or scheduling permission", async () => {

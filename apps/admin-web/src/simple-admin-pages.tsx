@@ -11,12 +11,14 @@ export type SimpleAdminPageProps = {
 };
 type TechnicianRow = {
   technicianId: string;
+  source: "SIMPLE_INTAKE" | "LEGACY_PROFILE";
   name: string;
   maskedPhone: string | null;
+  phoneVerified: boolean;
   status: string;
   version: number;
   certificatePhotos: { id: string; url: string }[];
-  certificatePhotoStatus: string;
+  certificatePhotoStatus: "AVAILABLE" | "NOT_UPLOADED";
 };
 type OrderRow = {
   id: string;
@@ -85,28 +87,31 @@ const integer = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const masked = (value: unknown) =>
   value === null || (string(value) && /^1\d{2}\*{4}\d{4}$/.test(value));
-function safePhotoUrl(value: unknown): value is string {
-  if (!string(value)) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password;
-  } catch {
-    return false;
-  }
-}
 function technicianRow(value: unknown): value is TechnicianRow {
   return (
     record(value) &&
     string(value.technicianId) &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(value.technicianId) &&
+    ["SIMPLE_INTAKE", "LEGACY_PROFILE"].includes(value.source) &&
     string(value.name) &&
     masked(value.maskedPhone) &&
+    typeof value.phoneVerified === "boolean" &&
     string(value.status) &&
     integer(value.version) &&
-    string(value.certificatePhotoStatus) &&
+    ["AVAILABLE", "NOT_UPLOADED"].includes(value.certificatePhotoStatus) &&
     Array.isArray(value.certificatePhotos) &&
+    value.certificatePhotos.length <= 1 &&
+    (value.certificatePhotoStatus === "AVAILABLE"
+      ? value.source === "SIMPLE_INTAKE" && value.certificatePhotos.length === 1
+      : value.certificatePhotos.length === 0) &&
     value.certificatePhotos.every(
       (photo: unknown) =>
-        record(photo) && string(photo.id) && safePhotoUrl(photo.url),
+        record(photo) &&
+        string(photo.id) &&
+        string(photo.url) &&
+        /^\/admin\/organizations\/[A-Za-z0-9_-]{1,128}\/simple\/intakes\/[A-Za-z0-9_-]{1,128}\/certificate$/.test(
+          photo.url,
+        ),
     )
   );
 }
@@ -396,8 +401,158 @@ function PageLinks({
   );
 }
 
+function useCertificatePreview(
+  props: SimpleAdminPageProps,
+  scope: Scope,
+  isScopeCurrent: () => boolean,
+) {
+  const resource = useMemo(
+    () => ({
+      generation: 0,
+      technicianId: "",
+      objectUrl: "",
+      controller: null as AbortController | null,
+    }),
+    [scope],
+  );
+  const activeResource = useRef(resource);
+  activeResource.current = resource;
+  const empty = {
+    scope,
+    technicianId: "",
+    name: "",
+    objectUrl: "",
+    loading: false,
+    error: "",
+  };
+  const [snapshot, setSnapshot] = useState(empty);
+  const state = snapshot.scope === scope ? snapshot : empty;
+  function release() {
+    resource.generation++;
+    resource.controller?.abort();
+    resource.controller = null;
+    resource.technicianId = "";
+    if (resource.objectUrl) URL.revokeObjectURL(resource.objectUrl);
+    resource.objectUrl = "";
+  }
+  useEffect(() => () => release(), [resource]);
+  function clear() {
+    release();
+    if (isScopeCurrent()) setSnapshot(empty);
+  }
+  async function toggle(row: TechnicianRow) {
+    if (!isScopeCurrent() || props.hideActions) return;
+    if (resource.technicianId === row.technicianId) {
+      clear();
+      return;
+    }
+    release();
+    const generation = resource.generation;
+    const current = () =>
+      isScopeCurrent() &&
+      activeResource.current === resource &&
+      resource.generation === generation;
+    const path = apiPath(
+      props.organizationId,
+      `simple/intakes/${encodeURIComponent(row.technicianId)}/certificate`,
+    );
+    resource.technicianId = row.technicianId;
+    if (
+      row.source !== "SIMPLE_INTAKE" ||
+      row.certificatePhotoStatus !== "AVAILABLE" ||
+      row.certificatePhotos.length !== 1 ||
+      row.certificatePhotos[0]?.url !== path
+    ) {
+      if (current())
+        setSnapshot({
+          ...empty,
+          technicianId: row.technicianId,
+          name: row.name,
+          error: "证书照片地址与本条申请不符，请刷新后重试。",
+        });
+      return;
+    }
+    const controller = new AbortController();
+    resource.controller = controller;
+    scope.controllers.add(controller);
+    setSnapshot({
+      ...empty,
+      technicianId: row.technicianId,
+      name: row.name,
+      loading: true,
+    });
+    try {
+      const response = await authenticatedFetch(
+        props.token,
+        `${API_BASE_URL}${path}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(15_000),
+          ]),
+          headers: { Authorization: `Bearer ${props.token}` },
+        },
+      );
+      if (!current()) return;
+      if (!response.ok)
+        throw Object.assign(Error("证书照片暂时无法读取"), {
+          status: response.status,
+        });
+      if (
+        response.headers
+          .get("content-type")
+          ?.split(";")[0]
+          ?.trim()
+          .toLowerCase() !== "image/jpeg"
+      )
+        throw Error("证书照片格式异常");
+      const declaredLength = response.headers.get("content-length");
+      if (
+        declaredLength &&
+        (!/^\d+$/.test(declaredLength) || Number(declaredLength) > 512 * 1024)
+      )
+        throw Error("证书照片大小异常");
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!current()) return;
+      if (
+        bytes.length < 3 ||
+        bytes.length > 512 * 1024 ||
+        bytes[0] !== 255 ||
+        bytes[1] !== 216 ||
+        bytes[2] !== 255
+      )
+        throw Error("证书照片内容异常");
+      const objectUrl = URL.createObjectURL(
+        new Blob([bytes], { type: "image/jpeg" }),
+      );
+      resource.objectUrl = objectUrl;
+      setSnapshot({
+        ...empty,
+        technicianId: row.technicianId,
+        name: row.name,
+        objectUrl,
+      });
+    } catch (error) {
+      if (current())
+        setSnapshot({
+          ...empty,
+          technicianId: row.technicianId,
+          name: row.name,
+          error: errorText(error, props.onRequireVerification),
+        });
+    } finally {
+      scope.controllers.delete(controller);
+      if (resource.controller === controller) resource.controller = null;
+    }
+  }
+  return { state, clear, toggle };
+}
+
 export function SimpleTechniciansPage(props: SimpleAdminPageProps) {
   const data = useRows(props, "technicians", technicianRow);
+  const certificate = useCertificatePreview(props, data.scope, data.isCurrent);
   const empty = {
     scope: data.scope,
     selectedId: "",
@@ -449,7 +604,9 @@ export function SimpleTechniciansPage(props: SimpleAdminPageProps) {
         props.token,
         apiPath(
           props.organizationId,
-          `technicians/${encodeURIComponent(row.technicianId)}/profile/${action}`,
+          row.source === "SIMPLE_INTAKE"
+            ? `simple/intakes/${encodeURIComponent(row.technicianId)}/${action}`
+            : `technicians/${encodeURIComponent(row.technicianId)}/profile/${action}`,
         ),
         {
           expectedVersion: row.version,
@@ -468,10 +625,15 @@ export function SimpleTechniciansPage(props: SimpleAdminPageProps) {
         selectedId: "",
         reason: "",
         notice:
-          action === "approve"
-            ? "审核已通过，公开展示与接单仍按现有发布及排班规则执行。"
-            : "申请已拒绝，原因已同步技师端。",
+          row.source === "SIMPLE_INTAKE"
+            ? action === "approve"
+              ? "入驻申请已通过审核；本次仅更新申请状态，不开通接单或创建技师账号。"
+              : "入驻申请已拒绝，原因已保存。"
+            : action === "approve"
+              ? "审核已通过，公开展示与接单仍按现有发布及排班规则执行。"
+              : "申请已拒绝，原因已同步技师端。",
       });
+      certificate.clear();
       if (data.scope.operation === operation) data.scope.busy = false;
       await data.load();
     } catch (error) {
@@ -520,6 +682,7 @@ export function SimpleTechniciansPage(props: SimpleAdminPageProps) {
                   className="ghost-action"
                   disabled={busy}
                   onClick={() => {
+                    certificate.clear();
                     update({ selectedId: "", error: "", notice: "" });
                     void data.load();
                   }}
@@ -622,20 +785,36 @@ export function SimpleTechniciansPage(props: SimpleAdminPageProps) {
                     {row.name || "未填写"}
                   </label>
                 </td>
-                <td>{displayPhone(row.maskedPhone)}</td>
                 <td>
-                  {row.certificatePhotos.length
-                    ? row.certificatePhotos.map((photo, index) => (
-                        <a
-                          key={photo.id}
-                          href={photo.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          查看证书{index + 1}
-                        </a>
-                      ))
-                    : "未上传证书照片"}
+                  {displayPhone(row.maskedPhone)}
+                  {!row.phoneVerified && (
+                    <small className="simple-admin-phone-note">
+                      {row.source === "SIMPLE_INTAKE"
+                        ? "本人填写，未验证"
+                        : "号码未验证"}
+                    </small>
+                  )}
+                </td>
+                <td>
+                  {row.certificatePhotoStatus === "AVAILABLE" ? (
+                    <a
+                      href="#certificate-preview"
+                      aria-disabled={
+                        busy || Boolean(view.confirmation) || props.hideActions
+                      }
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (!busy && !view.confirmation && !props.hideActions)
+                          void certificate.toggle(row);
+                      }}
+                    >
+                      {certificate.state.technicianId === row.technicianId
+                        ? "收起证书照片"
+                        : "查看证书照片"}
+                    </a>
+                  ) : (
+                    "未上传证书照片"
+                  )}
                 </td>
                 <td>{statusLabels[row.status] ?? "状态待核实"}</td>
               </tr>
@@ -654,8 +833,42 @@ export function SimpleTechniciansPage(props: SimpleAdminPageProps) {
           </tbody>
         </table>
       </div>
+      {certificate.state.technicianId &&
+        data.items.some(
+          (row) => row.technicianId === certificate.state.technicianId,
+        ) && (
+          <section
+            className="simple-admin-certificate"
+            aria-label="证书照片预览"
+          >
+            <h3>{certificate.state.name}的证书照片</h3>
+            <p>
+              仅用于核对本次入驻申请。证书内容由申请人提交，照片存在不代表资质已经核验通过。
+            </p>
+            {certificate.state.loading && (
+              <p role="status">正在读取证书照片…</p>
+            )}
+            {certificate.state.error && (
+              <p role="alert" className="simple-admin-error">
+                {certificate.state.error}
+              </p>
+            )}
+            {certificate.state.objectUrl && (
+              <img
+                src={certificate.state.objectUrl}
+                alt={`${certificate.state.name}提交的证书照片`}
+              />
+            )}
+          </section>
+        )}
       <PageLinks
-        data={data}
+        data={{
+          ...data,
+          load: async (cursor, trail) => {
+            certificate.clear();
+            await data.load(cursor, trail);
+          },
+        }}
         disabled={view.busy || Boolean(view.confirmation)}
       />
     </section>

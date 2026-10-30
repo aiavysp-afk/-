@@ -133,17 +133,11 @@ test("home keeps actual published catalog prices, orders recommendations and fil
   );
 });
 
-test("home technician stream excludes profiles without slots and preserves approved express tags", async () => {
+test("home project availability uses eligible published capacity without requiring a visible technician stream", async () => {
   await host(
     async () => {
       const page = loadPage();
       await Promise.all([page.loadServices(), page.loadTherapists()]);
-      assert.deepEqual(
-        page.data.therapists.map((row) => row.id),
-        ["z-new", "a-old"],
-      );
-      assert.equal(page.data.therapists[0].express, true);
-      assert.equal(page.data.therapists[1].express, false);
       assert.equal(page.data.services[0].therapistId, "z-new");
       assert.equal(page.data.services[0].bookableCount, 2);
       assert.equal(page.data.services[1].bookableCount, 0);
@@ -172,7 +166,7 @@ test("home technician stream excludes profiles without slots and preserves appro
   );
 });
 
-test("service selection opens the matching real technician detail; unavailable services do not open booking", async () => {
+test("service selection opens booking directly; unavailable services do not open booking", async () => {
   await host(async ({ navigations, toasts }) => {
     const page = loadPage();
     page.data.allServices = services;
@@ -187,10 +181,7 @@ test("service selection opens the matching real technician detail; unavailable s
     page.data.profileCount = 1;
     page.applyCategory();
     page.bookService({ currentTarget: { dataset: { slug: "french" } } });
-    assert.equal(
-      navigations[0],
-      "/pages/therapist-detail/index?id=actual-tech&slug=french",
-    );
+    assert.equal(navigations[0], "/pages/booking/index?slug=french");
     page.bookService({ currentTarget: { dataset: { slug: "tuina" } } });
     assert.equal(navigations.length, 1);
     assert.deepEqual(toasts, ["该项目当前未开放预约时段"]);
@@ -279,7 +270,7 @@ test("coupon lookup failure stays retryable and never claims success", async () 
   );
 });
 
-test("no public profiles remains an honest onboarding state and skips unpublishable capacity", async () => {
+test("unpublished capacity cannot make a project bookable or issue schedule requests", async () => {
   await host(
     async ({ requests, navigations, toasts }) => {
       const page = loadPage();
@@ -408,7 +399,7 @@ test("refresh invalidates stale bookability immediately and a failed reload cann
   );
 });
 
-test("project binding checks all bookable technicians, not only the first eight displayed cards", async () => {
+test("project availability considers all eligible schedules rather than an arbitrary first eight", async () => {
   await host(async () => {
     const page = loadPage();
     page.data.allServices = services;

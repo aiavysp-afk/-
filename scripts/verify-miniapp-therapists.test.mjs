@@ -2,218 +2,158 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-
-const require = createRequire(import.meta.url);
-const {
-  buildPublicTherapists,
-  loadPublicTherapists,
-} = require("../apps/miniapp/utils/therapists.js");
-
-const service = (id, slug, name, priceFen = 19_800) => ({
-  id,
-  slug,
-  name,
+import vm from "node:vm";
+const require = createRequire(import.meta.url),
+  ts = require("typescript");
+const source = (path) =>
+  readFileSync(new URL("../apps/miniapp/" + path, import.meta.url), "utf8");
+const compile = (path) =>
+  ts.transpileModule(source(path), {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+    },
+  }).outputText;
+const service = {
+  id: "service-one",
+  slug: "regular-spa",
+  name: "正规放松项目",
   category: "MASSAGE",
-  subtitle: `${name}说明`,
-  description: `${name}描述`,
+  subtitle: "项目说明",
+  description: "项目描述",
   durationMinutes: 60,
-  priceFen,
-  featured: true,
+  priceFen: 19800,
   steps: ["服务前沟通"],
-  boundaries: ["正规服务"],
-});
-
-const slot = (therapistId, startsAt) => ({
-  therapistId,
-  startsAt,
-  endsAt: new Date(Date.parse(startsAt) + 3_600_000).toISOString(),
-});
-
-const profile = (technicianId, publicName) => ({
-  technicianId,
-  displayName: publicName,
-  publicName,
-  avatarUrl: null,
-  galleryUrls: [],
-  introduction: "",
-  specialties: [],
-  serviceYears: null,
-  certificates: [],
-  reviewSummary: {
-    averageRating: null,
-    reviewCount: 0,
-    completedOrders: 0,
-  },
-  recentReviews: [],
-  status: "PUBLISHED",
-  rejectionReason: null,
-  freeTravelFee: true,
-  travelFeeFen: 0,
-  updatedAt: "2026-10-08T01:00:00.000Z",
-});
-
-test("public technician cards merge approved profiles with real availability", () => {
-  const therapists = buildPublicTherapists(
-    [
-      {
-        service: service("svc-a", "relax-a", "肩颈舒缓"),
-        today: [slot("tech-b", "2026-10-08T04:00:00.000Z")],
-        tomorrow: [slot("tech-a", "2026-10-09T03:00:00.000Z")],
-      },
-      {
-        service: service("svc-b", "relax-b", "足部舒缓", 26_800),
-        today: [slot("tech-b", "2026-10-08T05:00:00.000Z")],
-        tomorrow: [],
-      },
-    ],
-    [profile("tech-a", "已公开技师 A"), profile("tech-b", "已公开技师 B")],
-  );
-
-  assert.equal(therapists.length, 2);
-  assert.equal(therapists[0].id, "tech-a");
-  assert.equal(therapists[0].alias, "已公开技师 A");
-  assert.equal(therapists[0].statusLabel, "明日可约");
-  assert.equal(therapists[0].services.length, 1);
-  assert.equal(therapists[1].id, "tech-b");
-  assert.equal(therapists[1].alias, "已公开技师 B");
-  assert.equal(therapists[1].statusLabel, "今日可约");
-  assert.equal(therapists[1].services.length, 2);
-  assert.equal(therapists[1].services[1].price, "268.00");
-  assert.equal(therapists[1].ratingLabel, "暂无评价");
-  assert.equal(therapists[1].orderCountLabel, "0单已完成");
-  assert.equal(therapists[1].travelLabel, "免出行费");
-});
-
-test("an approved profile without shifts remains visible but cannot be booked", () => {
-  const therapists = buildPublicTherapists(
-    [],
-    [profile("tech-a", "已公开技师 A")],
-  );
-  assert.equal(therapists.length, 1);
-  assert.equal(therapists[0].bookable, false);
-  assert.equal(therapists[0].statusLabel, "暂不可约");
-  assert.equal(therapists[0].services.length, 0);
-});
-
-test("availability without an approved public profile is not exposed", () => {
-  const therapists = buildPublicTherapists([
-    {
-      service: service("svc-a", "relax-a", "肩颈舒缓"),
-      today: [slot("private-tech", "2026-10-08T04:00:00.000Z")],
-      tomorrow: [],
-    },
-  ]);
-  assert.deepEqual(therapists, []);
-});
-
-test("a blank optional public name remains blank and never exposes an internal display name", () => {
-  const entry = profile("tech-a", "");
-  entry.displayName = "private legal name";
-  const [technician] = buildPublicTherapists([], [entry]);
-  assert.equal(technician.alias, "");
-  assert.notEqual(technician.alias, entry.displayName);
-});
-
-const withPublicApi = async (reply, callback) => {
-  const oldWx = globalThis.wx;
-  const oldApp = globalThis.getApp;
-  globalThis.getApp = () => ({
-    globalData: { apiBaseUrl: "https://public.fixture.test/v1" },
-  });
-  globalThis.wx = {
-    getStorageSync: () => undefined,
-    removeStorageSync() {},
-    request(input) {
-      reply(input, input.url.replace("https://public.fixture.test/v1", ""));
-    },
-  };
-  try {
-    await callback();
-  } finally {
-    globalThis.wx = oldWx;
-    globalThis.getApp = oldApp;
-  }
+  boundaries: ["非医疗服务"],
 };
 
-test("technician detail loading keeps healthy real schedules when another project fails", async () => {
-  await withPublicApi(
-    (input, path) => {
-      if (path.includes("serviceId=svc-b"))
-        return input.fail({ errMsg: "fixture failure" });
-      const data =
-        path === "/technicians"
-          ? [profile("tech-a", ""), profile("tech-b", "")]
-          : path === "/catalog/services"
-            ? [service("svc-a", "a", "项目A"), service("svc-b", "b", "项目B")]
-            : [slot("tech-a", "2099-01-01T00:00:00.000Z")];
-      input.success({ statusCode: 200, data: { data } });
-    },
-    async () => {
-      const technicians = await loadPublicTherapists();
-      assert.equal(
-        technicians.find((item) => item.id === "tech-a").bookable,
-        true,
-      );
-      const incomplete = technicians.find((item) => item.id === "tech-b");
-      assert.equal(incomplete.bookable, false);
-      assert.equal(incomplete.statusLabel, "排班待确认");
-      assert.equal(incomplete.earliestLabel, "排班读取不完整");
-    },
-  );
-});
-
-test("a full schedule outage is an error, not a fabricated unbookable status", async () => {
-  await withPublicApi(
-    (input, path) => {
-      if (path.startsWith("/availability/"))
-        return input.fail({ errMsg: "fixture outage" });
-      input.success({
-        statusCode: 200,
-        data: {
-          data:
-            path === "/technicians"
-              ? [profile("tech-a", "")]
-              : [service("svc-a", "a", "项目A")],
+function fixture(route, verified = true) {
+  let page;
+  const routes = [],
+    calls = [],
+    toasts = [];
+  vm.runInNewContext(compile("pages/" + route + "/index.ts"), {
+    exports: {},
+    Error,
+    Promise,
+    Page(definition) {
+      page = {
+        ...definition,
+        data: structuredClone(definition.data),
+        setData(values) {
+          Object.assign(this.data, values);
         },
-      });
+      };
     },
-    async () => {
-      await assert.rejects(loadPublicTherapists(), /项目排班读取失败/);
+    require(name) {
+      if (name === "../../utils/auth")
+        return {
+          requireVerifiedCustomerAccess: () => verified,
+          hasVerifiedCustomerSession: () => verified,
+        };
+      if (name === "../../utils/api")
+        return {
+          money: (fen) => (fen / 100).toFixed(2),
+          api: async (path) => {
+            calls.push(path);
+            assert.equal(path, "/catalog/services");
+            return [service];
+          },
+        };
+      if (name === "../../utils/tab-bar") return { syncCustomTabBar() {} };
+      return new Proxy(
+        {},
+        {
+          get: (_target, key) => () => {
+            throw Error(
+              "Unexpected profile/showcase API action " + String(key),
+            );
+          },
+        },
+      );
     },
+    wx: {
+      navigateTo: ({ url }) => routes.push(url),
+      switchTab: ({ url }) => routes.push(url),
+      showToast: (value) => toasts.push(value),
+    },
+  });
+  return { page, routes, calls, toasts };
+}
+
+test("customer landing, discovery and service detail have no rendered technician directory or portrait controls", () => {
+  for (const route of ["home", "discover", "service-detail"]) {
+    const view = source("pages/" + route + "/index.wxml");
+    assert.doesNotMatch(
+      view,
+      /wx:for="\{\{(?:allTherapists|therapists|showcasePhotos)\}\}"/,
+    );
+    assert.doesNotMatch(
+      view,
+      /(?:bind|catch)tap="(?:openTherapist|openTherapists|openAllTherapists|previewShowcase|loadShowcase)"/,
+    );
+    assert.doesNotMatch(
+      view,
+      /item\.(?:avatarUrl|galleryUrls)|新上线技师|本人技师照片/,
+    );
+  }
+  assert.match(
+    source("pages/home/index.wxml"),
+    /bindtap="openTechnicianIntake"/,
   );
+  assert.match(source("pages/home/index.wxml"), />技师入驻</);
 });
 
-test("unsafe travel fees block discovery rather than showing a false free-travel claim", async () => {
-  const entry = profile("tech-a", "");
-  entry.travelFeeFen = 100;
-  await withPublicApi(
-    (input, path) => {
-      input.success({
-        statusCode: 200,
-        data: { data: path === "/technicians" ? [entry] : [] },
-      });
-    },
-    async () => {
-      await assert.rejects(loadPublicTherapists(), /出行费配置异常/);
-    },
-  );
+test("discovery loads published services without fetching or creating technician cards", async () => {
+  const f = fixture("discover");
+  await f.page.onShow();
+  assert.deepEqual(f.calls, ["/catalog/services"]);
+  assert.equal(f.page.data.error, "");
+  assert.equal(f.page.data.services[0].slug, service.slug);
+  assert.equal(f.page.data.services[0].price, "198.00");
+  assert.equal(f.page.data.therapists.length, 0);
+  f.page.openService({ currentTarget: { dataset: { slug: service.slug } } });
+  assert.deepEqual(f.routes, ["/pages/booking/index?slug=regular-spa"]);
 });
 
-test("technician pages disclose missing public data instead of hard-coding claims", () => {
-  const list = readFileSync(
-    new URL("../apps/miniapp/pages/therapists/index.wxml", import.meta.url),
-    "utf8",
+test("a customer project card opens booking directly only after real availability is present", () => {
+  const f = fixture("home");
+  f.page.data.allServices = [
+    {
+      ...service,
+      therapistId: "published-with-slot",
+      bookingState: "AVAILABLE",
+    },
+  ];
+  f.page.bookService({ currentTarget: { dataset: { slug: service.slug } } });
+  assert.deepEqual(f.routes, ["/pages/booking/index?slug=regular-spa"]);
+  assert.ok(f.routes.every((url) => !/therapist-detail|therapistId/.test(url)));
+  f.routes.length = 0;
+  f.page.data.allServices = [
+    { ...service, therapistId: "", bookingState: "NO_SLOTS" },
+  ];
+  f.page.bookService({ currentTarget: { dataset: { slug: service.slug } } });
+  f.page.bookService({
+    currentTarget: { dataset: { slug: "unknown-service" } },
+  });
+  assert.deepEqual(f.routes, []);
+  assert.equal(f.toasts.length, 1);
+});
+
+test("service information keeps its three customer tabs and opens booking without a technician directory hop", () => {
+  const f = fixture("service-detail");
+  assert.deepEqual(
+    Array.from(f.page.data.tabs, (tab) => tab.label),
+    ["项目介绍", "服务流程", "用户评价"],
   );
-  const detail = readFileSync(
-    new URL(
-      "../apps/miniapp/pages/therapist-detail/index.wxml",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  assert.match(list, /不使用虚构姓名、照片、评分或订单量/);
-  assert.match(detail, /暂无公开服务相册/);
-  assert.match(detail, /暂无已公开评价/);
-  assert.match(list + detail, /免出行费/);
-  assert.doesNotMatch(list + detail, /4\.8分|5\.0分|玲儿|清源/);
+  f.page.chooseTechnician();
+  assert.deepEqual(f.routes, []);
+  f.page.data.service = service;
+  f.page.data.preferredTherapistId = "query-injected-person";
+  f.page.chooseTechnician();
+  assert.deepEqual(f.routes, ["/pages/booking/index?slug=regular-spa"]);
+  const denied = fixture("service-detail", false);
+  denied.page.data.service = service;
+  denied.page.chooseTechnician();
+  assert.deepEqual(denied.routes, []);
 });

@@ -18,28 +18,7 @@
     <view wx:for="{{categories}}" wx:key="key" class="category-tab {{activeCategory===item.key?'active':''}}" data-key="{{item.key}}" bindtap="selectCategory"><text>{{item.label}}</text><text>{{item.description}}</text><view class="category-underline"/></view>
   </view>
 
-  <view class="section-head therapist-section"><view><text class="section-title">新上线技师</text><text class="section-desc">公开资料 · 真实排班 · 安心预约</text></view><text class="section-more" bindtap="openTherapists">更多 ›</text></view>
-  <view wx:if="{{therapistLoading}}" class="state-text">正在读取可预约技师…</view>
-  <view wx:elif="{{therapistError}}" class="state-card"><text>{{therapistError}}</text><button bindtap="retryServices">重新加载</button></view>
-  <scroll-view wx:elif="{{therapists.length}}" class="therapist-scroll" scroll-x show-scrollbar="{{false}}">
-    <view class="therapist-stream">
-      <view wx:for="{{therapists}}" wx:key="id" class="therapist-card" data-id="{{item.id}}" bindtap="openTherapist">
-        <view class="therapist-portrait"><image wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill"/><view wx:else class="portrait-placeholder"><view class="portrait-head"/><view class="portrait-body"/></view><text class="therapist-status">{{item.statusLabel}}</text></view>
-        <view class="therapist-copy"><text wx:if="{{item.alias}}" class="therapist-name">{{item.alias}}</text><view class="therapist-tags"><text wx:if="{{item.express}}" class="express-tag">极速达</text><text>免出行费</text></view><text class="therapist-rating">{{item.ratingLabel}}</text><text class="therapist-next">最早 {{item.earliestLabel}}</text><view class="therapist-action">查看技师 <text>›</text></view></view>
-      </view>
-    </view>
-  </scroll-view>
-  <view wx:else class="empty-state"><view class="empty-calendar"><view/><view/><text>◇</text></view><text>{{scheduleError?'排班暂未读取完整':profileCount?'预约时段待开放':'技师上线准备中'}}</text><text>{{scheduleError?'点击重新读取，确认最新可约时间':profileCount?'公开技师完成排班后即可预约':'个人照片、资料审核和真实排班完成后展示'}}</text><button wx:if="{{scheduleError}}" bindtap="retryServices">重新读取排班</button></view>
-  <view wx:if="{{scheduleError && therapists.length}}" class="schedule-notice"><text>{{scheduleError}}</text><text bindtap="retryServices">重试 ›</text></view>
-
-  <view wx:if="{{accessReady && showcasePhotos.length}}" class="portrait-showcase">
-    <view class="section-head"><view><text class="section-title">技师风采</text><text class="section-desc">形象照展示 · 预约待开放</text></view></view>
-    <scroll-view scroll-x show-scrollbar="{{false}}"><view class="showcase-row"><view wx:for="{{showcasePhotos}}" wx:key="id" class="showcase-card" data-id="{{item.id}}" bindtap="previewShowcase"><image src="{{item.imageUrl}}" mode="aspectFill"/><text>查看形象照</text></view></view></scroll-view>
-    <text class="showcase-note">个人资料补充、审核及排班完成后开放预约</text>
-  </view>
-  <view wx:if="{{accessReady && showcaseError}}" class="showcase-note" bindtap="loadShowcase">{{showcaseError}}</view>
-
-  <view class="section-head"><view><text class="section-title">推荐项目</text><text class="section-desc">选好项目，查看可服务技师</text></view><text class="section-more" bindtap="openServices">全部项目 ›</text></view>
+  <view class="section-head"><view><text class="section-title">推荐项目</text><text class="section-desc">选好项目，查看预约时间</text></view><text class="section-more" bindtap="openServices">全部项目 ›</text></view>
   <text wx:if="{{loading}}" class="state-text">正在读取服务目录…</text>
   <view wx:elif="{{error}}" class="state-card"><text>{{error}}</text><button bindtap="retryServices">重新加载</button></view>
   <view wx:elif="{{services.length}}" class="service-list">
@@ -52,7 +31,7 @@
 
   <view class="quick-grid">
     <view class="quick-link" bindtap="openServices"><view class="quick-icon mint">✦</view><text>选服务</text></view>
-    <view class="quick-link" bindtap="openTherapists"><view class="quick-icon peach">人</view><text>选技师</text></view>
+    <view class="quick-link" bindtap="openTechnicianIntake"><view class="quick-icon peach">人</view><text>技师入驻</text></view>
     <view class="quick-link" bindtap="openOrders"><view class="quick-icon lime">▤</view><text>查订单</text></view>
     <button wx:if="{{accessReady}}" open-type="contact" show-message-card session-from="home-quick"><view class="quick-icon blue">•••</view><text>在线客服</text></button>
     <button wx:else bindtap="requireAccess"><view class="quick-icon blue">•••</view><text>在线客服</text></button>

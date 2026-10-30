@@ -4,7 +4,7 @@ import { requireVerifiedCustomerAccess } from "../../utils/auth";
 import { loadPublicServiceDiscovery } from "../../utils/service-discovery";
 import type { PublicTherapistView } from "../../utils/therapists";
 
-type DetailTab = "INTRO" | "STEPS" | "REVIEWS" | "TECHNICIANS";
+type DetailTab = "INTRO" | "STEPS" | "REVIEWS";
 type ReviewView = TechnicianReview & { stars: string; dateLabel: string };
 type ServiceView = ServiceItem & {
   price: string;
@@ -32,7 +32,6 @@ Page({
       { key: "INTRO", label: "项目介绍" },
       { key: "STEPS", label: "服务流程" },
       { key: "REVIEWS", label: "用户评价" },
-      { key: "TECHNICIANS", label: "选择技师" },
     ],
     reviews: [] as ReviewView[],
     reviewsLoading: false,
@@ -207,7 +206,7 @@ Page({
       this.setData({
         therapists,
         availabilityLabel: therapists.length
-          ? `${therapists.length}位技师可约`
+          ? "预约时段已开放"
           : "预约时段待开放",
       });
     } catch (error) {
@@ -230,8 +229,7 @@ Page({
   },
   chooseTechnician() {
     if (!requireVerifiedCustomerAccess() || !this.data.service) return;
-    this.setData({ activeTab: "TECHNICIANS" });
-    wx.pageScrollTo({ scrollTop: 0, duration: 200 });
+    wx.navigateTo({ url: "/pages/booking/index?slug=" + encodeURIComponent(this.data.service.slug) });
   },
   openTherapist(event: { currentTarget: { dataset: { id?: string } } }) {
     if (!requireVerifiedCustomerAccess() || this.data.availabilityLoading)

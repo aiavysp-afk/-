@@ -32,8 +32,10 @@ describe("simple admin contracts", () => {
       items: [
         {
           technicianId: "tech",
+          source: "LEGACY_PROFILE",
           name: "姓名",
           maskedPhone: "138****8000",
+          phoneVerified: true,
           status: "PENDING_REVIEW",
           version: 1,
           certificatePhotos: [],

@@ -96,6 +96,7 @@ for marker in \
   'location = /v1/customer-center/newcomer-coupons' \
   'location = /v1/technician-invitations/claim' \
   'location = /v1/technician/onboarding' \
+  'location = /v1/technician/intake {' \
   'location = /v1/auth/technician-phone/capabilities {' \
   'location = /v1/auth/technician-phone/sms/request {' \
   'location = /v1/auth/technician-phone/sms/confirm {' \

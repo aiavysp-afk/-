@@ -38,6 +38,8 @@ const rules = [
     ["GET"],
   ],
   [new RegExp(`^${organization}/simple/orders/${segment}$`), ["GET"]],
+  [new RegExp(`^${organization}/simple/intakes/${segment}/certificate$`), ["GET"]],
+  [new RegExp(`^${organization}/simple/intakes/${segment}/(?:approve|reject)$`), ["POST"]],
   [
     new RegExp(
       `^${organization}/(?:dashboard|dispatch|technicians|service-area|readiness|payments|safety-duty-rosters/current|safety-duty-staff|safety-notifications|safety-notifications-summary|safety-incidents|mfa-recovery-requests)$`,

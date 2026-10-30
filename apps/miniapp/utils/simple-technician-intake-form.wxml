@@ -1,0 +1,23 @@
+<view class="intake-page">
+  <view class="intake-brand"><text>中原到家</text><text>技师入驻申请</text></view>
+  <view wx:if="{{submitted}}" class="intake-card intake-success">
+    <text class="intake-check">✓</text><text class="intake-title">提交成功 · 待审核</text>
+    <text class="intake-note">资料已提交给平台管理员，请等待联系。提交申请不代表已通过审核或可以接单。</text>
+    <button bindtap="backHome" class="intake-submit">返回首页</button>
+  </view>
+  <view wx:else class="intake-card">
+    <text class="intake-title">填写入驻资料</text>
+    <text class="intake-note">无需注册账号，填写以下三项即可申请。资料仅供平台审核，不公开展示。</text>
+    <view class="intake-field"><text>姓名</text><input value="{{name}}" maxlength="40" placeholder="请填写本人真实姓名" bindinput="inputName" disabled="{{busy}}"/></view>
+    <view class="intake-field"><text>手机号</text><input type="number" value="{{phone}}" maxlength="11" placeholder="填写可联系的11位手机号" bindinput="inputPhone" disabled="{{busy}}"/><text class="intake-hint">仅供审核联系，本表单不发送验证码。</text></view>
+    <view class="intake-field"><text>证书照片（1张）</text><text class="intake-hint">上传本人相关职业资质证书，确保姓名与证书文字清晰；不要上传身份证或生活照。</text>
+      <image wx:if="{{certificatePath}}" class="intake-photo" src="{{certificatePath}}" mode="aspectFit"/>
+      <button class="intake-upload" bindtap="chooseCertificate" loading="{{photoBusy}}" disabled="{{busy || photoBusy}}">{{certificatePath ? '重新选择证书照片' : '拍照 / 从相册选择'}}</button>
+    </view>
+    <view class="intake-consent"><checkbox-group name="intake-consent" bindchange="toggleAccepted"><label><checkbox value="intake-consent" checked="{{accepted}}" color="#245b4d" disabled="{{busy}}"/><text>我已阅读隐私政策，同意将姓名、手机号及证书照片用于入驻审核和联系。</text></label></checkbox-group><text class="intake-policy" bindtap="openPrivacy">阅读《隐私政策》</text></view>
+    <text wx:if="{{error}}" class="intake-error" role="alert">{{error}}</text>
+    <button class="intake-submit" bindtap="submit" loading="{{busy}}" disabled="{{busy || photoBusy}}">{{busy ? '正在提交…' : '提交入驻申请'}}</button>
+    <text class="intake-hint">提交后进入待审核状态。本页不提供技师名单、接单或收入功能。</text>
+  </view>
+  <text class="intake-bottom">正规非医疗保健放松服务 · 请如实填写本人资料</text>
+</view>

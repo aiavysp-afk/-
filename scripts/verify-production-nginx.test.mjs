@@ -33,6 +33,34 @@ function assertAllowedMethods(declaration, methods) {
   return block;
 }
 
+test("one-way technician intake exposes one exact bounded POST and no anonymous reads", () => {
+  const block = assertAllowedMethods("= /v1/technician/intake", [
+    "POST",
+    "OPTIONS",
+  ]);
+  assert.ok(
+    block.includes("if ($request_method !~ ^(POST|OPTIONS)$) { return 404; }"),
+  );
+  assert.ok(block.includes("client_max_body_size 768k;"));
+  assert.ok(
+    block.includes("limit_req zone=technician_intake burst=3 nodelay;"),
+  );
+  assert.ok(block.includes("limit_req_status 429;"));
+  assert.ok(block.includes("access_log off;"));
+  assert.ok(
+    config.includes(
+      "limit_req_zone $binary_remote_addr zone=technician_intake:10m rate=6r/m;",
+    ),
+  );
+  assert.deepEqual(
+    config
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^location .*\/v1\/technician\/intake/.test(line)),
+    ["location = /v1/technician/intake {"],
+  );
+});
+
 test("production nginx exposes every customer authentication route", () => {
   assertAllowedMethods(
     "~ ^/v1/auth/(?:wechat-miniapp|wechat-phone|sms-phone/(?:request|confirm))$",
@@ -93,26 +121,53 @@ test("technician phone routes are exact, purpose-bound, unlogged and method rest
   ];
   const declarations = config.split(/\r?\n/).map((line) => line.trim());
   assert.deepEqual(
-    declarations.filter((line) => /^location .*\/v1\/(?:auth\/technician-phone|technician\/phone-onboarding)/.test(line)),
+    declarations.filter((line) =>
+      /^location .*\/v1\/(?:auth\/technician-phone|technician\/phone-onboarding)/.test(
+        line,
+      ),
+    ),
     routes.map(([path]) => `location = ${path} {`),
   );
   for (const [path, method] of routes) {
     const block = assertAllowedMethods(`= ${path}`, [method, "OPTIONS"]);
-    assert.ok(block.includes(`if ($request_method !~ ^(${method}|OPTIONS)$) { return 404; }`));
+    assert.ok(
+      block.includes(
+        `if ($request_method !~ ^(${method}|OPTIONS)$) { return 404; }`,
+      ),
+    );
     assert.ok(block.includes("access_log off;"));
     assert.ok(block.includes("proxy_pass http://127.0.0.1:3220;"));
     assert.ok(block.includes("proxy_set_header X-Real-IP $remote_addr;"));
-    assert.ok(block.includes("proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;"));
-    assert.doesNotMatch(block, /auth_request|proxy_set_header (?:Authorization|Origin|Cookie)|add_header|satisfy any/);
+    assert.ok(
+      block.includes(
+        "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+      ),
+    );
+    assert.doesNotMatch(
+      block,
+      /auth_request|proxy_set_header (?:Authorization|Origin|Cookie)|add_header|satisfy any/,
+    );
   }
-  const deploy = readFileSync(new URL("./deploy-production-nginx.sh", import.meta.url), "utf8");
-  for (const [path] of routes) assert.ok(deploy.includes(`'location = ${path} {'`));
-  const probes = deploy.slice(deploy.indexOf("# Technician phone gateway probe helpers."), deploy.indexOf("# End technician phone gateway probe helpers."));
-  assert.ok(probes.includes("local expected=(200 400 400 401 401 401 401 401 401)"));
+  const deploy = readFileSync(
+    new URL("./deploy-production-nginx.sh", import.meta.url),
+    "utf8",
+  );
+  for (const [path] of routes)
+    assert.ok(deploy.includes(`'location = ${path} {'`));
+  const probes = deploy.slice(
+    deploy.indexOf("# Technician phone gateway probe helpers."),
+    deploy.indexOf("# End technician phone gateway probe helpers."),
+  );
+  assert.ok(
+    probes.includes("local expected=(200 400 400 401 401 401 401 401 401)"),
+  );
   assert.ok(probes.includes("technician_phone_deadline=$((SECONDS + 45))"));
   assert.ok(probes.includes("--data '{}'"));
   assert.ok(deploy.includes("\nverify_technician_phone_gateway\n"));
-  assert.doesNotMatch(probes, /Authorization|Cookie|Bearer|--insecure|agreementsAccepted|challengeSecret/);
+  assert.doesNotMatch(
+    probes,
+    /Authorization|Cookie|Bearer|--insecure|agreementsAccepted|challengeSecret/,
+  );
 });
 
 test("production nginx exposes staff pairing and the technician workbench without opening a catch-all API", () => {
@@ -619,8 +674,14 @@ test("production nginx exposes technician invitations without broadening technic
 });
 
 test("production nginx exposes exact authenticated admin profile and review moderation routes", () => {
-  assertAllowedMethods("~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/technicians/[A-Za-z0-9_-]+/profile/binding-targets$", ["GET"]);
-  assertAllowedMethods("~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/technicians/[A-Za-z0-9_-]+/profile/bind-application$", ["POST"]);
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/technicians/[A-Za-z0-9_-]+/profile/binding-targets$",
+    ["GET"],
+  );
+  assertAllowedMethods(
+    "~ ^/v1/admin/organizations/[A-Za-z0-9_-]+/technicians/[A-Za-z0-9_-]+/profile/bind-application$",
+    ["POST"],
+  );
   assertAllowedMethods(
     "~ ^/v1/admin/organizations/[^/]+/technicians/[^/]+/profile$",
     ["GET", "PATCH", "OPTIONS"],

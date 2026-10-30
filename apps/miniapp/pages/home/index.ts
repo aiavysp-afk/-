@@ -110,7 +110,6 @@ Page({
       this.prepareLocation(),
       this.loadNewcomer(),
       this.loadCampaign(),
-      this.loadShowcase(),
     ]);
   },
   onHide() {
@@ -188,6 +187,9 @@ Page({
         this.data.showcasePhotos,
         event.currentTarget.dataset.id,
       );
+  },
+  openTechnicianIntake() {
+    wx.navigateTo({ url: "/pages/technician-onboarding/index" });
   },
   stopCampaignTap() {},
   campaignImageFailed() {
@@ -526,7 +528,7 @@ Page({
       return;
     }
     wx.navigateTo({
-      url: `/pages/therapist-detail/index?id=${encodeURIComponent(service.therapistId)}&slug=${encodeURIComponent(service.slug)}`,
+      url: `/pages/booking/index?slug=${encodeURIComponent(service.slug)}`,
     });
   },
   openServiceDetail(e: { currentTarget: { dataset: { slug?: string } } }) {

@@ -2135,14 +2135,15 @@ export const SimpleAdminOrdersQuerySchema = SimpleAdminPageQuerySchema.extend({
 }).strict();
 export const SimpleAdminTechnicianSchema = z.object({
   technicianId: z.string(),
+  source: z.enum(["SIMPLE_INTAKE", "LEGACY_PROFILE"]),
   name: z.string(),
   maskedPhone: z.string().regex(/^1\d{2}\*{4}\d{4}$/).nullable(),
+  phoneVerified: z.boolean(),
   status: TechnicianProfileStatusSchema,
   version: z.number().int().nonnegative(),
-  // No dedicated certificate-image record exists yet. Identity documents must
-  // never be substituted for professional qualification certificates.
-  certificatePhotos: z.array(z.object({ id: z.string(), url: PublicHttpsUrlSchema }).strict()),
-  certificatePhotoStatus: z.literal("NOT_UPLOADED"),
+  // Relative, authenticated admin resources only; never an anonymous public URL.
+  certificatePhotos: z.array(z.object({ id: z.string(), url: z.string().regex(/^\/admin\/organizations\/[A-Za-z0-9_-]+\/simple\/intakes\/[A-Za-z0-9_-]+\/certificate$/) }).strict()).max(1),
+  certificatePhotoStatus: z.enum(["AVAILABLE", "NOT_UPLOADED"]),
 }).strict();
 export const SimpleAdminTechniciansSchema = z.object({
   items: z.array(SimpleAdminTechnicianSchema),
@@ -2179,3 +2180,11 @@ export type SimpleAdminOrdersQuery = z.infer<typeof SimpleAdminOrdersQuerySchema
 export type SimpleAdminTechnicians = z.infer<typeof SimpleAdminTechniciansSchema>;
 export type SimpleAdminOrders = z.infer<typeof SimpleAdminOrdersSchema>;
 export type SimpleAdminOrderDetail = z.infer<typeof SimpleAdminOrderDetailSchema>;
+
+export const TechnicianIntakeSubmissionSchema = z.object({
+  name: z.string().trim().min(2).max(40).refine((value) => !/[\x00-\x1f\x7f]/.test(value)),
+  phone: z.string().regex(/^1[3-9]\d{9}$/),
+  certificateBase64: z.string().min(4).max(699_052).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  consentAccepted: z.literal(true),
+}).strict();
+export type TechnicianIntakeSubmission = z.infer<typeof TechnicianIntakeSubmissionSchema>;

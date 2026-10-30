@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 const require = createRequire(import.meta.url);
 const authPath = "../apps/miniapp/utils/auth.js";
@@ -71,8 +72,7 @@ test("every customer menu and deep feature page uses the same access guard", () 
     "pages/services/index.ts",
     "pages/discover/index.ts",
     "pages/messages/index.ts",
-    "pages/therapists/index.ts",
-    "pages/therapist-detail/index.ts",
+    "pages/service-detail/index.ts",
     "pages/orders/index.ts",
     "pages/profile/index.ts",
     "pages/coupons/index.ts",
@@ -98,7 +98,7 @@ test("every customer menu and deep feature page uses the same access guard", () 
   }
 });
 
-test("the public landing page stays visible but every action is login-gated", () => {
+test("the public landing page stays visible while customer address, booking and order actions stay login-gated", () => {
   const source = readFileSync(
     new URL("../apps/miniapp/pages/home/index.ts", import.meta.url),
     "utf8",
@@ -111,7 +111,6 @@ test("the public landing page stays visible but every action is login-gated", ()
     "chooseAddress",
     "bookNow",
     "openServices",
-    "openTherapists",
     "openOrders",
     "retryServices",
     "bookService",
@@ -135,4 +134,58 @@ test("login and agreement pages remain reachable before authentication", () => {
     );
     assert.doesNotMatch(source, /requireVerifiedCustomerAccess/);
   }
+});
+
+test("the guest homepage can open the anonymous intake while customer booking and orders stay guarded", () => {
+  const ts = require("typescript");
+  const source = readFileSync(
+    new URL("../apps/miniapp/pages/home/index.ts", import.meta.url),
+    "utf8",
+  );
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+    },
+  }).outputText;
+  let page;
+  const routes = [],
+    guards = [];
+  vm.runInNewContext(compiled, {
+    exports: {},
+    Page: (definition) => {
+      page = definition;
+    },
+    require(name) {
+      if (name === "../../utils/auth")
+        return {
+          requireVerifiedCustomerAccess: () => {
+            guards.push(true);
+            return false;
+          },
+          hasVerifiedCustomerSession: () => false,
+        };
+      return new Proxy(
+        {},
+        {
+          get: (_target, key) => () => {
+            throw Error(
+              "Unexpected request while opening the intake: " + String(key),
+            );
+          },
+        },
+      );
+    },
+    wx: {
+      navigateTo: ({ url }) => routes.push(url),
+      switchTab: ({ url }) => routes.push(url),
+    },
+  });
+  page.openTechnicianIntake();
+  assert.equal(guards.length, 0);
+  assert.deepEqual(routes, ["/pages/technician-onboarding/index"]);
+  page.bookService({ currentTarget: { dataset: { slug: "real-service" } } });
+  page.openOrders();
+  assert.equal(guards.length, 2);
+  assert.deepEqual(routes, ["/pages/technician-onboarding/index"]);
 });

@@ -96,6 +96,16 @@ before(async () => {
             "Access-Control-Allow-Origin": "*",
           },
         });
+      if (
+        new URL(url).pathname.endsWith("/simple/intakes/intake-1/certificate")
+      )
+        return new Response(new Uint8Array([255, 216, 255]), {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Set-Cookie": "never-copy-certificate-cookie",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
       if (new URL(url).pathname === identityDocument)
         return new Response(new Uint8Array([137, 80, 78, 71]), {
           headers: {
@@ -179,6 +189,43 @@ test("simple admin forwards exact read routes and refuses writes or namespace ex
     assert.equal((await send(path)).status, 404);
     assert.equal(calls.length, before);
   }
+});
+
+test("intake certificate and review routes retain exact methods, bearer authorization and private image delivery", async () => {
+  const base = "/v1/admin/organizations/org-1/simple/intakes/intake-1";
+  const before = calls.length;
+  const response = await send(`${base}/certificate`, {
+    headers: { Authorization: "Bearer synthetic-intake-reader" },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers["content-type"], "image/jpeg");
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.equal(response.headers["set-cookie"], undefined);
+  assert.equal(response.headers["access-control-allow-origin"], undefined);
+  assert.deepEqual(response.body, Buffer.from([255, 216, 255]));
+  assert.equal(
+    calls.at(-1).options.headers.Authorization,
+    "Bearer synthetic-intake-reader",
+  );
+  for (const action of ["approve", "reject"]) {
+    assert.deepEqual(allowedAdminMethods(`${base}/${action}`), ["POST"]);
+    assert.equal((await send(`${base}/${action}`)).status, 405);
+  }
+  assert.equal(
+    (await send(`${base}/certificate`, { method: "POST" })).status,
+    405,
+  );
+  for (const suffix of ["", "/status", "/certificate/export", "/approve/extra"])
+    assert.equal((await send(`${base}${suffix}`)).status, 404);
+  assert.equal(
+    (
+      await send(`${base}/certificate`, {
+        headers: { Origin: "https://evil.invalid" },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(calls.length, before + 1);
 });
 
 test("new login and device routes are exact and method restricted", () => {

@@ -13,7 +13,10 @@ describe("technician native WeChat entry", () => {
     );
     expect(html).toContain("技师入驻直达码");
     expect(html).toContain("technician-wechat-entry-trial.jpg");
-    expect(html).toContain("随后填写本人入驻资料");
+    expect(html).toContain("无需登录或注册账号");
+    expect(html).toContain("一张证书照片");
+    expect(html).not.toContain("直接进入授权登录页");
+    expect(html).not.toContain("审核通过后进入技师工作台");
     expect(html).toContain("只扫这一个码即可");
     expect(html).toContain("仅小程序管理员及已添加的体验成员可用");
     expect(html).not.toContain("浏览器自动登录");

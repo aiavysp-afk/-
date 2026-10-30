@@ -111,7 +111,7 @@ Page({
       return;
     }
     wx.navigateTo({
-      url: `/pages/therapist-detail/index?id=${encodeURIComponent(service.therapistId)}&slug=${encodeURIComponent(service.slug)}`,
+      url: `/pages/booking/index?slug=${encodeURIComponent(service.slug)}`,
     });
   },
   openServiceDetail(e: { currentTarget: { dataset: { slug?: string } } }) {

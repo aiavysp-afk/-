@@ -140,19 +140,12 @@ test("detail reads authoritative description, amount, duration, configured proce
     assert.deepEqual(page.data.service.boundaries, service.boundaries);
     assert.equal(page.data.reviews[0].stars, "★★★★");
     assert.equal(page.data.reviews[0].dateLabel, "2026-10-10");
-    assert.equal(
-      page.data.therapists[0].alias,
-      "",
-      "missing optional name is not fabricated",
-    );
-    assert.equal(page.data.availabilityLabel, "1位技师可约");
-    page.openTherapist({ currentTarget: { dataset: { id: "fixture-tech" } } });
-    assert.deepEqual(navigations, [
-      "/pages/therapist-detail/index?id=fixture-tech&slug=fixture-spa",
-    ]);
+    assert.equal(page.data.availabilityLabel, "预约时段已开放");
+    page.chooseTechnician();
+    assert.deepEqual(navigations, ["/pages/booking/index?slug=fixture-spa"]);
   }));
 
-test("catalog remains readable without published technicians and a preferred ID cannot open a fake booking", async () =>
+test("catalog stays readable without published capacity and a preferred ID cannot fabricate available times", async () =>
   host(
     async ({ requests, navigations }) => {
       const page = loadPage();
@@ -163,21 +156,18 @@ test("catalog remains readable without published technicians and a preferred ID 
       assert.ok(
         !requests.some((item) => item.path.startsWith("/availability/")),
       );
-      page.openTherapist({ currentTarget: { dataset: { id: "fake-tech" } } });
       assert.deepEqual(navigations, []);
     },
     { profiles: [] },
   ));
 
-test("published profile without project slots cannot be selected", async () =>
+test("published capacity without project slots is disclosed as unavailable", async () =>
   host(
     async ({ navigations }) => {
       const page = loadPage();
       await page.onLoad({ slug: service.slug });
       assert.deepEqual(page.data.therapists, []);
-      page.openTherapist({
-        currentTarget: { dataset: { id: "fixture-tech" } },
-      });
+      assert.equal(page.data.availabilityLabel, "预约时段待开放");
       assert.deepEqual(navigations, []);
     },
     {
@@ -244,16 +234,14 @@ test("catalog fetch failure does not fall back to hardcoded prices or fake techn
     },
   ));
 
-test("wrong catalog response is refused and unknown or loading technician clicks are ignored", async () =>
+test("wrong catalog response is refused before customer booking can open", async () =>
   host(
     async ({ navigations }) => {
       const page = loadPage();
       await page.onLoad({ slug: service.slug });
       assert.match(page.data.error, /不匹配/);
       assert.equal(page.data.service, null);
-      page.openTherapist({
-        currentTarget: { dataset: { id: "fixture-tech" } },
-      });
+      page.chooseTechnician();
       assert.deepEqual(navigations, []);
     },
     {
@@ -268,7 +256,7 @@ test("wrong catalog response is refused and unknown or loading technician clicks
     },
   ));
 
-test("nonzero travel fee blocks the detail's appointment list", async () =>
+test("nonzero travel fee cannot advertise available times on service information", async () =>
   host(
     async () => {
       const page = loadPage();
@@ -279,17 +267,22 @@ test("nonzero travel fee blocks the detail's appointment list", async () =>
     { profiles: [{ ...profile, freeTravelFee: false, travelFeeFen: 10 }] },
   ));
 
-test("tabs accept only registered values and choose-technician button scrolls to visible content", async () =>
-  host(async ({ scrolls }) => {
+test("three project tabs reject unknown values and the appointment action opens booking directly", async () =>
+  host(async ({ scrolls, navigations }) => {
     const page = loadPage();
     await page.onLoad({ slug: service.slug });
     page.selectTab({ currentTarget: { dataset: { key: "UNKNOWN" } } });
     assert.equal(page.data.activeTab, "INTRO");
     page.selectTab({ currentTarget: { dataset: { key: "REVIEWS" } } });
     assert.equal(page.data.activeTab, "REVIEWS");
+    assert.deepEqual(
+      page.data.tabs.map((tab) => tab.key),
+      ["INTRO", "STEPS", "REVIEWS"],
+    );
     page.chooseTechnician();
-    assert.equal(page.data.activeTab, "TECHNICIANS");
-    assert.deepEqual(scrolls, [{ scrollTop: 0, duration: 200 }]);
+    assert.equal(page.data.activeTab, "REVIEWS");
+    assert.deepEqual(scrolls, []);
+    assert.deepEqual(navigations, ["/pages/booking/index?slug=fixture-spa"]);
   }));
 
 test("logout gate and missing slug never request or navigate into details", async () => {

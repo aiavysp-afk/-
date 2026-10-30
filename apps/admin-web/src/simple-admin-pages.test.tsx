@@ -92,12 +92,27 @@ function deferred<T>() {
 }
 const technician = {
   technicianId: "tech-one",
+  source: "LEGACY_PROFILE",
   name: "测试技师",
   maskedPhone: "138****0000",
+  phoneVerified: true,
   version: 7,
   status: "PENDING_REVIEW",
   certificatePhotos: [],
   certificatePhotoStatus: "NOT_UPLOADED",
+};
+const intake = {
+  ...technician,
+  technicianId: "intake-one",
+  source: "SIMPLE_INTAKE",
+  phoneVerified: false,
+  certificatePhotoStatus: "AVAILABLE",
+  certificatePhotos: [
+    {
+      id: "intake-one",
+      url: "/admin/organizations/org-a/simple/intakes/intake-one/certificate",
+    },
+  ],
 };
 const order = {
   id: "order-one",
@@ -375,6 +390,234 @@ describe("pending technician review", () => {
     expect(text(render())).not.toContain("审核已通过");
     expect(text(render())).toContain("暂时无法完成请求");
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("simple intake review and private certificate", () => {
+  it.each(["approve", "reject"] as const)(
+    "reviews a simple intake through its own %s route without provisioning a technician",
+    async (action) => {
+      const fetcher = await ready(SimpleTechniciansPage, [intake]);
+      fetcher
+        .mockResolvedValueOnce(
+          response({
+            technicianId: intake.technicianId,
+            status: action === "approve" ? "APPROVED" : "REJECTED",
+            version: 8,
+          }),
+        )
+        .mockResolvedValueOnce(page([]));
+      expect(text(render())).toContain("本人填写，未验证");
+      expect(nodes(render()).filter((node) => node.type === "th")).toHaveLength(
+        4,
+      );
+      expect(
+        nodes(render()).filter((node) => node.type === "button"),
+      ).toHaveLength(3);
+      selectTechnician(render());
+      button(render(), action === "approve" ? "通过" : "拒绝").props.onClick();
+      if (action === "reject")
+        nodes(render())
+          .find((node) => node.type === "textarea")!
+          .props.onChange({ target: { value: "证书信息需核实" } });
+      button(
+        render(),
+        action === "approve" ? "确认通过" : "确认拒绝",
+      ).props.onClick();
+      await flush();
+      expect(String(fetcher.mock.calls[1]![0])).toMatch(
+        new RegExp(`/org-a/simple/intakes/intake-one/${action}$`),
+      );
+      expect(JSON.parse(fetcher.mock.calls[1]![1].body)).toEqual({
+        expectedVersion: 7,
+        ...(action === "reject" ? { reason: "证书信息需核实" } : {}),
+      });
+      expect(
+        fetcher.mock.calls.some(
+          ([url]) =>
+            String(url).includes("/profile/") ||
+            String(url).includes("/publish"),
+        ),
+      ).toBe(false);
+      expect(text(render())).toContain(
+        action === "approve" ? "不开通接单或创建技师账号" : "原因已保存",
+      );
+      expect(text(render())).not.toContain("原因已同步技师端");
+    },
+  );
+
+  it("fetches a certificate with bearer authorization and exposes only a revocable blob preview", async () => {
+    const create = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:isolated-certificate");
+    const revoke = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const fetcher = await ready(SimpleTechniciansPage, [intake]);
+    fetcher.mockResolvedValueOnce(
+      new Response(new Uint8Array([255, 216, 255, 0]), {
+        headers: { "Content-Type": "image/jpeg", "Content-Length": "4" },
+      }),
+    );
+    expect(nodes(render()).some((node) => node.type === "img")).toBe(false);
+    link(render(), "查看证书照片").props.onClick({ preventDefault() {} });
+    await flush();
+    expect(fetcher.mock.calls[1]![0]).toBe(
+      `http://127.0.0.1:3100/v1${intake.certificatePhotos[0]!.url}`,
+    );
+    expect(fetcher.mock.calls[1]![1]).toMatchObject({
+      method: "GET",
+      cache: "no-store",
+      headers: { Authorization: "Bearer isolated-staff" },
+    });
+    const tree = render();
+    const image = nodes(tree).find((node) => node.type === "img")!;
+    expect(image.props.src).toBe("blob:isolated-certificate");
+    expect(
+      nodes(tree)
+        .filter((node) => typeof node.type === "string")
+        .every(
+          (node) =>
+            !String(node.props.href ?? node.props.src ?? "").includes("Bearer"),
+        ),
+    ).toBe(true);
+    expect(nodes(tree).filter((node) => node.type === "button")).toHaveLength(
+      3,
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    link(tree, "收起证书照片").props.onClick({ preventDefault() {} });
+    expect(revoke).toHaveBeenCalledWith("blob:isolated-certificate");
+    expect(nodes(render()).some((node) => node.type === "img")).toBe(false);
+  });
+
+  it("keeps simple intake confirmation after a step-up denial and never replays the review", async () => {
+    const verify = vi.fn();
+    const options = { onRequireVerification: verify };
+    const fetcher = await ready(SimpleTechniciansPage, [intake], options);
+    fetcher.mockResolvedValueOnce(
+      failure(403, "此敏感操作需要先完成动态码验证"),
+    );
+    selectTechnician(render(SimpleTechniciansPage, options));
+    button(render(SimpleTechniciansPage, options), "通过").props.onClick();
+    button(render(SimpleTechniciansPage, options), "确认通过").props.onClick();
+    await flush();
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const tree = render(SimpleTechniciansPage, {
+      ...options,
+      hideActions: true,
+    });
+    expect(nodes(tree).filter((node) => node.type === "button")).toHaveLength(
+      0,
+    );
+    expect(text(tree)).toContain("确认通过");
+    expect(text(tree)).not.toContain("入驻申请已通过审核");
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not send authorization to an external or mismatched organization certificate path", async () => {
+    for (const url of [
+      "https://foreign.invalid/certificate.jpg",
+      "/admin/organizations/org-b/simple/intakes/intake-one/certificate",
+    ]) {
+      hooks.current?.unmount();
+      hooks.current = createHookRenderer();
+      const fetcher = await ready(SimpleTechniciansPage, [
+        { ...intake, certificatePhotos: [{ id: "intake-one", url }] },
+      ]);
+      const tree = render();
+      const previewLink = nodes(tree).find(
+        (node) => node.type === "a" && text(node) === "查看证书照片",
+      );
+      previewLink?.props.onClick({ preventDefault() {} });
+      await flush();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(nodes(render()).some((node) => node.type === "img")).toBe(false);
+      expect(text(render())).toContain(
+        url.startsWith("https:") ? "列表未能读取" : "照片地址与本条申请不符",
+      );
+    }
+  });
+
+  it.each([
+    ["image/svg+xml", [255, 216, 255]],
+    ["image/jpeg", [60, 115, 118, 103]],
+  ])(
+    "rejects an unexpected certificate response %s instead of rendering its contents",
+    async (contentType, bytes) => {
+      const create = vi.spyOn(URL, "createObjectURL");
+      const fetcher = await ready(SimpleTechniciansPage, [intake]);
+      fetcher.mockResolvedValueOnce(
+        new Response(new Uint8Array(bytes), {
+          headers: { "Content-Type": contentType },
+        }),
+      );
+      link(render(), "查看证书照片").props.onClick({ preventDefault() {} });
+      await flush();
+      expect(create).not.toHaveBeenCalled();
+      expect(nodes(render()).some((node) => node.type === "img")).toBe(false);
+      expect(text(render())).toContain("暂时无法完成请求");
+    },
+  );
+
+  it("aborts and rejects a late certificate response when the organization changes", async () => {
+    const create = vi.spyOn(URL, "createObjectURL");
+    const fetcher = await ready(SimpleTechniciansPage, [intake]);
+    const pending = deferred<Response>();
+    fetcher
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(page([]));
+    link(render(), "查看证书照片").props.onClick({ preventDefault() {} });
+    const signal = fetcher.mock.calls[1]![1].signal as AbortSignal;
+    render(SimpleTechniciansPage, { organizationId: "org-b" });
+    hooks.current!.flushEffects();
+    await flush();
+    expect(signal.aborted).toBe(true);
+    pending.resolve(
+      new Response(new Uint8Array([255, 216, 255]), {
+        headers: { "Content-Type": "image/jpeg" },
+      }),
+    );
+    await flush();
+    expect(create).not.toHaveBeenCalled();
+    expect(
+      nodes(render(SimpleTechniciansPage, { organizationId: "org-b" })).some(
+        (node) => node.type === "img",
+      ),
+    ).toBe(false);
+  });
+
+  it("revokes a loaded preview on identity changes and prevents preview requests behind MFA", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:isolated-certificate",
+    );
+    const revoke = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const fetcher = await ready(SimpleTechniciansPage, [intake]);
+    const hidden = render(SimpleTechniciansPage, { hideActions: true });
+    link(hidden, "查看证书照片").props.onClick({ preventDefault() {} });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    fetcher
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([255, 216, 255]), {
+          headers: { "Content-Type": "image/jpeg" },
+        }),
+      )
+      .mockResolvedValueOnce(page([]));
+    link(render(), "查看证书照片").props.onClick({ preventDefault() {} });
+    await flush();
+    expect(nodes(render()).some((node) => node.type === "img")).toBe(true);
+    render(SimpleTechniciansPage, { token: "another-staff" });
+    hooks.current!.flushEffects();
+    await flush();
+    expect(revoke).toHaveBeenCalledWith("blob:isolated-certificate");
+    expect(
+      nodes(render(SimpleTechniciansPage, { token: "another-staff" })).some(
+        (node) => node.type === "img",
+      ),
+    ).toBe(false);
   });
 });
 
