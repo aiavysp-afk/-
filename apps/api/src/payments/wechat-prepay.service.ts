@@ -25,6 +25,7 @@ import { PrismaService } from "../database/prisma.service.js";
 import { PaymentGatewayService } from "./payment-gateway.service.js";
 import { WechatPayClient } from "./wechat-pay.client.js";
 import { WechatPayerResolver } from "./wechat-payer-resolver.service.js";
+import { assertReservationBookable, isReservationBookable, TECHNICIAN_UNAVAILABLE } from "../scheduling/booking-eligibility.js";
 
 @Injectable()
 export class WechatPrepayService {
@@ -93,6 +94,7 @@ export class WechatPrepayService {
       )
         throw new ForbiddenException("只有该订单已绑定的代付人可以继续原支付");
       this.assertPayable(order);
+      await assertReservationBookable(tx, order.reservation);
       if (
         payment.provider !== PaymentProvider.WECHAT ||
         payment.status !== PaymentStatus.PENDING ||
@@ -148,6 +150,7 @@ export class WechatPrepayService {
           throw new ConflictException("代付邀请已失效，请联系下单人");
       }
       const expiresAt = order.paymentExpiresAt!;
+      await assertReservationBookable(tx, order.reservation);
       const existing = order.payment;
       if (existing) {
         if (
@@ -291,13 +294,15 @@ export class WechatPrepayService {
         where: { id: orderId },
         include: { reservation: true },
       });
-      return { payment, order };
+      const bookable = await isReservationBookable(tx, order.reservation);
+      return { payment, order, bookable };
     });
     // Persist the response even if a cancellation/notification won the race, but never expose usable SDK parameters.
     this.assertPayable(
       current.order,
       kind === PaymentKind.SELF ? principal.userId : undefined,
     );
+    if (!current.bookable) throw new ConflictException(TECHNICIAN_UNAVAILABLE);
     if (
       current.payment.status !== PaymentStatus.PENDING ||
       current.payment.closeRequestedAt

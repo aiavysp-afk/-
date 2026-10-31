@@ -177,6 +177,10 @@ try {
     ),
   );
   assert.equal((await call(`/catalog/services/${prefix}`)).priceFen, 19880);
+  const qualifiedProfile = await prisma.technicianProfile.create({
+    data: { organizationId, technicianId: therapist.user.id, publicName: "therapist",
+      status: "PUBLISHED", serviceIds: [service.id] },
+  });
   const date = new Date(Date.now() + 8 * 3600_000 + 2 * 86400_000)
     .toISOString()
     .slice(0, 10);
@@ -266,6 +270,18 @@ try {
     `/availability/slots?serviceId=${service.id}&date=${date}`,
   );
   assert.ok(slots.length > 1);
+  for (const status of ["DRAFT", "PENDING_REVIEW", "REJECTED", "APPROVED"] as const) {
+    await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status } });
+    assert.deepEqual(await call(`/availability/slots?serviceId=${service.id}&date=${date}`), []);
+    await call("/booking-holds", customer.token, {
+      serviceId: service.id, therapistId: therapist.user.id, startsAt: slots[0].startsAt,
+    }, undefined, 409);
+  }
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "PUBLISHED", serviceIds: [] } });
+  assert.deepEqual(await call(`/availability/slots?serviceId=${service.id}&date=${date}`), []);
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { serviceIds: [service.id] } });
+  assert.equal(await prisma.appointmentReservation.count({ where: { organizationId } }), 0);
+  checks.push("real HTTP/DB unpublished, pending, rejected and unlisted-service technicians expose no slots and cannot hold capacity");
   const hold = await call(
     "/booking-holds",
     customer.token,
@@ -345,6 +361,11 @@ try {
     400,
   );
   const orderKey = `${prefix}-order`;
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "REJECTED" } });
+  await call("/orders/quote", customer.token, { reservationId: hold.id }, undefined, 409);
+  await call("/orders", customer.token, orderBody, orderKey, 409);
+  assert.equal(await prisma.order.count({ where: { organizationId } }), 0);
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "PUBLISHED" } });
   const created = await Promise.all([
     call("/orders", customer.token, orderBody, orderKey, 201),
     call("/orders", customer.token, orderBody, orderKey, 201),
@@ -362,6 +383,12 @@ try {
   );
 
   const runtimeConfig = app.get(ConfigService);
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "REJECTED" } });
+  assert.equal((await call("/orders", customer.token, orderBody, orderKey, 201)).id, order.id);
+  await call(`/orders/${order.id}/payment-intent`, customer.token, {}, undefined, 409);
+  assert.equal(await prisma.payment.count({ where: { orderId: order.id } }), 0);
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "PUBLISHED" } });
+  checks.push("real HTTP/DB qualification withdrawal rejects stale quote/order/prepay without writes, while existing-order idempotency replay survives withdrawal");
   runtimeConfig.set("PAYMENT_PROVIDER", "wechat");
   try {
     await call(
@@ -491,12 +518,22 @@ try {
   );
 
   const workflowNow = new Date();
+  const workflowEnd = new Date(workflowNow.getTime() + 60 * 60_000);
+  await prisma.therapistShift.create({ data: {
+    organizationId, therapistId: therapist.user.id, startsAt: workflowNow, endsAt: workflowEnd,
+  } });
+  const workflowReservation = await prisma.appointmentReservation.create({ data: {
+    organizationId, therapistId: therapist.user.id, customerId: stranger.user.id,
+    serviceId: service.id, serviceAmountFen: service.priceFen,
+    startsAt: workflowNow, endsAt: workflowEnd, expiresAt: workflowEnd, status: "CONFIRMED",
+  } });
   const workflowOrder = await prisma.order.create({
     data: {
       orderNo: `WF${randomUUID().replaceAll("-", "").slice(0, 20)}`,
       organizationId,
       customerId: stranger.user.id,
       therapistId: therapist.user.id,
+      reservationId: workflowReservation.id,
       status: "ASSIGNED",
       appointmentStart: workflowNow,
       appointmentEnd: new Date(workflowNow.getTime() + 60 * 60_000),
@@ -556,6 +593,10 @@ try {
     );
   }
   const actionPath = `/technician/workbench/orders/${workflowOrder.id}/actions`;
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "REJECTED" } });
+  await call(actionPath, therapist.token, { action: "DEPART" }, undefined, 409);
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: workflowOrder.id } })).status, "ASSIGNED");
+  await prisma.technicianProfile.update({ where: { id: qualifiedProfile.id }, data: { status: "PUBLISHED" } });
   await call(actionPath, customer.token, { action: "DEPART" }, undefined, 403);
   await call(
     actionPath,

@@ -52,6 +52,7 @@ function fixture() {
     }),
   };
   const tx = {
+    appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
     $queryRaw: vi.fn(async () => []),
     order: { findUniqueOrThrow: vi.fn(async () => ({ ...order })) },
     payment,
@@ -105,6 +106,25 @@ function fixture() {
 }
 
 describe("durable WeChat prepay", () => {
+  it("rejects a withdrawn technician before creating a payment or calling WeChat", async () => {
+    const f = fixture();
+    f.tx.appointmentReservation.findFirst.mockResolvedValue(null as never);
+    await expect(f.service.createIntent(principal, "order")).rejects.toThrow("该技师暂不可预约");
+    expect(f.tx.payment.create).not.toHaveBeenCalled();
+    expect(f.client.prepay).not.toHaveBeenCalled();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
+  it("persists a channel prepay result but withholds SDK parameters if qualification changes during the external request", async () => {
+    const f = fixture();
+    f.client.prepay.mockImplementation(async () => {
+      f.tx.appointmentReservation.findFirst.mockResolvedValue(null as never);
+      return "wx-prepay-in-flight";
+    });
+    await expect(f.service.createIntent(principal, "order")).rejects.toThrow("该技师暂不可预约");
+    expect(f.order.payment.providerReference).toBe("wx-prepay-in-flight");
+    expect(f.client.prepay).toHaveBeenCalledOnce();
+    expect(f.client.paymentParameters).not.toHaveBeenCalled();
+  });
   it("refuses SMS-only sessions before prepay claims or external requests despite an existing WeChat identity", async () => {
     const f = fixture();
     await expect(

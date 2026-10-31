@@ -59,7 +59,7 @@ const categoryNames: Record<ServiceItem["category"], string> = {
 
 function definitiveOrderRejection(
   error: unknown,
-): "coupon" | "hold" | "address" | null {
+): "coupon" | "hold" | "availability" | "address" | null {
   if (
     !(error instanceof ApiError) ||
     error.path !== "/orders" ||
@@ -77,6 +77,8 @@ function definitiveOrderRejection(
     case "409:预约占位已过期":
     case "409:预约占位状态已变化":
       return "hold";
+    case "409:该技师暂不可预约，请重新选择预约时间":
+      return "availability";
     case "422:请先完成服务地址核验":
     case "422:服务地址核验已失效，请重新核验":
       return "address";
@@ -991,7 +993,7 @@ Page({
           orderSubmissionAttempted: false,
           orderKey: newKey(),
           addressVerificationId: "",
-          ...(rejection === "hold"
+          ...(rejection === "hold" || rejection === "availability"
             ? {
                 reservationId: "",
                 reservationSlotKey: "",
@@ -1004,6 +1006,7 @@ Page({
         });
         this.invalidateQuote(false);
         void this.loadCoupons();
+        if (rejection === "availability") void this.loadSlots();
       }
       this.fail(error);
     } finally {

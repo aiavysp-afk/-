@@ -24,6 +24,7 @@ import { PaymentGatewayService } from "./payment-gateway.service.js";
 import { WechatPrepayService } from "./wechat-prepay.service.js";
 import { Optional } from "@nestjs/common";
 import { releaseOrderCoupon } from "../customer-center/order-coupons.js";
+import { assertReservationBookable } from "../scheduling/booking-eligibility.js";
 
 @Injectable()
 export class PaymentsService {
@@ -43,7 +44,7 @@ export class PaymentsService {
     }
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { payment: true },
+      include: { payment: true, reservation: true },
     });
     if (!order) throw new NotFoundException("订单不存在");
     if (order.customerId !== principal.userId) {
@@ -62,6 +63,7 @@ export class PaymentsService {
     if (order.payment)
       if (order.payment.kind === "FRIEND")
         throw new ConflictException("订单已绑定好友代付，请等待原支付结果");
+    await assertReservationBookable(this.prisma, order.reservation);
     if (order.payment)
       return this.toIntent(order.payment, order.paymentExpiresAt);
 
@@ -72,6 +74,7 @@ export class PaymentsService {
         await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${order.id} FOR UPDATE`;
         const currentOrder = await tx.order.findUniqueOrThrow({
           where: { id: order.id },
+          include: { reservation: true },
         });
         if (
           currentOrder.status !== OrderStatus.PENDING_PAYMENT ||
@@ -79,6 +82,7 @@ export class PaymentsService {
           currentOrder.paymentExpiresAt.getTime() <= Date.now()
         )
           throw new ConflictException("订单在创建支付期间已失效");
+        await assertReservationBookable(tx, currentOrder.reservation);
         const record = await tx.payment.create({
           data: {
             orderId: order.id,
@@ -184,6 +188,7 @@ export class PaymentsService {
         current.providerTransactionId === providerTransactionId
       )
         return current;
+      await assertReservationBookable(tx, reservation);
       const paymentUpdate = await tx.payment.updateMany({
         where: { id: payment.id, status: PaymentStatus.PENDING },
         data: {

@@ -21,6 +21,7 @@ import { AccessControlService } from "../auth/access-control.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { OrderStateMachine } from "./order-state-machine.js";
+import { bookableTechnicianWhere, TECHNICIAN_UNAVAILABLE } from "../scheduling/booking-eligibility.js";
 
 const BOARD_STATUSES: OrderStatus[] = [
   OrderStatus.PAID,
@@ -52,7 +53,7 @@ export class OrderDispatchService {
         customer: { select: { displayName: true } },
         therapist: { select: { id: true, displayName: true } },
         items: {
-          select: { serviceName: true, durationMinutes: true },
+          select: { serviceId: true, serviceName: true, durationMinutes: true },
           take: 1,
         },
       },
@@ -65,9 +66,9 @@ export class OrderDispatchService {
         organizationId,
         role: UserRole.THERAPIST,
         status: MembershipStatus.ACTIVE,
-        user: { status: "ACTIVE" },
+        user: bookableTechnicianWhere(organizationId),
       },
-      include: { user: { select: { id: true, displayName: true } } },
+      include: { user: { select: { id: true, displayName: true, technicianProfile: { select: { serviceIds: true } } } } },
       orderBy: { createdAt: "asc" },
     });
     const therapistIds = memberships.map((membership) => membership.userId);
@@ -126,6 +127,8 @@ export class OrderDispatchService {
         const eligibleTherapists = memberships
           .filter(
             (membership) =>
+              Array.isArray(membership.user.technicianProfile?.serviceIds) &&
+              membership.user.technicianProfile.serviceIds.includes(item.serviceId) &&
               shifts.some(
                 (shift) =>
                   shift.therapistId === membership.userId &&
@@ -140,7 +143,7 @@ export class OrderDispatchService {
                   reservation.endsAt > order.appointmentStart,
               ),
           )
-          .map((membership) => membership.user);
+          .map(({ user }) => ({ id: user.id, displayName: user.displayName }));
         return {
           id: order.id,
           orderNo: order.orderNo,
@@ -180,11 +183,14 @@ export class OrderDispatchService {
             reservationId: true,
             appointmentStart: true,
             appointmentEnd: true,
+            items: { select: { serviceId: true }, take: 1 },
           },
         });
         if (!order || order.organizationId !== organizationId) {
           throw new NotFoundException("待调度订单不存在");
         }
+        const serviceId = order.items[0]?.serviceId;
+        if (!serviceId) throw new ConflictException("订单服务快照不完整");
 
         const therapistMembership = await tx.staffMembership.findFirst({
           where: {
@@ -192,11 +198,12 @@ export class OrderDispatchService {
             organizationId,
             role: UserRole.THERAPIST,
             status: MembershipStatus.ACTIVE,
+            user: bookableTechnicianWhere(organizationId, serviceId),
           },
           include: { user: { select: { id: true, displayName: true } } },
         });
         if (!therapistMembership) {
-          throw new BadRequestException("技师不属于当前组织或账号不可用");
+          throw new ConflictException(TECHNICIAN_UNAVAILABLE);
         }
 
         if (order.status === OrderStatus.ASSIGNED) {

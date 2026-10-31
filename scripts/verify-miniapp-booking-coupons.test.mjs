@@ -257,6 +257,46 @@ test("a definite address rejection invalidates its verification and mandates ser
   assert.equal(f.calls.filter((call) => call.path === "/locations/address-verifications").length, 1);
 });
 
+test("a definite technician eligibility rejection clears the stale hold and refreshes available slots without paying", async () => {
+  const f = fixture((path) => {
+    if (path === "/orders")
+      throw new ApiError(
+        "该技师暂不可预约，请重新选择预约时间",
+        409,
+        "/orders",
+        "POST",
+      );
+    if (path.startsWith("/availability/slots?")) return [];
+  });
+  let paid = false;
+  f.page.payCreatedOrder = async () => {
+    paid = true;
+  };
+  await f.page.refreshQuote();
+  await f.page.create();
+  await new Promise((done) => setImmediate(done));
+  assert.equal(f.page.data.orderSubmissionAttempted, false);
+  assert.equal(f.page.data.reservationId, "");
+  assert.equal(f.page.data.reservationSlotKey, "");
+  assert.equal(f.page.data.reservationExpiresAt, "");
+  assert.equal(f.page.data.quoteDetails, null);
+  assert.equal(f.page.data.slots.length, 0);
+  assert.equal(f.page.data.selected, -1);
+  assert.equal(paid, false);
+  assert.match(f.page.data.error, /该技师暂不可预约/);
+  assert.equal(
+    f.calls.filter((call) => call.path.startsWith("/availability/slots?"))
+      .length,
+    1,
+  );
+  await f.page.create();
+  assert.equal(
+    f.calls.filter((call) => call.path === "/orders").length,
+    1,
+    "no replacement order without a newly available slot",
+  );
+});
+
 test("existing-order conflicts, unknown 4xx and 5xx never unlock an uncertain submission", async () => {
   for (const error of [
     new ApiError("预约占位已经生成订单", 409, "/orders", "POST"),
@@ -282,14 +322,17 @@ test("existing-order conflicts, unknown 4xx and 5xx never unlock an uncertain su
 
 test("a known rejection after an earlier unknown result still preserves the original request", async () => {
   for (const initial of [new Error("network outcome unknown"), new ApiError("服务器内部错误", 503, "/orders", "POST")]) {
-    let creates = 0;
-    const f = fixture((path) => {
-      if (path === "/orders") throw ++creates === 1 ? initial : new ApiError("优惠券状态已变化，请重新获取报价", 409, "/orders", "POST");
-    });
-    await f.page.refreshQuote(); await f.page.create(); await f.page.create();
-    assert.equal(f.page.data.orderSubmissionAttempted, true);
-    const calls = f.calls.filter((call) => call.path === "/orders");
-    assert.deepEqual(calls[0], calls[1]);
+    for (const rejectionMessage of ["优惠券状态已变化，请重新获取报价", "该技师暂不可预约，请重新选择预约时间"]) {
+      let creates = 0;
+      const f = fixture((path) => {
+        if (path === "/orders") throw ++creates === 1 ? initial : new ApiError(rejectionMessage, 409, "/orders", "POST");
+      });
+      await f.page.refreshQuote(); await f.page.create(); await f.page.create();
+      assert.equal(f.page.data.orderSubmissionAttempted, true);
+      const calls = f.calls.filter((call) => call.path === "/orders");
+      assert.deepEqual(calls[0], calls[1]);
+      assert.equal(f.calls.some((call) => call.path.startsWith("/availability/slots?")), false);
+    }
   }
 });
 

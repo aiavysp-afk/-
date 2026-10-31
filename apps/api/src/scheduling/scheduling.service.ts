@@ -26,6 +26,7 @@ import { AccessControlService } from "../auth/access-control.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { releaseOrderCoupon } from "../customer-center/order-coupons.js";
+import { bookableTechnicianWhere, TECHNICIAN_UNAVAILABLE } from "./booking-eligibility.js";
 
 const SLOT_INTERVAL_MS = 30 * 60 * 1_000;
 const HOLD_TTL_MS = 10 * 60 * 1_000;
@@ -55,6 +56,7 @@ export class SchedulingService {
         status: ShiftStatus.ACTIVE,
         startsAt: { lt: end },
         endsAt: { gt: start },
+        therapist: bookableTechnicianWhere(service.organizationId, service.id),
       },
       orderBy: [{ startsAt: "asc" }, { therapistId: "asc" }],
     });
@@ -142,6 +144,7 @@ export class SchedulingService {
         organizationId: input.organizationId,
         role: UserRole.THERAPIST,
         status: MembershipStatus.ACTIVE,
+        user: bookableTechnicianWhere(input.organizationId),
       },
     });
     if (!membership)
@@ -229,30 +232,20 @@ export class SchedulingService {
       startsAt.getTime() + service.durationMinutes * 60 * 1_000,
     );
 
-    const therapist = await this.prisma.staffMembership.findFirst({
-      where: {
-        userId: input.therapistId,
-        organizationId: service.organizationId,
-        role: UserRole.THERAPIST,
-        status: MembershipStatus.ACTIVE,
-      },
-    });
-    if (!therapist) throw new BadRequestException("所选技师当前不可预约");
-
-    const shift = await this.prisma.therapistShift.findFirst({
-      where: {
-        organizationId: service.organizationId,
-        therapistId: input.therapistId,
-        status: ShiftStatus.ACTIVE,
-        startsAt: { lte: startsAt },
-        endsAt: { gte: endsAt },
-      },
-    });
-    if (!shift) throw new BadRequestException("所选时间不在技师排班内");
-
     const expiresAt = new Date(now.getTime() + HOLD_TTL_MS);
     try {
       const hold = await this.prisma.$transaction(async (tx) => {
+        const shift = await tx.therapistShift.findFirst({
+          where: {
+            organizationId: service.organizationId,
+            therapistId: input.therapistId,
+            status: ShiftStatus.ACTIVE,
+            startsAt: { lte: startsAt },
+            endsAt: { gte: endsAt },
+            therapist: bookableTechnicianWhere(service.organizationId, service.id),
+          },
+        });
+        if (!shift) throw new ConflictException(TECHNICIAN_UNAVAILABLE);
         const expired = await tx.appointmentReservation.findMany({
           where: {
             status: ReservationStatus.HOLD,

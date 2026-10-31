@@ -23,6 +23,7 @@ import type {
   ServiceAddress,
 } from "@zydj/contracts";
 import { createHash, randomBytes } from "node:crypto";
+import { assertReservationBookable } from "../scheduling/booking-eligibility.js";
 import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
@@ -66,6 +67,7 @@ export class OrdersService {
       throw new ConflictException("预约占位已过期");
     }
     const serviceAmountFen = this.safeMoney(reservation.serviceAmountFen);
+    await assertReservationBookable(this.prisma, reservation);
     const coupon = await selectOrderCoupon(
       this.prisma,
       reservation.organizationId,
@@ -141,6 +143,7 @@ export class OrdersService {
           return null;
         }
 
+        await assertReservationBookable(tx, reservation);
         await this.locations.assertOrderVerification(tx, principal, input, now);
 
         const locked = await tx.appointmentReservation.updateMany({

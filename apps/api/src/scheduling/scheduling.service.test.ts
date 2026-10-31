@@ -42,6 +42,7 @@ function expiredOrderFixture(
     ...current,
   };
   const tx = {
+    therapistShift: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-shift" }) },
     $queryRaw: vi.fn().mockResolvedValue([]),
     appointmentReservation: {
       findMany: vi
@@ -234,6 +235,7 @@ describe("SchedulingService", () => {
       updatedAt: new Date(),
     };
     const tx = {
+      therapistShift: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-shift" }) },
       appointmentReservation: {
         findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -411,7 +413,9 @@ describe("SchedulingService", () => {
       staffMembership: {
         findFirst: vi.fn().mockResolvedValue({ id: "membership-1" }),
       },
-      therapistShift: { findFirst: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback: any) => callback({
+        therapistShift: { findFirst: vi.fn().mockResolvedValue(null) },
+      })),
     };
     const scheduling = new SchedulingService(
       prisma as never,
@@ -424,7 +428,7 @@ describe("SchedulingService", () => {
         therapistId: "therapist-a",
         startsAt: "2026-10-04T10:00:00+08:00",
       }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toThrow("该技师暂不可预约，请重新选择预约时间");
   });
 
   it("passes active shift status through the admin response", async () => {

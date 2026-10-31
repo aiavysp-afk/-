@@ -29,6 +29,7 @@ function setup() {
     expiresAt: order.paymentExpiresAt,
   };
   const tx = {
+    appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
     $queryRaw: vi.fn(async () => []),
     order: { findUniqueOrThrow: vi.fn(async () => ({ ...order })) },
     friendPaymentShare: { findUnique: vi.fn(async () => share) },

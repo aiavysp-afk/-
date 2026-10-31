@@ -26,6 +26,7 @@ import { AuthCryptoService } from "../auth/auth-crypto.service.js";
 import type { AuthPrincipal } from "../auth/auth.types.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { AmapClient } from "../integrations/amap.client.js";
+import { assertReservationBookable } from "../scheduling/booking-eligibility.js";
 import {
   OrderStateMachine,
   type OrderTransitionEvent,
@@ -370,6 +371,7 @@ export class TechnicianWorkbenchService {
           status: true,
           appointmentStart: true,
           appointmentEnd: true,
+          reservation: true,
         },
       });
       if (!order) throw new NotFoundException("履约订单不存在");
@@ -401,6 +403,7 @@ export class TechnicianWorkbenchService {
         ) {
           throw new ConflictException("当前预约不可接单，请刷新工作台");
         }
+        await assertReservationBookable(tx, order.reservation);
         const previousStatus = order.status;
         let currentStatus: OrderStatus = order.status;
         if (currentStatus === OrderStatus.PAID) {
@@ -495,6 +498,11 @@ export class TechnicianWorkbenchService {
       if (order.status !== action.expected) {
         this.stateMachine.transition(order.status, action.event);
       }
+      // Qualification can change after payment or acceptance. Do not start or
+      // travel for a withdrawn worker; finishing an already performed service
+      // remains available through the existing ownership/state checks.
+      if (input.action !== "FINISH_SERVICE")
+        await assertReservationBookable(tx, order.reservation);
       const next = this.stateMachine.transition(order.status, action.event);
       const updated = await tx.order.updateMany({
         where: {

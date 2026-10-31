@@ -75,6 +75,24 @@ const orderRecord = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("OrdersService", () => {
+  it("rejects a stale hold whose technician is no longer eligible before order creation or coupon consumption", async () => {
+    const reservation = { id: "reservation-1", customerId: principal.userId, serviceAmountFen: 19800n,
+      status: ReservationStatus.HOLD, expiresAt: new Date("2026-10-03T00:10:00Z"), order: null };
+    const tx = {
+      appointmentReservation: { findUnique: vi.fn().mockResolvedValue(reservation), findFirst: vi.fn().mockResolvedValue(null), updateMany: vi.fn() },
+      order: { create: vi.fn() }, customerCoupon: { updateMany: vi.fn() },
+    };
+    const prisma = { order: { findUnique: vi.fn().mockResolvedValue(null) },
+      user: { findUnique: vi.fn().mockResolvedValue({ status: "ACTIVE", phoneEncrypted: "encrypted", phoneVerifiedAt: new Date() }) },
+      $transaction: (fn: (client: typeof tx) => unknown) => fn(tx),
+      appointmentReservation: tx.appointmentReservation };
+    const service = new OrdersService(prisma as never, { encrypt: () => "encrypted" } as never, new OrderStateMachine(), locations as never);
+    await expect(service.quote(principal, reservation.id)).rejects.toThrow("该技师暂不可预约");
+    await expect(service.create(principal, input, "stale-qualification")).rejects.toThrow("该技师暂不可预约");
+    expect(tx.order.create).not.toHaveBeenCalled();
+    expect(tx.appointmentReservation.updateMany).not.toHaveBeenCalled();
+    expect(tx.customerCoupon.updateMany).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T00:00:00.000Z"));
@@ -87,6 +105,7 @@ describe("OrdersService", () => {
     const prisma = {
       customerCoupon: { findMany: vi.fn().mockResolvedValue([]) },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         findUnique: vi.fn().mockResolvedValue({
           id: "reservation-1",
           customerId: principal.userId,
@@ -118,6 +137,7 @@ describe("OrdersService", () => {
   it("rejects quoting another customer's reservation", async () => {
     const prisma = {
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         findUnique: vi.fn().mockResolvedValue({
           id: "reservation-1",
           customerId: "another-customer",
@@ -142,6 +162,7 @@ describe("OrdersService", () => {
     const prisma = {
       customerCoupon: { findMany: vi.fn().mockResolvedValue([{ id: "coupon-10", amountFen: 1000n }]) },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         findUnique: vi.fn().mockResolvedValue({
           id: "reservation-1", organizationId: "org-a", customerId: principal.userId,
           status: ReservationStatus.HOLD, expiresAt: new Date("2026-10-03T00:10:00Z"),
@@ -167,6 +188,7 @@ describe("OrdersService", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         findUnique: vi.fn().mockResolvedValue({
           id: "reservation-1", organizationId: "org-a", customerId: principal.userId,
           therapistId: "therapist-1", serviceId: "svc-neck-60", status: ReservationStatus.HOLD,
@@ -209,6 +231,7 @@ describe("OrdersService", () => {
     const tx = {
       customerCoupon: { findMany: vi.fn().mockResolvedValue([]) },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         findUnique: vi.fn().mockResolvedValue({
           id: "reservation-1",
           organizationId: "org-a",
@@ -347,6 +370,7 @@ describe("OrdersService", () => {
           .mockResolvedValue(cancelled),
       },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       orderEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -628,7 +652,8 @@ describe("OrdersService", () => {
         })),
         updateMany: vi.fn(),
       },
-      appointmentReservation: { updateMany: vi.fn() },
+      appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }), updateMany: vi.fn() },
     };
     const prisma = {
       order: { findUnique: vi.fn(async () => current) },

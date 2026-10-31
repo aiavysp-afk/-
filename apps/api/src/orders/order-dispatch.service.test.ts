@@ -22,6 +22,7 @@ function assignmentFixture(status: OrderStatus = OrderStatus.PAID) {
         status,
         therapistId: "therapist-1",
         reservationId: "reservation-1",
+        items: [{ serviceId: "svc" }],
         appointmentStart: new Date("2026-10-08T02:00:00.000Z"),
         appointmentEnd: new Date("2026-10-08T03:00:00.000Z"),
       }),
@@ -60,6 +61,13 @@ function assignmentFixture(status: OrderStatus = OrderStatus.PAID) {
 }
 
 describe("OrderDispatchService", () => {
+  it("rejects assigning a withdrawn/non-published technician without changing order or dispatch events", async () => {
+    const { service, tx } = assignmentFixture();
+    tx.staffMembership.findFirst.mockResolvedValue(null as never);
+    await expect(service.assign(dispatcher, "org-1", "order-1", { therapistId: "therapist-1" }, new Date("2026-10-07T08:00:00Z"))).rejects.toThrow("该技师暂不可预约");
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+    expect(tx.orderEvent.create).not.toHaveBeenCalled();
+  });
   it("returns a real dispatch board without customer address or phone", async () => {
     const prisma = {
       order: {
@@ -73,7 +81,7 @@ describe("OrderDispatchService", () => {
             payableFen: 29_800n,
             customer: { displayName: "顾客" },
             therapist: { id: "therapist-1", displayName: "安然" },
-            items: [{ serviceName: "肩颈舒缓", durationMinutes: 60 }],
+            items: [{ serviceId: "svc", serviceName: "肩颈舒缓", durationMinutes: 60 }],
           },
         ]),
       },
@@ -81,7 +89,7 @@ describe("OrderDispatchService", () => {
         findMany: vi.fn().mockResolvedValue([
           {
             userId: "therapist-1",
-            user: { id: "therapist-1", displayName: "安然" },
+            user: { id: "therapist-1", displayName: "安然", technicianProfile: { serviceIds: ["svc"] } },
           },
         ]),
       },
@@ -161,7 +169,7 @@ describe("OrderDispatchService", () => {
     const start = new Date("2026-10-08T02:00:00Z"),
       end = new Date("2026-10-08T03:00:00Z");
     const memberships = ["own", "busy", "adjacent", "unavailable"].map(
-      (id) => ({ userId: id, user: { id, displayName: id } }),
+      (id) => ({ userId: id, user: { id, displayName: id, technicianProfile: { serviceIds: ["svc"] } } }),
     );
     const prisma = {
       order: {
@@ -176,7 +184,7 @@ describe("OrderDispatchService", () => {
             appointmentEnd: end,
             customer: { displayName: "customer" },
             therapist: memberships[0]!.user,
-            items: [{ serviceName: "service", durationMinutes: 60 }],
+            items: [{ serviceId: "svc", serviceName: "service", durationMinutes: 60 }],
           },
         ]),
       },

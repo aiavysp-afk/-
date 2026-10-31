@@ -41,6 +41,7 @@ const orderRecord = (overrides: Record<string, unknown> = {}) => ({
   organizationId: "org-a",
   customerId: principal.userId,
   reservationId: "reservation-1",
+  reservation: { id: "reservation-1" },
   status: OrderStatus.PENDING_PAYMENT,
   payableFen: 19_800n,
   paymentExpiresAt: expiresAt,
@@ -62,6 +63,7 @@ describe("PaymentsService", () => {
   it("creates one mock payment intent with audit and payment event", async () => {
     const payment = paymentRecord();
     const tx = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       $queryRaw: vi.fn().mockResolvedValue([]),
       order: { findUniqueOrThrow: vi.fn().mockResolvedValue(orderRecord()) },
       payment: { create: vi.fn().mockResolvedValue(payment) },
@@ -69,6 +71,7 @@ describe("PaymentsService", () => {
       auditLog: { create: vi.fn().mockResolvedValue({}) },
     };
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: { findUnique: vi.fn().mockResolvedValue(orderRecord()) },
       payment: { findUnique: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
@@ -104,6 +107,7 @@ describe("PaymentsService", () => {
   it("returns the existing payment intent instead of creating a duplicate", async () => {
     const payment = paymentRecord();
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: {
         findUnique: vi.fn().mockResolvedValue(orderRecord({ payment })),
       },
@@ -124,6 +128,7 @@ describe("PaymentsService", () => {
 
   it("rejects a payment intent if the order was cancelled while waiting for its row lock", async () => {
     const tx = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       $queryRaw: vi.fn().mockResolvedValue([]),
       order: {
         findUniqueOrThrow: vi
@@ -133,6 +138,7 @@ describe("PaymentsService", () => {
       payment: { create: vi.fn() },
     };
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: { findUnique: vi.fn().mockResolvedValue(orderRecord()) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
         callback(tx),
@@ -181,6 +187,7 @@ describe("PaymentsService", () => {
       },
       order: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       paymentEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -189,6 +196,7 @@ describe("PaymentsService", () => {
       outboxEvent: { create: vi.fn().mockResolvedValue({}) },
     };
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       payment: { findUnique: vi.fn().mockResolvedValue(pending) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
         callback(tx),
@@ -233,6 +241,7 @@ describe("PaymentsService", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
@@ -242,6 +251,7 @@ describe("PaymentsService", () => {
       outboxEvent: { create: vi.fn().mockResolvedValue({}) },
     };
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: { findMany: vi.fn().mockResolvedValue([order]) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) =>
         callback(tx),
@@ -278,6 +288,7 @@ describe("PaymentsService", () => {
       payment: paymentRecord({ provider: PaymentProvider.WECHAT }),
     };
     const tx = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       $queryRaw: vi.fn(async () => []),
       order: {
         findUniqueOrThrow: vi.fn(async () => fresh),
@@ -285,6 +296,7 @@ describe("PaymentsService", () => {
       },
     };
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: { findMany: vi.fn(async () => [stale]) },
       $transaction: vi.fn(async (cb: any) => cb(tx)),
     };
@@ -315,6 +327,7 @@ describe("PaymentsService", () => {
       order: orderRecord({ reservation: { id: "reservation-1" } }),
     });
     const prisma = {
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       payment: { findUnique: vi.fn().mockResolvedValue(pending) },
     };
     const service = new PaymentsService(

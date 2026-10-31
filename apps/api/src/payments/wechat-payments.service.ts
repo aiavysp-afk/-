@@ -23,6 +23,7 @@ import type {
 import { parseWechatTransaction } from "./wechat-pay.protocol.js";
 import { StoredValueRechargesService } from "./stored-value-recharges.service.js";
 import { AuthCryptoService } from "../auth/auth-crypto.service.js";
+import { isReservationBookable } from "../scheduling/booking-eligibility.js";
 
 @Injectable()
 export class WechatPaymentsService {
@@ -196,7 +197,8 @@ export class WechatPaymentsService {
           succeededAt <= order.paymentExpiresAt &&
           !!reservation &&
           reservation.status === ReservationStatus.HOLD &&
-          reservation.expiresAt > now;
+          reservation.expiresAt > now &&
+          (await isReservationBookable(tx, reservation));
 
         await tx.payment.update({
           where: { id: payment.id },

@@ -13,6 +13,40 @@ const therapist: AuthPrincipal = {
 };
 
 describe("TechnicianWorkbenchService", () => {
+  it.each([
+    ["ACCEPT", "PAID"], ["DEPART", "ASSIGNED"], ["ARRIVE", "EN_ROUTE"], ["START_SERVICE", "ARRIVED"],
+  ] as const)("blocks %s before service when technician qualification/shift is no longer available", async (action, status) => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: {
+        findUnique: vi.fn().mockResolvedValue({ id: "order", organizationId: "org-1", therapistId: therapist.userId,
+          status, appointmentStart: new Date("2026-10-07T06:00:00Z"), appointmentEnd: new Date("2026-10-07T07:00:00Z"), reservation: { id: "reservation" } }),
+        updateMany: vi.fn(),
+      },
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue(null) },
+      orderEvent: { create: vi.fn() }, outboxEvent: { create: vi.fn() }, auditLog: { create: vi.fn() },
+    };
+    const service = new TechnicianWorkbenchService({ $transaction: (fn: (client: typeof tx) => unknown) => fn(tx) } as never,
+      { assertPermission: vi.fn() } as never, new OrderStateMachine());
+    await expect(service.advance(therapist, "order", { action }, new Date("2026-10-07T05:00:00Z"))).rejects.toThrow("该技师暂不可预约");
+    expect(tx.order.updateMany).not.toHaveBeenCalled();
+    expect(tx.orderEvent.create).not.toHaveBeenCalled();
+    expect(tx.outboxEvent.create).not.toHaveBeenCalled();
+  });
+  it("does not strand finishing an already performed service when booking qualification changes", async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      order: { findUnique: vi.fn().mockResolvedValue({ id: "order", organizationId: "org-1", therapistId: therapist.userId,
+        status: "IN_SERVICE", appointmentStart: new Date("2026-10-07T06:00:00Z"), reservation: null }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue(null) },
+      orderEvent: { create: vi.fn() }, outboxEvent: { create: vi.fn() }, auditLog: { create: vi.fn() },
+    };
+    const service = new TechnicianWorkbenchService({ $transaction: (fn: (client: typeof tx) => unknown) => fn(tx) } as never,
+      { assertPermission: vi.fn() } as never, new OrderStateMachine());
+    await expect(service.advance(therapist, "order", { action: "FINISH_SERVICE" }, new Date("2026-10-07T07:00:00Z"))).resolves.toMatchObject({ status: "AWAITING_CONFIRMATION" });
+    expect(tx.appointmentReservation.findFirst).not.toHaveBeenCalled();
+  });
   it("native approved WeChat login can access only its own orders without browser pairing/MFA", async () => {
     const prisma = { technicianProfile: { findFirst: vi.fn().mockResolvedValue({ id: "approved" }) }, order: { findMany: vi.fn().mockResolvedValue([]) }, therapistShift: { findMany: vi.fn().mockResolvedValue([]) } };
     const access = { assertPermission: vi.fn(() => { throw new ForbiddenException("Browser MFA required"); }) };
@@ -244,9 +278,11 @@ describe("TechnicianWorkbenchService", () => {
   it("advances the assigned therapist order under a row lock and audit trail", async () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([]),
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: {
         findUnique: vi.fn().mockResolvedValue({
           id: "order-1",
+          reservation: { id: "reservation-1" },
           organizationId: "org-1",
           therapistId: "therapist-1",
           status: OrderStatus.ASSIGNED,
@@ -306,9 +342,11 @@ describe("TechnicianWorkbenchService", () => {
   it("lets the selected technician accept a paid future appointment exactly once", async () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([]),
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: {
         findUnique: vi.fn().mockResolvedValue({
           id: "order-paid",
+          reservation: { id: "reservation-paid" },
           organizationId: "org-1",
           therapistId: "therapist-1",
           status: OrderStatus.PAID,
@@ -373,9 +411,11 @@ describe("TechnicianWorkbenchService", () => {
   it("makes an immediately repeated action idempotent", async () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([]),
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: {
         findUnique: vi.fn().mockResolvedValue({
           id: "order-1",
+          reservation: { id: "reservation-1" },
           organizationId: "org-1",
           therapistId: "therapist-1",
           status: OrderStatus.EN_ROUTE,
@@ -412,9 +452,11 @@ describe("TechnicianWorkbenchService", () => {
   it("rejects another technician and a non-today order", async () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([]),
+      appointmentReservation: { findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }) },
       order: {
         findUnique: vi.fn().mockResolvedValue({
           id: "order-1",
+          reservation: { id: "reservation-1" },
           organizationId: "org-1",
           therapistId: "therapist-other",
           status: OrderStatus.ASSIGNED,

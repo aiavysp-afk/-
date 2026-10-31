@@ -64,6 +64,7 @@ function setup(
     },
     order: { update: vi.fn().mockResolvedValue({}) },
     appointmentReservation: {
+        findFirst: vi.fn().mockResolvedValue({ id: "qualified-reservation" }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     paymentEvent: {
@@ -106,6 +107,18 @@ function setup(
 }
 
 describe("WechatPaymentsService", () => {
+  it("records actual received funds but flags platform handling if technician qualification was withdrawn", async () => {
+    const { service, tx } = setup();
+    tx.appointmentReservation.findFirst.mockResolvedValue(null as never);
+    await expect(service.applyTransaction(transaction, "withdrawn-event", "NOTIFICATION")).resolves.toEqual({ duplicate: false });
+    expect(tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "SUCCEEDED", providerTransactionId: "wx-txn-1", failureCode: "FULFILLMENT_REVIEW_REQUIRED" }),
+    }));
+    expect(tx.order.update).toHaveBeenCalledWith({ where: { id: "order-1" }, data: { status: "CANCELLED" } });
+    expect(tx.appointmentReservation.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: "EXPIRED" } }));
+    expect(tx.orderEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "PAYMENT_FULFILLMENT_REVIEW_REQUIRED" }) }));
+    expect(tx.order.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: { status: "PAID" } }));
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-03T00:01:00Z"));
