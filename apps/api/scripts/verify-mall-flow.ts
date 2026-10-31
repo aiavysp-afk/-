@@ -251,10 +251,17 @@ try {
   );
   assert.equal(technicianWorkbench.displayName, "therapist");
   assert.ok(Array.isArray(technicianWorkbench.orders));
-  assert.ok(
+  const todayShanghai = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const calendarWeekday = new Date(`${todayShanghai}T00:00:00Z`).getUTCDay() || 7;
+  const currentWeekEnd = new Date(`${todayShanghai}T00:00:00+08:00`).getTime()
+    + (8 - calendarWeekday) * 86400_000;
+  // A booking two days ahead can fall in next week on Saturday/Sunday.
+  // The workbench intentionally shows the current week's shifts only.
+  assert.equal(
     technicianWorkbench.shifts.some(
       (row: any) => row.id === shifts[0].id && row.status === "ACTIVE",
     ),
+    new Date(shifts[0].startsAt).getTime() < currentWeekEnd,
   );
   await call(
     "/technician/workbench",
@@ -521,6 +528,7 @@ try {
   const workflowEnd = new Date(workflowNow.getTime() + 60 * 60_000);
   await prisma.therapistShift.create({ data: {
     organizationId, therapistId: therapist.user.id, startsAt: workflowNow, endsAt: workflowEnd,
+    createdById: admin.user.id,
   } });
   const workflowReservation = await prisma.appointmentReservation.create({ data: {
     organizationId, therapistId: therapist.user.id, customerId: stranger.user.id,
@@ -1336,6 +1344,15 @@ try {
       mode: "local isolated HTTP + PostgreSQL; no real WeChat funds",
     }),
   );
+} catch (error) {
+  // Print the business assertion before cleanup: a later foreign-key failure
+  // must not conceal the actual regression in this isolated synthetic run.
+  console.error(JSON.stringify({
+    passed: false,
+    completedChecks: checks.length,
+    failure: error instanceof Error ? error.message.slice(0, 1600) : "Unknown isolated self-test failure",
+  }));
+  throw error;
 } finally {
   await app.close();
   if (organizationId)
@@ -1347,6 +1364,9 @@ try {
       await tx.refund.deleteMany({ where: { payment: orderScope } });
       await tx.paymentEvent.deleteMany({ where: { payment: orderScope } });
       await tx.payment.deleteMany({ where: orderScope });
+      await tx.friendPaymentShare.deleteMany({ where: orderScope });
+      await tx.technicianReview.deleteMany({ where: { organizationId } });
+      await tx.customerCoupon.deleteMany({ where: { organizationId, customerId: { in: userIds } } });
       const rows = await tx.order.findMany({
         where: { organizationId },
         select: { id: true },
@@ -1368,6 +1388,9 @@ try {
       await tx.auditLog.deleteMany({
         where: { OR: [{ organizationId }, { actorId: { in: userIds } }] },
       });
+      // Phone verification now maintains a restrictive authentication binding.
+      // Remove only identities belonging to this run's explicitly tracked users.
+      await tx.customerPhoneIdentity.deleteMany({ where: { userId: { in: userIds } } });
       await tx.user.deleteMany({ where: { id: { in: userIds } } });
       await tx.organization.delete({ where: { id: organizationId } });
     });

@@ -286,8 +286,9 @@ describe("simple administrator read-only pages", () => {
   });
   it("retains customer-directory scope and does not invent an unscoped users query", async () => {
     const f = fixture();
-    await f.service.users(principal(), "org-a", { limit: 20 });
-    expect(f.customers.list).toHaveBeenCalledWith(principal(), "org-a", {
+    const actor = principal();
+    await f.service.users(actor, "org-a", { limit: 20 });
+    expect(f.customers.list).toHaveBeenCalledWith(actor, "org-a", {
       limit: 20,
     });
   });
